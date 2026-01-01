@@ -1,7 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientUser, getClients } from '@/app/actions/admin'
+import { 
+  createClientUser, 
+  getClients, 
+  getInstallations, 
+  getRepairs, 
+  getAppointments, 
+  getSettings, 
+  updateSettings,
+  createAppointment 
+} from '@/app/actions/admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
@@ -20,66 +29,78 @@ import {
   CheckCircle, 
   TrendingUp,
   Bell,
-  Settings,
+  Settings as SettingsIcon,
   LogOut,
   ChevronLeft,
-  LayoutDashboard,
   CalendarDays,
   BarChart3,
   BellRing,
-  UserCheck
+  UserCheck,
+  Search,
+  Filter,
+  Plus,
+  Mail,
+  Phone,
+  MapPin,
+  FileText,
+  Download,
+  Building2,
+  BellDot,
+  Cpu,
+  ShieldCheck,
+  X
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-type View = 'dashboard' | 'clients'
+type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'schedule' | 'reports' | 'settings'
 
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
   const [clients, setClients] = useState<any[]>([])
+  const [installations, setInstallations] = useState<any[]>([])
+  const [repairs, setRepairs] = useState<any[]>([])
+  const [appointments, setAppointments] = useState<any[]>([])
+  const [settings, setSettings] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
+  const [showReminders, setShowReminders] = useState(false)
+  const [showTechnicians, setShowTechnicians] = useState(false)
+  
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    fetchClients()
+    fetchAllData()
   }, [])
 
-  const fetchClients = async () => {
+  const fetchAllData = async () => {
+    setIsFetching(true)
     try {
-      const data = await getClients()
-      setClients(data || [])
+      const [clientsData, installData, repairsData, apptsData, settingsData] = await Promise.all([
+        getClients(),
+        getInstallations(),
+        getRepairs(),
+        getAppointments(),
+        getSettings()
+      ])
+      setClients(clientsData || [])
+      setInstallations(installData || [])
+      setRepairs(repairsData || [])
+      setAppointments(apptsData || [])
+      setSettings(settingsData)
     } catch (error) {
-      toast.error('Failed to fetch clients')
+      toast.error('Failed to fetch dashboard data')
     } finally {
       setIsFetching(false)
     }
-  }
-
-  const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setGeneratedPassword(null)
-
-    const formData = new FormData(e.currentTarget)
-    const result = await createClientUser(formData)
-
-    if (result.error) {
-      toast.error(result.error)
-    } else if (result.success && result.password) {
-      toast.success('Client created successfully')
-      setGeneratedPassword(result.password)
-      fetchClients()
-      ;(e.target as HTMLFormElement).reset()
-    }
-    setIsLoading(false)
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success('Password copied to clipboard')
   }
 
   const handleSignOut = async () => {
@@ -88,116 +109,57 @@ export default function AdminDashboard() {
     router.refresh()
   }
 
-  if (view === 'clients') {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC]">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => setView('dashboard')}>
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-xl font-bold text-[#0F172A]">Manage Clients</h1>
-              <p className="text-sm text-gray-500">Add and manage client accounts</p>
-            </div>
-          </div>
-        </header>
-
-        <main className="container mx-auto py-8 px-4 space-y-8">
-          <div className="grid md:grid-cols-2 gap-8">
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle>Create New Client</CardTitle>
-                <CardDescription>
-                  Add a new client to the system. A password will be auto-generated.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleCreateClient} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input id="fullName" name="fullName" placeholder="John Doe" required className="bg-gray-50 border-gray-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" name="email" type="email" placeholder="john@example.com" required className="bg-gray-50 border-gray-200" />
-                  </div>
-                  <Button type="submit" className="w-full bg-[#0F172A] hover:bg-[#1E293B]" disabled={isLoading}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create Client
-                  </Button>
-                </form>
-
-                {generatedPassword && (
-                  <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-blue-700 flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4" />
-                        Generated Password
-                      </span>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => copyToClipboard(generatedPassword)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <p className="text-2xl font-mono font-bold break-all text-blue-900">{generatedPassword}</p>
-                    <p className="text-xs text-blue-600">
-                      Please copy this password and share it securely with the client.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle>Client List</CardTitle>
-                <CardDescription>
-                  Manage your existing clients
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isFetching ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : clients.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">No clients found</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50 hover:bg-gray-50">
-                        <TableHead className="font-semibold text-[#0F172A]">Name</TableHead>
-                        <TableHead className="font-semibold text-[#0F172A]">Email</TableHead>
-                        <TableHead className="font-semibold text-[#0F172A]">Created At</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clients.map((client) => (
-                        <TableRow key={client.id} className="hover:bg-gray-50/50">
-                          <TableCell className="font-medium">{client.full_name}</TableCell>
-                          <TableCell>{client.email}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {new Date(client.created_at).toLocaleDateString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </main>
+  const renderHeader = (title: string, subtitle: string, action?: React.ReactNode) => (
+    <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" onClick={() => setView('dashboard')}>
+          <ChevronLeft className="h-4 w-4 mr-2" />
+          Back to Dashboard
+        </Button>
+        <div>
+          <h1 className="text-xl font-bold text-[#0F172A]">{title}</h1>
+          <p className="text-sm text-gray-500">{subtitle}</p>
+        </div>
       </div>
-    )
-  }
+      {action}
+    </header>
+  )
+
+  if (view === 'clients') return <ClientsView 
+    clients={clients} 
+    isFetching={isFetching} 
+    onBack={() => setView('dashboard')} 
+    fetchClients={fetchAllData}
+  />
+  
+  if (view === 'installations') return <InstallationsView 
+    installations={installations} 
+    onBack={() => setView('dashboard')} 
+  />
+
+  if (view === 'repairs') return <RepairsView 
+    repairs={repairs} 
+    onBack={() => setView('dashboard')} 
+  />
+
+  if (view === 'schedule') return <ScheduleView 
+    appointments={appointments} 
+    onBack={() => setView('dashboard')} 
+    fetchAppointments={fetchAllData}
+  />
+
+  if (view === 'reports') return <ReportsView 
+    installations={installations}
+    repairs={repairs}
+    clients={clients}
+    onBack={() => setView('dashboard')} 
+  />
+
+  if (view === 'settings') return <SettingsView 
+    settings={settings}
+    onBack={() => setView('dashboard')} 
+    fetchSettings={fetchAllData}
+  />
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -217,8 +179,8 @@ export default function AdminDashboard() {
             <Bell className="h-4 w-4" />
             Send Notification
           </Button>
-          <Button variant="outline" size="sm" className="hidden sm:flex items-center gap-2 border-gray-200">
-            <Settings className="h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => setView('settings')} className="hidden sm:flex items-center gap-2 border-gray-200">
+            <SettingsIcon className="h-4 w-4" />
             Settings
           </Button>
           <Button variant="outline" size="sm" onClick={handleSignOut} className="flex items-center gap-2 border-gray-200 text-red-600 hover:text-red-700 hover:bg-red-50">
@@ -232,11 +194,11 @@ export default function AdminDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-blue-600" />} />
-          <StatCard title="Total Bookings" value="7" icon={<Calendar className="text-blue-600" />} />
-          <StatCard title="Installations" value="6" icon={<Wrench className="text-green-600" />} />
-          <StatCard title="Repairs" value="2" icon={<PenTool className="text-orange-600" />} />
+          <StatCard title="Total Bookings" value={(installations.length + repairs.length).toString()} icon={<Calendar className="text-blue-600" />} />
+          <StatCard title="Installations" value={installations.length.toString()} icon={<Wrench className="text-green-600" />} />
+          <StatCard title="Repairs" value={repairs.length.toString()} icon={<PenTool className="text-orange-600" />} />
           <StatCard title="Pending Bookings" value="0" icon={<Clock className="text-yellow-600" />} />
-          <StatCard title="Completed" value="0" icon={<CheckCircle className="text-green-600" />} />
+          <StatCard title="Completed" value={(installations.filter(i => i.status === 'Completed').length + repairs.filter(r => r.status === 'Completed').length).toString()} icon={<CheckCircle className="text-green-600" />} />
           <StatCard title="Today's Bookings" value="0" icon={<TrendingUp className="text-blue-600" />} />
         </div>
 
@@ -246,9 +208,31 @@ export default function AdminDashboard() {
             <CardTitle className="text-lg font-bold">Recent Bookings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-gray-400">No bookings found</p>
-            </div>
+            {installations.length === 0 && repairs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-gray-400">No bookings found</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Simplified list for dashboard */}
+                {[...installations, ...repairs].slice(0, 5).map((item, i) => (
+                  <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200">
+                        {item.title.toLowerCase().includes('repair') ? <PenTool className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#0F172A]">{item.title}</p>
+                        <p className="text-xs text-gray-500">{item.client_name} • {item.date}</p>
+                      </div>
+                    </div>
+                    <Badge variant={item.status === 'Completed' ? 'default' : 'secondary'} className={item.status === 'Completed' ? 'bg-green-100 text-green-700 border-green-200' : ''}>
+                      {item.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -264,39 +248,71 @@ export default function AdminDashboard() {
             title="Installations" 
             description="Monitor installation projects" 
             icon={<Wrench className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setView('installations')}
           />
           <ActionCard 
             title="Repairs" 
             description="Track repair requests" 
             icon={<PenTool className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setView('repairs')}
           />
           <ActionCard 
             title="Schedule" 
             description="View and manage appointments" 
             icon={<CalendarDays className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setView('schedule')}
           />
           <ActionCard 
             title="Reports" 
             description="View business analytics" 
             icon={<BarChart3 className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setView('reports')}
           />
           <ActionCard 
             title="Settings" 
             description="Configure system preferences" 
-            icon={<Settings className="w-8 h-8 text-[#0F172A]" />}
+            icon={<SettingsIcon className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setView('settings')}
           />
           <ActionCard 
             title="Reminders" 
             description="Manage follow-up reminders" 
             icon={<BellRing className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setShowReminders(true)}
           />
           <ActionCard 
             title="Technicians" 
             description="Manage technician schedules" 
             icon={<Users className="w-8 h-8 text-[#0F172A]" />}
+            onClick={() => setShowTechnicians(true)}
           />
         </div>
       </main>
+
+      {/* Modals */}
+      <Dialog open={showReminders} onOpenChange={setShowReminders}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Upcoming Reminders
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+            <p className="text-gray-500">No upcoming reminders</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTechnicians} onOpenChange={setShowTechnicians}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Technicians</DialogTitle>
+          </DialogHeader>
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+            <p className="text-gray-500">No technicians found</p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -332,6 +348,493 @@ function ActionCard({ title, description, icon, onClick }: { title: string, desc
         <h3 className="font-bold text-[#0F172A]">{title}</h3>
         <p className="text-sm text-gray-500">{description}</p>
       </div>
+    </Card>
+  )
+}
+
+// VIEW COMPONENTS
+
+function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
+  const [isLoading, setIsLoading] = useState(false)
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
+
+  const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setGeneratedPassword(null)
+    const formData = new FormData(e.currentTarget)
+    const result = await createClientUser(formData)
+    if (result.error) toast.error(result.error)
+    else if (result.success && result.password) {
+      toast.success('Client created successfully')
+      setGeneratedPassword(result.password)
+      fetchClients()
+      ;(e.target as HTMLFormElement).reset()
+    }
+    setIsLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ChevronLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Manage Clients</h1>
+            <p className="text-sm text-gray-500">Add and manage client accounts</p>
+          </div>
+        </div>
+      </header>
+      <main className="container mx-auto py-8 px-4 space-y-8">
+        <div className="grid md:grid-cols-2 gap-8">
+          <Card className="border-none shadow-sm">
+            <CardHeader><CardTitle>Create New Client</CardTitle></CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateClient} className="space-y-4">
+                <div className="space-y-2"><Label>Full Name</Label><Input name="fullName" placeholder="John Doe" required /></div>
+                <div className="space-y-2"><Label>Email Address</Label><Input name="email" type="email" placeholder="john@example.com" required /></div>
+                <Button type="submit" className="w-full bg-[#0F172A]" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create Client
+                </Button>
+              </form>
+              {generatedPassword && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-blue-700">Generated Password</span>
+                    <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(generatedPassword); toast.success('Copied!'); }}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-2xl font-mono font-bold text-blue-900">{generatedPassword}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="border-none shadow-sm">
+            <CardHeader><CardTitle>Client List</CardTitle></CardHeader>
+            <CardContent>
+              {isFetching ? <Loader2 className="h-8 w-8 animate-spin mx-auto" /> : (
+                <Table>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {clients.map((client: any) => (
+                      <TableRow key={client.id}><TableCell>{client.full_name}</TableCell><TableCell>{client.email}</TableCell></TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function InstallationsView({ installations, onBack }: any) {
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Installation Monitoring</h1>
+            <p className="text-sm text-gray-500">Track and manage installation projects</p>
+          </div>
+        </div>
+        <Button className="bg-[#0F172A]"><Plus className="h-4 w-4 mr-2" />Add Installation</Button>
+      </header>
+      <main className="container mx-auto py-8 px-6 space-y-6">
+        <Card className="border-none shadow-sm p-4">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input className="pl-10" placeholder="Search installations by client, service type, or technician..." />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
+            </Select>
+          </div>
+        </Card>
+        <div className="grid grid-cols-4 gap-6">
+          <MiniStatCard title="Total Installations" value={installations.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value="0" icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="In Progress" value={installations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Completed" value={installations.filter((i: any) => i.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+        </div>
+        <div className="space-y-4">
+          <h2 className="font-bold text-[#0F172A]">Installations ({installations.length})</h2>
+          {installations.map((item: any) => (
+            <Card key={item.id} className="border-none shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center">
+                      {item.status === 'Completed' ? <CheckCircle className="text-green-500" /> : <Clock className="text-blue-500" />}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-[#0F172A]">{item.title}</h3>
+                        <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
+                        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
+                        <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> {item.technician}</span>
+                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700">Mark Complete</Button>}
+                    <Button variant="outline" size="sm">View Details</Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-medium">
+                    <span>Installation Progress</span>
+                    <span>{item.progress}%</span>
+                  </div>
+                  <Progress value={item.progress} className="h-2" />
+                  <div className="flex justify-between text-[10px] text-gray-400 uppercase tracking-wider">
+                    <span>Scheduled</span>
+                    <span>In Progress</span>
+                    <span>Completed</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {installations.length === 0 && <div className="text-center py-12 text-gray-400">No installations found</div>}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function RepairsView({ repairs, onBack }: any) {
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Repairs Monitoring</h1>
+            <p className="text-sm text-gray-500">Track and manage repair requests</p>
+          </div>
+        </div>
+        <Button className="bg-[#0F172A]"><Plus className="h-4 w-4 mr-2" />Add Repair</Button>
+      </header>
+      <main className="container mx-auto py-8 px-6 space-y-6">
+        <Card className="border-none shadow-sm p-4">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input className="pl-10" placeholder="Search repairs by client, service type, or technician..." />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
+            </Select>
+          </div>
+        </Card>
+        <div className="grid grid-cols-4 gap-6">
+          <MiniStatCard title="Total Repairs" value={repairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
+          <MiniStatCard title="In Progress" value={repairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value="0" icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Completed" value={repairs.filter((r: any) => r.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+        </div>
+        <div className="space-y-4">
+          <h2 className="font-bold text-[#0F172A]">Repairs ({repairs.length})</h2>
+          {repairs.map((item: any) => (
+            <Card key={item.id} className="border-none shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-[#0F172A]">{item.title}</h3>
+                      <Badge className="bg-blue-100 text-blue-700">{item.status}</Badge>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
+                      <span className="flex items-center gap-1"><PenTool className="h-3 w-3" /> {item.technician}</span>
+                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm">View Details</Button>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{item.progress}%</span></div>
+                  <Progress value={item.progress} className="h-2" />
+                  <Button variant="outline" size="sm" className="h-8"><CheckCircle2 className="h-3 w-3 mr-2" />Mark Complete</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {repairs.length === 0 && <div className="text-center py-12 text-gray-400">No repairs found</div>}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    const result = await createAppointment(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Appointment created')
+      fetchAppointments()
+      setShowAdd(false)
+    }
+    setIsLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Calendar & Schedule</h1>
+            <p className="text-sm text-gray-500">Manage appointments and bookings</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select defaultValue="all">
+            <SelectTrigger className="w-[140px] h-9"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
+            <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
+          </Select>
+          <Button className="bg-[#0F172A] h-9" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Appointment</Button>
+        </div>
+      </header>
+      <main className="container mx-auto py-8 px-6 grid grid-cols-3 gap-8">
+        <div className="col-span-2 space-y-6">
+          <Card className="border-none shadow-sm p-6">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-lg font-bold">January 2026</h2>
+              <div className="flex gap-2">
+                <Button variant="outline" size="icon" className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="outline" size="sm" className="h-8">Today</Button>
+                <Button variant="outline" size="icon" className="h-8 w-8"><ChevronLeft className="h-4 w-4 rotate-180" /></Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <div key={day} className="bg-gray-50 p-2 text-center text-xs font-bold text-gray-500">{day}</div>
+              ))}
+              {Array.from({ length: 35 }).map((_, i) => (
+                <div key={i} className={`bg-white h-24 p-2 text-xs font-medium text-gray-400 ${i === 4 ? 'bg-blue-50/50' : ''}`}>
+                  {i + 28 > 31 ? (i + 28) % 31 : i + 28}
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+        <div className="space-y-6">
+          <Card className="border-none shadow-sm">
+            <CardHeader><CardTitle className="text-base">Today's Appointments</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-gray-400 text-center py-4">No appointments today</p></CardContent>
+          </Card>
+          <Card className="border-none shadow-sm">
+            <CardHeader><CardTitle className="text-base">This Month</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between text-sm"><span>Total Bookings</span><span className="font-bold">0</span></div>
+              <div className="flex justify-between text-sm"><span>Pending</span><span className="font-bold">0</span></div>
+              <div className="flex justify-between text-sm"><span>Completed</span><span className="font-bold">0</span></div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Add Appointment</DialogTitle></DialogHeader>
+          <form onSubmit={handleAdd} className="space-y-4 py-4">
+            <div className="space-y-1"><Label>Client Name</Label><Input name="clientName" placeholder="Client Name" required /></div>
+            <div className="space-y-1"><Label>Email (Optional)</Label><Input name="email" type="email" placeholder="client@example.com" /></div>
+            <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="+639123456789" required /></div>
+            <div className="space-y-1"><Label>Address (Optional)</Label><Textarea name="address" placeholder="Client's full address" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" required /></div>
+              <div className="space-y-1"><Label>Time</Label><Input name="time" type="time" required /></div>
+            </div>
+            <div className="space-y-1">
+              <Label>Service Type</Label>
+              <Select name="serviceType" defaultValue="Installation">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Installation">Installation</SelectItem>
+                  <SelectItem value="Repair">Repair</SelectItem>
+                  <SelectItem value="Cleaning">Cleaning</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#0F172A]" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function ReportsView({ installations, repairs, clients, onBack }: any) {
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Reports</h1>
+            <p className="text-sm text-gray-500">Overall summary (no analytics/graphs)</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm"><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+          <Button variant="outline" size="sm"><FileText className="h-4 w-4 mr-2" />Export PDF</Button>
+        </div>
+      </header>
+      <main className="container mx-auto py-8 px-6 space-y-8">
+        <div className="grid grid-cols-4 gap-6">
+          <ReportStatCard title="Total Revenue" value="₱0" icon={<TrendingUp className="text-green-500" />} />
+          <ReportStatCard title="Profit" value="₱0" icon={<TrendingUp className="text-blue-500" />} />
+          <ReportStatCard title="Services Completed" value={(installations.filter((i: any) => i.status === 'Completed').length + repairs.filter((r: any) => r.status === 'Completed').length).toString()} icon={<Calendar className="text-blue-500" />} />
+          <ReportStatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-purple-500" />} />
+        </div>
+        <Card className="border-none shadow-sm">
+          <CardHeader><CardTitle className="text-lg">Recent Bookings</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {[...installations, ...repairs].length === 0 ? <p className="text-center py-12 text-gray-400">No bookings found</p> : (
+              [...installations, ...repairs].map((item: any) => (
+                <div key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg">
+                  <div className="space-y-1">
+                    <p className="font-bold text-[#0F172A] capitalize">{item.title}</p>
+                    <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'}</p>
+                  </div>
+                  <div className="flex items-center gap-8">
+                    <div className="text-right">
+                      <p className="font-bold">₱0</p>
+                      <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-red-500'}`}>{item.status}</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-8"><FileText className="h-3 w-3 mr-2" />Receipt</Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  )
+}
+
+function SettingsView({ settings, onBack, fetchSettings }: any) {
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    const result = await updateSettings(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Settings updated')
+      fetchSettings()
+    }
+    setIsLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">Settings</h1>
+            <p className="text-sm text-gray-500">Manage system configuration and preferences</p>
+          </div>
+        </div>
+        <Button className="bg-[#0F172A]" type="submit" form="settings-form" disabled={isLoading}>
+          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+        </Button>
+      </header>
+      <main className="container mx-auto py-8 px-6 space-y-6">
+        <Tabs defaultValue="company" className="w-full">
+          <TabsList className="w-full justify-start h-12 bg-white border border-gray-200 p-1 mb-8">
+            <TabsTrigger value="company" className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Company</TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2"><BellDot className="h-4 w-4" /> Notifications</TabsTrigger>
+            <TabsTrigger value="system" className="flex items-center gap-2"><Cpu className="h-4 w-4" /> System</TabsTrigger>
+            <TabsTrigger value="reminders" className="flex items-center gap-2"><BellRing className="h-4 w-4" /> Reminders</TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Security</TabsTrigger>
+          </TabsList>
+          <TabsContent value="company">
+            <Card className="border-none shadow-sm">
+              <CardHeader><CardTitle className="text-lg">Company Information</CardTitle></CardHeader>
+              <CardContent>
+                <form id="settings-form" onSubmit={handleSave} className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2"><Label>Company Name</Label><Input name="companyName" defaultValue={settings?.company_name} /></div>
+                  <div className="space-y-2"><Label>Company Email</Label><Input name="companyEmail" defaultValue={settings?.company_email} /></div>
+                  <div className="space-y-2"><Label>Company Phone</Label><Input name="companyPhone" defaultValue={settings?.company_phone} /></div>
+                  <div className="space-y-2">
+                    <Label>Timezone</Label>
+                    <Select name="timezone" defaultValue={settings?.timezone || 'Asia/Manila'}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="Asia/Manila">Asia/Manila</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-2"><Label>Company Address</Label><Textarea name="companyAddress" defaultValue={settings?.company_address} /></div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  )
+}
+
+function MiniStatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
+  return (
+    <Card className="border-none shadow-sm">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500 font-medium">{title}</p>
+          {icon}
+        </div>
+        <p className="text-3xl font-bold text-[#0F172A]">{value}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ReportStatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
+  return (
+    <Card className="border-none shadow-sm">
+      <CardContent className="p-6 flex items-center justify-between">
+        <div className="space-y-1">
+          <p className="text-xs text-gray-500 font-medium">{title}</p>
+          <p className="text-2xl font-bold text-[#0F172A]">{value}</p>
+        </div>
+        <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center">
+          {icon}
+        </div>
+      </CardContent>
     </Card>
   )
 }
