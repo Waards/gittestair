@@ -172,19 +172,40 @@ const Navigation = () => {
               <Phone className="w-4 h-4 mr-3 text-[#0062a3]" />
               <span>+639425384191</span>
             </div>
-            <div className="grid grid-cols-2 gap-4 px-3">
+            <div className="grid grid-cols-1 gap-3 px-3">
               <a
                 href="/booking"
                 className="flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white h-10 transition-all"
               >
                 Book Service
               </a>
-              <a
-                href="/login"
-                className="flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] h-10 transition-all"
-              >
-                Login
-              </a>
+              {user ? (
+                <>
+                  {role === 'admin' && (
+                    <a
+                      href="/admin"
+                      className="flex items-center justify-center rounded-md text-sm font-medium border border-primary/20 bg-primary/5 text-primary h-10 transition-all gap-2"
+                    >
+                      <Shield className="w-4 h-4" />
+                      Admin Dashboard
+                    </a>
+                  )}
+                  <a
+                    href="/dashboard"
+                    className="flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] h-10 transition-all gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    My Account
+                  </a>
+                </>
+              ) : (
+                <a
+                  href="/login"
+                  className="flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] h-10 transition-all"
+                >
+                  Login
+                </a>
+              )}
             </div>
           </div>
         </div>
