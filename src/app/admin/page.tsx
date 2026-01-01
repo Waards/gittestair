@@ -946,11 +946,15 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
                 const isToday = isSameDay(day, new Date())
                 const isCurrentMonth = isSameMonth(day, monthStart)
 
-                return (
-                  <div 
-                    key={i} 
-                    className={`bg-white min-h-[100px] p-2 text-xs font-medium transition-colors hover:bg-gray-50 cursor-pointer ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-900'} ${isToday ? 'bg-blue-50/50' : ''}`}
-                  >
+                  return (
+                    <div 
+                      key={i} 
+                      className={`bg-white min-h-[100px] p-2 text-xs font-medium transition-colors hover:bg-gray-50 cursor-pointer ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-900'} ${isToday ? 'bg-blue-50/50' : ''}`}
+                      onClick={() => {
+                        setSelectedDay(day)
+                        setShowDayDetails(true)
+                      }}
+                    >
                     <div className="flex justify-between items-center mb-1">
                       <span className={isToday ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center' : ''}>
                         {format(day, 'd')}
