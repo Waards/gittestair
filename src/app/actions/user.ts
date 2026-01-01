@@ -19,21 +19,27 @@ export async function signIn(formData: FormData) {
     password,
   })
 
+  console.log('signIn: auth success:', !!data.user, 'error:', error?.message)
+
   if (error) {
     return { error: error.message }
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', data.user.id)
     .single()
 
+  console.log('signIn: profile found:', !!profile, 'role:', profile?.role, 'error:', profileError?.message)
+
   revalidatePath('/', 'layout')
   
   if (profile?.role === 'admin') {
+    console.log('signIn: redirecting to /admin')
     redirect('/admin')
   } else {
+    console.log('signIn: redirecting to /dashboard')
     redirect('/dashboard')
   }
 }
