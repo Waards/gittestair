@@ -37,6 +37,8 @@ export default function LoginPage() {
 
       toast.success('Logged in successfully')
       
+      router.refresh()
+      
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
