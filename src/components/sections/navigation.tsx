@@ -93,27 +93,49 @@ const Navigation = () => {
             ))}
           </div>
 
-          {/* Desktop Actions */}
-          <div className="hidden lg:flex items-center space-x-6">
-            <div className="flex items-center space-x-2 text-sm text-[#64748b] font-medium">
-              <Phone className="w-4 h-4 text-[#0062a3]" />
-              <span>+639425384191</span>
+            {/* Desktop Actions */}
+            <div className="hidden lg:flex items-center space-x-6">
+              <div className="flex items-center space-x-2 text-sm text-[#64748b] font-medium">
+                <Phone className="w-4 h-4 text-[#0062a3]" />
+                <span>+639425384191</span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <a
+                  href="/booking"
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white shadow-sm hover:bg-[#0062a3]/90 h-9 px-4 py-2 transition-all active:scale-95"
+                >
+                  Book Service
+                </a>
+                {user ? (
+                  <div className="flex items-center gap-3">
+                    {role === 'admin' && (
+                      <a
+                        href="/admin"
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-primary/20 bg-primary/5 text-primary shadow-sm hover:bg-primary/10 h-9 px-4 py-2 transition-all gap-2"
+                      >
+                        <Shield className="w-4 h-4" />
+                        Admin
+                      </a>
+                    )}
+                    <a
+                      href="/dashboard"
+                      className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] shadow-sm hover:bg-[#f1f5f9] h-9 px-4 py-2 transition-all gap-2"
+                    >
+                      <User className="w-4 h-4" />
+                      Dashboard
+                    </a>
+                  </div>
+                ) : (
+                  <a
+                    href="/login"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] shadow-sm hover:bg-[#f1f5f9] h-9 px-4 py-2 transition-all"
+                  >
+                    Login
+                  </a>
+                )}
+              </div>
             </div>
-            <div className="flex items-center space-x-3">
-              <a
-                href="/booking"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white shadow-sm hover:bg-[#0062a3]/90 h-9 px-4 py-2 transition-all active:scale-95"
-              >
-                Book Service
-              </a>
-              <a
-                href="/login"
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] shadow-sm hover:bg-[#f1f5f9] h-9 px-4 py-2 transition-all"
-              >
-                Login
-              </a>
-            </div>
-          </div>
+
 
           {/* Mobile Menu Button */}
           <button
