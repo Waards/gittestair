@@ -1,18 +1,56 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Phone, Menu, X } from "lucide-react";
+import { Phone, Menu, X, User, Shield } from "lucide-react";
+import { createClient } from "@/lib/supabase";
 
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const supabase = createClient();
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 0);
     };
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    
+    // Check session and role
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setUser(session.user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+        setRole(profile?.role || 'client');
+      }
+    };
+    
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+      if (session) {
+        supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => setRole(data?.role || 'client'));
+      } else {
+        setRole(null);
+      }
+    });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const navLinks = [
