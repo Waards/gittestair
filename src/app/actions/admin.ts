@@ -13,10 +13,8 @@ export async function createClientUser(formData: FormData) {
 
   const supabase = await createAdminClient()
 
-  // Generate a random password
   const password = Math.random().toString(36).slice(-10) + '!'
 
-  // Create user in Auth
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -27,7 +25,6 @@ export async function createClientUser(formData: FormData) {
     return { error: authError.message }
   }
 
-  // Create profile
   const { error: profileError } = await supabase
     .from('profiles')
     .insert({
@@ -38,7 +35,6 @@ export async function createClientUser(formData: FormData) {
     })
 
   if (profileError) {
-    // Cleanup auth user if profile creation fails
     await supabase.auth.admin.deleteUser(authData.user.id)
     return { error: profileError.message }
   }
@@ -57,4 +53,85 @@ export async function getClients() {
 
   if (error) throw error
   return data
+}
+
+export async function getInstallations() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('installations')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data
+}
+
+export async function getRepairs() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('repairs')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data
+}
+
+export async function getAppointments() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*')
+    .order('date', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function getSettings() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('id', 'main')
+    .single()
+  if (error && error.code !== 'PGRST116') throw error
+  return data
+}
+
+export async function updateSettings(formData: FormData) {
+  const supabase = await createAdminClient()
+  const data = {
+    company_name: formData.get('companyName') as string,
+    company_email: formData.get('companyEmail') as string,
+    company_phone: formData.get('companyPhone') as string,
+    timezone: formData.get('timezone') as string,
+    company_address: formData.get('companyAddress') as string,
+  }
+
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ id: 'main', ...data })
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function createAppointment(formData: FormData) {
+  const supabase = await createAdminClient()
+  const data = {
+    client_name: formData.get('clientName') as string,
+    email: formData.get('email') as string,
+    phone: formData.get('phone') as string,
+    address: formData.get('address') as string,
+    date: formData.get('date') as string,
+    time: formData.get('time') as string,
+    service_type: formData.get('serviceType') as string,
+  }
+
+  const { error } = await supabase
+    .from('appointments')
+    .insert(data)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
 }
