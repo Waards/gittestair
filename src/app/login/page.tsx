@@ -20,11 +20,8 @@ export default function LoginPage() {
     setIsMounted(true)
   }, [])
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const handleLogin = async (formData: FormData) => {
     setIsLoading(true)
-
-    const formData = new FormData(e.currentTarget)
     const result = await signIn(formData)
 
     if (result?.error) {
@@ -46,7 +43,7 @@ export default function LoginPage() {
             Enter your email to sign in to your account
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleLogin}>
+        <form action={handleLogin}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
