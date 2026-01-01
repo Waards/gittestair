@@ -8,6 +8,8 @@ export async function signIn(formData: FormData) {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
 
+  console.log('signIn action started for:', email)
+
   if (!email || !password) {
     return { error: 'Email and password are required' }
   }
@@ -19,7 +21,7 @@ export async function signIn(formData: FormData) {
     password,
   })
 
-  console.log('signIn: auth success:', !!data.user, 'error:', error?.message)
+  console.log('signIn: auth result:', !!data.user, error?.message)
 
   if (error) {
     return { error: error.message }
@@ -31,16 +33,13 @@ export async function signIn(formData: FormData) {
     .eq('id', data.user.id)
     .single()
 
-  console.log('signIn: profile found:', !!profile, 'role:', profile?.role, 'error:', profileError?.message)
+  console.log('signIn: profile result:', !!profile, profile?.role)
 
   revalidatePath('/', 'layout')
   
-  if (profile?.role === 'admin') {
-    console.log('signIn: redirecting to /admin')
-    redirect('/admin')
-  } else {
-    console.log('signIn: redirecting to /dashboard')
-    redirect('/dashboard')
+  return { 
+    success: true, 
+    redirectTo: profile?.role === 'admin' ? '/admin' : '/dashboard' 
   }
 }
 
