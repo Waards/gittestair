@@ -1,145 +1,134 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Phone, Menu, X } from "lucide-react";
 
 const Navigation = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-  };
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 0);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const navLinks = [
+    { name: "Home", href: "/" },
+    { name: "Services", href: "/services" },
+    { name: "About Us", href: "/about" },
+    { name: "Contact", href: "/contact" },
+  ];
 
   return (
-    <nav className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b border-border">
+    <nav
+      className={`fixed top-0 z-50 w-full border-b transition-all duration-200 ${
+        scrolled
+          ? "bg-white/80 backdrop-blur-md border-border"
+          : "bg-white border-transparent"
+      }`}
+    >
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo Section */}
-          <a className="flex items-center space-x-2" href="/">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">A</span>
+          <a href="/" className="flex items-center space-x-2 shrink-0">
+            <div className="w-8 h-8 bg-[#0062a3] rounded-lg flex items-center justify-center transition-transform hover:scale-105">
+              <span className="text-white font-bold text-sm">A</span>
             </div>
-            <span className="font-bold text-xl text-foreground">Azelea</span>
+            <span className="font-bold text-xl text-[#020617] tracking-tight">
+              Azelea
+            </span>
           </a>
 
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
-            <a
-              className="text-foreground hover:text-primary transition-colors text-[16px] font-normal"
-              href="/"
-            >
-              Home
-            </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-[16px] font-normal"
-              href="/services"
-            >
-              Services
-            </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-[16px] font-normal"
-              href="/about"
-            >
-              About Us
-            </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-[16px] font-normal"
-              href="/contact"
-            >
-              Contact
-            </a>
+            {navLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.href}
+                className="text-sm font-medium text-[#020617] hover:text-[#0062a3] transition-colors"
+              >
+                {link.name}
+              </a>
+            ))}
           </div>
 
-          {/* Desktop Action Buttons & Phone */}
-          <div className="hidden lg:flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground mr-4">
-              <Phone className="w-4 h-4 text-muted-foreground" />
-              <span className="text-[14px]">+639425384191</span>
+          {/* Desktop Actions */}
+          <div className="hidden lg:flex items-center space-x-6">
+            <div className="flex items-center space-x-2 text-sm text-[#64748b] font-medium">
+              <Phone className="w-4 h-4 text-[#0062a3]" />
+              <span>+639425384191</span>
             </div>
-            <a
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 h-9 px-4 py-2"
-              href="/booking"
-            >
-              Book Service
-            </a>
-            <a
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all border border-border bg-background shadow-sm hover:bg-secondary hover:text-primary h-9 px-4 py-2"
-              href="/login"
-            >
-              Login
-            </a>
+            <div className="flex items-center space-x-3">
+              <a
+                href="/booking"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white shadow-sm hover:bg-[#0062a3]/90 h-9 px-4 py-2 transition-all active:scale-95"
+              >
+                Book Service
+              </a>
+              <a
+                href="/login"
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] shadow-sm hover:bg-[#f1f5f9] h-9 px-4 py-2 transition-all"
+              >
+                Login
+              </a>
+            </div>
           </div>
 
-          {/* Mobile Menu Toggle */}
+          {/* Mobile Menu Button */}
           <button
-            className="md:hidden p-2 text-foreground focus:outline-none"
-            onClick={toggleMobileMenu}
-            aria-label="Toggle navigation menu"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="md:hidden p-2 text-[#020617] hover:bg-[#f1f5f9] rounded-md transition-colors"
+            aria-label="Toggle menu"
           >
-            {isMobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
+            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </div>
 
       {/* Mobile Navigation Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-background border-b border-border absolute w-full left-0 animate-in fade-in slide-in-from-top-4 duration-200">
-          <div className="flex flex-col space-y-4 p-4">
+      <div
+        className={`md:hidden absolute top-16 left-0 w-full bg-white border-b border-border transition-all duration-300 ease-in-out ${
+          isMenuOpen
+            ? "opacity-100 translate-y-0 visible"
+            : "opacity-0 -translate-y-4 invisible"
+        }`}
+      >
+        <div className="px-4 pt-2 pb-6 space-y-1">
+          {navLinks.map((link) => (
             <a
-              className="text-foreground hover:text-primary transition-colors text-lg font-medium"
-              href="/"
-              onClick={() => setIsMobileMenuOpen(false)}
+              key={link.name}
+              href={link.href}
+              className="block px-3 py-3 text-base font-medium text-[#020617] hover:bg-[#f1f5f9] rounded-md transition-colors"
+              onClick={() => setIsMenuOpen(false)}
             >
-              Home
+              {link.name}
             </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-lg font-medium"
-              href="/services"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Services
-            </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-lg font-medium"
-              href="/about"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              About Us
-            </a>
-            <a
-              className="text-foreground hover:text-primary transition-colors text-lg font-medium"
-              href="/contact"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Contact
-            </a>
-            <div className="pt-4 border-t border-border flex flex-col space-y-4">
-              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                <Phone className="w-4 h-4" />
-                <span>+639425384191</span>
-              </div>
+          ))}
+          <div className="pt-4 pb-2 border-t border-border mt-4">
+            <div className="flex items-center px-3 py-3 text-sm text-[#64748b] mb-4">
+              <Phone className="w-4 h-4 mr-3 text-[#0062a3]" />
+              <span>+639425384191</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 px-3">
               <a
-                className="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-4"
                 href="/booking"
-                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white h-10 transition-all"
               >
                 Book Service
               </a>
               <a
-                className="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium border border-border bg-background h-10 px-4"
                 href="/login"
-                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center justify-center rounded-md text-sm font-medium border border-[#e2e8f0] bg-white text-[#020617] h-10 transition-all"
               >
                 Login
               </a>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </nav>
   );
 };

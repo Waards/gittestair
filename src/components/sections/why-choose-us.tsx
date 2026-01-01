@@ -2,13 +2,15 @@ import React from 'react';
 import { CircleCheckBig } from 'lucide-react';
 
 /**
- * WhyChooseUs component
- * Clones the "Why Choose Azelea?" section with a two-column layout.
- * Left: List of benefits with icons.
- * Right: Mission & Vision statements in a light blue gradient box.
+ * WhyChooseUs Section Component
+ * 
+ * Clones the "Why Choose Azelea?" section with pixel-perfect accuracy.
+ * Features a two-column layout: 
+ * - Left: List of value propositions with blue checkmarks.
+ * - Right: A light blue gradient container for Mission and Vision statements.
  */
 const WhyChooseUs = () => {
-  const benefits = [
+  const checkmarks = [
     "Licensed and insured technicians",
     "24/7 emergency service available",
     "Competitive pricing with transparent quotes",
@@ -17,53 +19,51 @@ const WhyChooseUs = () => {
   ];
 
   return (
-    <section className="py-16 lg:py-20 bg-background text-foreground">
-      <div className="container mx-auto px-4 md:px-6 lg:px-8 max-w-[1280px]">
+    <section className="py-16 bg-background">
+      <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          
-          {/* Left Column: Benefits List */}
-          <div className="flex flex-col">
-            <h2 className="text-[2.25rem] font-bold leading-[1.25] tracking-tight text-foreground mb-6">
+          {/* Left Column: Value Propositions */}
+          <div>
+            <h2 className="text-[2.25rem] font-bold text-[#020617] mb-6 leading-[1.2] tracking-[-0.01em]">
               Why Choose Azelea?
             </h2>
             <div className="space-y-4">
-              {benefits.map((benefit, index) => (
+              {checkmarks.map((text, index) => (
                 <div key={index} className="flex items-center space-x-3">
                   <div className="flex-shrink-0">
                     <CircleCheckBig 
-                      className="w-5 h-5 text-primary" 
-                      strokeWidth={2.5}
+                      size={20} 
+                      className="text-[#0062a3]" 
                     />
                   </div>
-                  <span className="text-[1rem] leading-[1.625] text-muted-foreground">
-                    {benefit}
+                  <span className="text-[#64748b] text-[1rem] leading-relaxed">
+                    {text}
                   </span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Right Column: Mission & Vision Box */}
-          <div className="bg-gradient-to-br from-[#0062a4]/10 to-[#0062a4]/05 rounded-[0.75rem] p-8 md:p-10">
+          {/* Right Column: Mission and Vision Styled Container */}
+          <div className="bg-gradient-to-br from-[#0062a3]/10 to-[#0062a3]/05 rounded-2xl p-8 border border-[#e2e8f0]/50 shadow-sm">
             <div className="mb-8">
-              <h3 className="text-[1.5rem] font-bold leading-[1.5] text-foreground mb-4">
+              <h3 className="text-2xl font-bold text-[#020617] mb-4 leading-[1.4]">
                 Our Mission
               </h3>
-              <p className="text-[1rem] leading-[1.625] text-muted-foreground">
+              <p className="text-[#64748b] leading-relaxed text-[1rem]">
                 To provide reliable, efficient, and affordable HVAC solutions that ensure optimal comfort for our clients while building long-term relationships through exceptional service.
               </p>
             </div>
             
             <div>
-              <h3 className="text-[1.5rem] font-bold leading-[1.5] text-foreground mb-4">
+              <h3 className="text-2xl font-bold text-[#020617] mb-4 leading-[1.4]">
                 Our Vision
               </h3>
-              <p className="text-[1rem] leading-[1.625] text-muted-foreground">
+              <p className="text-[#64748b] leading-relaxed text-[1rem]">
                 To be the leading HVAC service provider in the region, known for innovation, quality, and customer satisfaction.
               </p>
             </div>
           </div>
-
         </div>
       </div>
     </section>
