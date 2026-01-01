@@ -125,12 +125,88 @@ export async function createAppointment(formData: FormData) {
     date: formData.get('date') as string,
     time: formData.get('time') as string,
     service_type: formData.get('serviceType') as string,
+    cost: formData.get('cost') as string,
+    notes: formData.get('notes') as string,
   }
 
   const { error } = await supabase
     .from('appointments')
     .insert(data)
 
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function createInstallation(formData: FormData) {
+  const supabase = await createAdminClient()
+  const type = formData.get('type') as string
+  const data = {
+    title: formData.get('serviceType') as string,
+    client_name: formData.get('clientName') as string,
+    location: formData.get('address') as string,
+    technician: formData.get('technician') as string,
+    date: formData.get('date') as string,
+    time: formData.get('time') as string,
+    cost: formData.get('cost') as string,
+    notes: formData.get('notes') as string,
+    type: type,
+    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
+    progress: type === 'Real-Time' ? 10 : 0
+  }
+
+  const { error } = await supabase
+    .from('installations')
+    .insert(data)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function createRepair(formData: FormData) {
+  const supabase = await createAdminClient()
+  const type = formData.get('type') as string
+  const data = {
+    title: formData.get('serviceType') as string,
+    client_name: formData.get('clientName') as string,
+    location: formData.get('address') as string,
+    technician: formData.get('technician') as string,
+    date: formData.get('date') as string,
+    time: formData.get('time') as string,
+    cost: formData.get('cost') as string,
+    notes: formData.get('notes') as string,
+    type: type,
+    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
+    progress: type === 'Real-Time' ? 10 : 0
+  }
+
+  const { error } = await supabase
+    .from('repairs')
+    .insert(data)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function markInstallationComplete(id: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('installations')
+    .update({ status: 'Completed', progress: 100 })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function markRepairComplete(id: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('repairs')
+    .update({ status: 'Completed', progress: 100 })
+    .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
   return { success: true }
