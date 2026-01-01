@@ -9,7 +9,11 @@ import {
   getAppointments, 
   getSettings, 
   updateSettings,
-  createAppointment 
+  createAppointment,
+  createInstallation,
+  createRepair,
+  markInstallationComplete,
+  markRepairComplete
 } from '@/app/actions/admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -109,22 +113,6 @@ export default function AdminDashboard() {
     router.refresh()
   }
 
-  const renderHeader = (title: string, subtitle: string, action?: React.ReactNode) => (
-    <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => setView('dashboard')}>
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Button>
-        <div>
-          <h1 className="text-xl font-bold text-[#0F172A]">{title}</h1>
-          <p className="text-sm text-gray-500">{subtitle}</p>
-        </div>
-      </div>
-      {action}
-    </header>
-  )
-
   if (view === 'clients') return <ClientsView 
     clients={clients} 
     isFetching={isFetching} 
@@ -134,12 +122,16 @@ export default function AdminDashboard() {
   
   if (view === 'installations') return <InstallationsView 
     installations={installations} 
+    clients={clients}
     onBack={() => setView('dashboard')} 
+    fetchInstallations={fetchAllData}
   />
 
   if (view === 'repairs') return <RepairsView 
     repairs={repairs} 
+    clients={clients}
     onBack={() => setView('dashboard')} 
+    fetchRepairs={fetchAllData}
   />
 
   if (view === 'schedule') return <ScheduleView 
@@ -197,9 +189,9 @@ export default function AdminDashboard() {
           <StatCard title="Total Bookings" value={(installations.length + repairs.length).toString()} icon={<Calendar className="text-blue-600" />} />
           <StatCard title="Installations" value={installations.length.toString()} icon={<Wrench className="text-green-600" />} />
           <StatCard title="Repairs" value={repairs.length.toString()} icon={<PenTool className="text-orange-600" />} />
-          <StatCard title="Pending Bookings" value="0" icon={<Clock className="text-yellow-600" />} />
+          <StatCard title="Pending Bookings" value={(installations.filter(i => i.status !== 'Completed').length + repairs.filter(r => r.status !== 'Completed').length).toString()} icon={<Clock className="text-yellow-600" />} />
           <StatCard title="Completed" value={(installations.filter(i => i.status === 'Completed').length + repairs.filter(r => r.status === 'Completed').length).toString()} icon={<CheckCircle className="text-green-600" />} />
-          <StatCard title="Today's Bookings" value="0" icon={<TrendingUp className="text-blue-600" />} />
+          <StatCard title="Today's Bookings" value={(installations.filter(i => i.date === new Date().toISOString().split('T')[0]).length + repairs.filter(r => r.date === new Date().toISOString().split('T')[0]).length).toString()} icon={<TrendingUp className="text-blue-600" />} />
         </div>
 
         {/* Recent Bookings */}
@@ -214,8 +206,10 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Simplified list for dashboard */}
-                {[...installations, ...repairs].slice(0, 5).map((item, i) => (
+                {[...installations, ...repairs]
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .slice(0, 5)
+                  .map((item, i) => (
                   <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200">
@@ -434,7 +428,36 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   )
 }
 
-function InstallationsView({ installations, onBack }: any) {
+function InstallationsView({ installations, clients, onBack, fetchInstallations }: any) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [type, setType] = useState('Real-Time')
+  const today = new Date().toISOString().split('T')[0]
+
+  const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    formData.append('type', type)
+    const result = await createInstallation(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Installation added')
+      fetchInstallations()
+      setShowAdd(false)
+    }
+    setIsLoading(false)
+  }
+
+  const handleComplete = async (id: string) => {
+    const result = await markInstallationComplete(id)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Installation marked as completed')
+      fetchInstallations()
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -445,7 +468,7 @@ function InstallationsView({ installations, onBack }: any) {
             <p className="text-sm text-gray-500">Track and manage installation projects</p>
           </div>
         </div>
-        <Button className="bg-[#0F172A]"><Plus className="h-4 w-4 mr-2" />Add Installation</Button>
+        <Button className="bg-[#0F172A]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Installation</Button>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
         <Card className="border-none shadow-sm p-4">
@@ -462,7 +485,7 @@ function InstallationsView({ installations, onBack }: any) {
         </Card>
         <div className="grid grid-cols-4 gap-6">
           <MiniStatCard title="Total Installations" value={installations.length.toString()} icon={<Wrench className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value="0" icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Scheduled" value={installations.filter((i: any) => i.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
           <MiniStatCard title="In Progress" value={installations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
           <MiniStatCard title="Completed" value={installations.filter((i: any) => i.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
         </div>
@@ -490,7 +513,7 @@ function InstallationsView({ installations, onBack }: any) {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700">Mark Complete</Button>}
+                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
                     <Button variant="outline" size="sm">View Details</Button>
                   </div>
                 </div>
@@ -500,11 +523,6 @@ function InstallationsView({ installations, onBack }: any) {
                     <span>{item.progress}%</span>
                   </div>
                   <Progress value={item.progress} className="h-2" />
-                  <div className="flex justify-between text-[10px] text-gray-400 uppercase tracking-wider">
-                    <span>Scheduled</span>
-                    <span>In Progress</span>
-                    <span>Completed</span>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -512,11 +530,142 @@ function InstallationsView({ installations, onBack }: any) {
           {installations.length === 0 && <div className="text-center py-12 text-gray-400">No installations found</div>}
         </div>
       </main>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Add Installation (from existing client)</DialogTitle></DialogHeader>
+          <div className="py-4 space-y-6">
+            <div className="space-y-2">
+              <Label>Installation Type *</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setType('Real-Time')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#0F172A] bg-blue-50 ring-2 ring-[#0F172A]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Clock className="mx-auto h-8 w-8 text-[#0F172A]" />
+                  <div className="font-bold">Real-Time Installation</div>
+                  <div className="text-xs text-gray-500">Start immediately</div>
+                </button>
+                <button 
+                  onClick={() => setType('Schedule')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#0F172A] bg-blue-50 ring-2 ring-[#0F172A]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Calendar className="mx-auto h-8 w-8 text-[#0F172A]" />
+                  <div className="font-bold">Schedule Installation</div>
+                  <div className="text-xs text-gray-500">Pick date & time</div>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Client *</Label>
+                  <Select name="clientName" required>
+                    <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
+                    <SelectContent>
+                      {clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Service Type *</Label>
+                  <Select name="serviceType" required>
+                    <SelectTrigger><SelectValue placeholder="Select installation type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Air Conditioning Installation">Air Conditioning Installation</SelectItem>
+                      <SelectItem value="Split Type Installation">Split Type Installation</SelectItem>
+                      <SelectItem value="Window Type Installation">Window Type Installation</SelectItem>
+                      <SelectItem value="Inverter Installation">Inverter Installation</SelectItem>
+                      <SelectItem value="Central AC Installation">Central AC Installation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Technician *</Label>
+                <Input name="technician" placeholder="Technician name" required />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label>Cost *</Label>
+                  <Select name="cost" required>
+                    <SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="₱1,500">₱1,500</SelectItem>
+                      <SelectItem value="₱2,500">₱2,500</SelectItem>
+                      <SelectItem value="₱3,500">₱3,500</SelectItem>
+                      <SelectItem value="₱5,000">₱5,000</SelectItem>
+                      <SelectItem value="Custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Date *</Label>
+                  <Input name="date" type="date" min={today} required />
+                </div>
+                <div className="space-y-1">
+                  <Label>Time *</Label>
+                  <Input name="time" type="time" required />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Address *</Label>
+                <Input name="address" placeholder="Installation address" required />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Notes</Label>
+                <Textarea name="notes" placeholder="Additional notes" />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+                <Button type="submit" className="bg-[#0F172A]" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Installation
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function RepairsView({ repairs, onBack }: any) {
+function RepairsView({ repairs, clients, onBack, fetchRepairs }: any) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [type, setType] = useState('Real-Time')
+  const today = new Date().toISOString().split('T')[0]
+
+  const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    formData.append('type', type)
+    const result = await createRepair(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Repair added')
+      fetchRepairs()
+      setShowAdd(false)
+    }
+    setIsLoading(false)
+  }
+
+  const handleComplete = async (id: string) => {
+    const result = await markRepairComplete(id)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Repair marked as completed')
+      fetchRepairs()
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -527,7 +676,7 @@ function RepairsView({ repairs, onBack }: any) {
             <p className="text-sm text-gray-500">Track and manage repair requests</p>
           </div>
         </div>
-        <Button className="bg-[#0F172A]"><Plus className="h-4 w-4 mr-2" />Add Repair</Button>
+        <Button className="bg-[#0F172A]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Repair</Button>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
         <Card className="border-none shadow-sm p-4">
@@ -545,7 +694,7 @@ function RepairsView({ repairs, onBack }: any) {
         <div className="grid grid-cols-4 gap-6">
           <MiniStatCard title="Total Repairs" value={repairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
           <MiniStatCard title="In Progress" value={repairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value="0" icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Scheduled" value={repairs.filter((r: any) => r.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
           <MiniStatCard title="Completed" value={repairs.filter((r: any) => r.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
         </div>
         <div className="space-y-4">
@@ -557,7 +706,7 @@ function RepairsView({ repairs, onBack }: any) {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-[#0F172A]">{item.title}</h3>
-                      <Badge className="bg-blue-100 text-blue-700">{item.status}</Badge>
+                      <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-500">
                       <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
@@ -566,12 +715,14 @@ function RepairsView({ repairs, onBack }: any) {
                       <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">View Details</Button>
+                  <div className="flex gap-2">
+                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
+                    <Button variant="outline" size="sm">View Details</Button>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{item.progress}%</span></div>
                   <Progress value={item.progress} className="h-2" />
-                  <Button variant="outline" size="sm" className="h-8"><CheckCircle2 className="h-3 w-3 mr-2" />Mark Complete</Button>
                 </div>
               </CardContent>
             </Card>
@@ -579,6 +730,108 @@ function RepairsView({ repairs, onBack }: any) {
           {repairs.length === 0 && <div className="text-center py-12 text-gray-400">No repairs found</div>}
         </div>
       </main>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Add Repair (from existing client)</DialogTitle></DialogHeader>
+          <div className="py-4 space-y-6">
+            <div className="space-y-2">
+              <Label>Repair Type *</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setType('Real-Time')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#0F172A] bg-blue-50 ring-2 ring-[#0F172A]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Clock className="mx-auto h-8 w-8 text-[#0F172A]" />
+                  <div className="font-bold">Real-Time Repair</div>
+                  <div className="text-xs text-gray-500">Start immediately</div>
+                </button>
+                <button 
+                  onClick={() => setType('Schedule')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#0F172A] bg-blue-50 ring-2 ring-[#0F172A]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Calendar className="mx-auto h-8 w-8 text-[#0F172A]" />
+                  <div className="font-bold">Schedule Repair</div>
+                  <div className="text-xs text-gray-500">Pick date & time</div>
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Client *</Label>
+                  <Select name="clientName" required>
+                    <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
+                    <SelectContent>
+                      {clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Service Type *</Label>
+                  <Select name="serviceType" required>
+                    <SelectTrigger><SelectValue placeholder="Select repair type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Air Conditioning Repair">Air Conditioning Repair</SelectItem>
+                      <SelectItem value="Compressor Repair">Compressor Repair</SelectItem>
+                      <SelectItem value="Refrigerant Leak Repair">Refrigerant Leak Repair</SelectItem>
+                      <SelectItem value="Electrical Issue Repair">Electrical Issue Repair</SelectItem>
+                      <SelectItem value="Thermostat Repair">Thermostat Repair</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Technician *</Label>
+                <Input name="technician" placeholder="Technician name" required />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label>Cost *</Label>
+                  <Select name="cost" required>
+                    <SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="₱500">₱500</SelectItem>
+                      <SelectItem value="₱1,000">₱1,000</SelectItem>
+                      <SelectItem value="₱1,500">₱1,500</SelectItem>
+                      <SelectItem value="₱2,500">₱2,500</SelectItem>
+                      <SelectItem value="Custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Date *</Label>
+                  <Input name="date" type="date" min={today} required />
+                </div>
+                <div className="space-y-1">
+                  <Label>Time *</Label>
+                  <Input name="time" type="time" required />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Address *</Label>
+                <Input name="address" placeholder="Repair address" required />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Notes</Label>
+                <Textarea name="notes" placeholder="Additional notes" />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+                <Button type="submit" className="bg-[#0F172A]" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Repair
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -586,6 +839,7 @@ function RepairsView({ repairs, onBack }: any) {
 function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -650,8 +904,8 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
           <Card className="border-none shadow-sm">
             <CardHeader><CardTitle className="text-base">This Month</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex justify-between text-sm"><span>Total Bookings</span><span className="font-bold">0</span></div>
-              <div className="flex justify-between text-sm"><span>Pending</span><span className="font-bold">0</span></div>
+              <div className="flex justify-between text-sm"><span>Total Bookings</span><span className="font-bold">{appointments.length}</span></div>
+              <div className="flex justify-between text-sm"><span>Pending</span><span className="font-bold">{appointments.length}</span></div>
               <div className="flex justify-between text-sm"><span>Completed</span><span className="font-bold">0</span></div>
             </CardContent>
           </Card>
@@ -667,7 +921,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
             <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="+639123456789" required /></div>
             <div className="space-y-1"><Label>Address (Optional)</Label><Textarea name="address" placeholder="Client's full address" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" required /></div>
+              <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" min={today} required /></div>
               <div className="space-y-1"><Label>Time</Label><Input name="time" type="time" required /></div>
             </div>
             <div className="space-y-1">
@@ -695,6 +949,18 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
 }
 
 function ReportsView({ installations, repairs, clients, onBack }: any) {
+  const completedInstallations = installations.filter((i: any) => i.status === 'Completed')
+  const completedRepairs = repairs.filter((r: any) => r.status === 'Completed')
+  
+  const calculateTotal = (items: any[]) => {
+    return items.reduce((acc, item) => {
+      const val = parseInt(item.cost?.replace(/[^0-9]/g, '') || '0')
+      return acc + val
+    }, 0)
+  }
+
+  const totalRevenue = calculateTotal([...completedInstallations, ...completedRepairs])
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -712,16 +978,18 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
       </header>
       <main className="container mx-auto py-8 px-6 space-y-8">
         <div className="grid grid-cols-4 gap-6">
-          <ReportStatCard title="Total Revenue" value="₱0" icon={<TrendingUp className="text-green-500" />} />
-          <ReportStatCard title="Profit" value="₱0" icon={<TrendingUp className="text-blue-500" />} />
-          <ReportStatCard title="Services Completed" value={(installations.filter((i: any) => i.status === 'Completed').length + repairs.filter((r: any) => r.status === 'Completed').length).toString()} icon={<Calendar className="text-blue-500" />} />
+          <ReportStatCard title="Total Revenue" value={`₱${totalRevenue.toLocaleString()}`} icon={<TrendingUp className="text-green-500" />} />
+          <ReportStatCard title="Profit" value={`₱${(totalRevenue * 0.4).toLocaleString()}`} icon={<TrendingUp className="text-blue-500" />} />
+          <ReportStatCard title="Services Completed" value={(completedInstallations.length + completedRepairs.length).toString()} icon={<Calendar className="text-blue-500" />} />
           <ReportStatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-purple-500" />} />
         </div>
         <Card className="border-none shadow-sm">
           <CardHeader><CardTitle className="text-lg">Recent Bookings</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {[...installations, ...repairs].length === 0 ? <p className="text-center py-12 text-gray-400">No bookings found</p> : (
-              [...installations, ...repairs].map((item: any) => (
+              [...installations, ...repairs]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map((item: any) => (
                 <div key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg">
                   <div className="space-y-1">
                     <p className="font-bold text-[#0F172A] capitalize">{item.title}</p>
@@ -729,7 +997,7 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
                   </div>
                   <div className="flex items-center gap-8">
                     <div className="text-right">
-                      <p className="font-bold">₱0</p>
+                      <p className="font-bold">{item.cost || '₱0'}</p>
                       <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-red-500'}`}>{item.status}</p>
                     </div>
                     <Button variant="outline" size="sm" className="h-8"><FileText className="h-3 w-3 mr-2" />Receipt</Button>
