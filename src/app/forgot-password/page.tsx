@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,12 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
   const supabase = createClient()
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const handleResetRequest = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,6 +39,10 @@ export default function ForgotPasswordPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (!isMounted) {
+    return null
   }
 
   return (
