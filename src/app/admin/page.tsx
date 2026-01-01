@@ -1059,6 +1059,71 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showDayDetails} onOpenChange={setShowDayDetails}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDay && format(selectedDay, 'MMMM d, yyyy')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            {selectedDay && getDayAppointments(selectedDay).length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No appointments for this day</p>
+            ) : (
+              selectedDay && getDayAppointments(selectedDay).map((apt: any) => (
+                <div key={apt.id} className="p-4 border rounded-xl space-y-3 bg-gray-50/50">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <Badge className="mb-2 bg-blue-100 text-blue-700 border-blue-200">
+                        {apt.service_type}
+                      </Badge>
+                      <h4 className="font-bold text-[#0F172A] text-lg">{apt.client_name}</h4>
+                    </div>
+                    <span className="font-bold text-blue-600 bg-white px-2 py-1 rounded border shadow-sm text-sm">
+                      {apt.time}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 mt-0.5 text-gray-400" />
+                      <span>{apt.address}</span>
+                    </div>
+                    {apt.phone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-gray-400" />
+                        <span>{apt.phone}</span>
+                      </div>
+                    )}
+                    {apt.email && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-gray-400" />
+                        <span>{apt.email}</span>
+                      </div>
+                    )}
+                    {apt.cost && (
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-gray-400" />
+                        <span className="font-medium text-[#0F172A]">{apt.cost}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {apt.notes && (
+                    <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100 text-sm italic text-gray-500">
+                      "{apt.notes}"
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowDayDetails(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
