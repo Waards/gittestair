@@ -72,14 +72,26 @@ export async function getProfile() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) return null
+  console.log('getProfile: user found:', !!user)
+  if (!user) {
+    // Try to get session as fallback
+    const { data: { session } } = await supabase.auth.getSession()
+    console.log('getProfile: session found:', !!session)
+    if (!session) return null
+  }
+
+  const userId = user?.id || (await supabase.auth.getSession()).data.session?.user.id
+  if (!userId) return null
 
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('getProfile: error fetching profile:', error)
+    return null
+  }
   return data
 }
