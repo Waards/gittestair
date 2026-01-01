@@ -585,7 +585,16 @@ function InstallationsView({ installations, clients, onBack, fetchInstallations 
 
               <div className="space-y-1">
                 <Label>Technician *</Label>
-                <Input name="technician" placeholder="Technician name" required />
+                <Select name="technician" required>
+                  <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Chris">Chris</SelectItem>
+                    <SelectItem value="Emman">Emman</SelectItem>
+                    <SelectItem value="Carlos">Carlos</SelectItem>
+                    <SelectItem value="Arnold">Arnold</SelectItem>
+                    <SelectItem value="Bobby">Bobby</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -785,7 +794,16 @@ function RepairsView({ repairs, clients, onBack, fetchRepairs }: any) {
 
               <div className="space-y-1">
                 <Label>Technician *</Label>
-                <Input name="technician" placeholder="Technician name" required />
+                <Select name="technician" required>
+                  <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Chris">Chris</SelectItem>
+                    <SelectItem value="Emman">Emman</SelectItem>
+                    <SelectItem value="Carlos">Carlos</SelectItem>
+                    <SelectItem value="Arnold">Arnold</SelectItem>
+                    <SelectItem value="Bobby">Bobby</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
