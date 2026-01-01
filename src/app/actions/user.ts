@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-export async function signIn(formData: FormData) {
+export async function signIn(prevState: any, formData: FormData) {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
 
@@ -27,7 +27,7 @@ export async function signIn(formData: FormData) {
     return { error: error.message }
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', data.user.id)
@@ -37,9 +37,10 @@ export async function signIn(formData: FormData) {
 
   revalidatePath('/', 'layout')
   
-  return { 
-    success: true, 
-    redirectTo: profile?.role === 'admin' ? '/admin' : '/dashboard' 
+  if (profile?.role === 'admin') {
+    redirect('/admin')
+  } else {
+    redirect('/dashboard')
   }
 }
 
