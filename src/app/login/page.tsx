@@ -27,6 +27,10 @@ export default function LoginPage() {
     if (result?.error) {
       toast.error(result.error)
       setIsLoading(false)
+    } else if (result?.success && result?.redirectTo) {
+      toast.success('Signed in successfully')
+      router.push(result.redirectTo)
+      router.refresh()
     }
   }
 
