@@ -396,13 +396,13 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
               </form>
               {generatedPassword && (
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-blue-700">Generated Password</span>
-                    <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(generatedPassword); toast.success('Copied!'); }}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-2xl font-mono font-bold text-blue-900">{generatedPassword}</p>
+                  <span className="text-sm font-medium text-blue-700">Generated Password (select and copy)</span>
+                  <Input 
+                    readOnly 
+                    value={generatedPassword} 
+                    className="text-lg font-mono font-bold text-blue-900 bg-white border-blue-200 select-all"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
                 </div>
               )}
             </CardContent>
