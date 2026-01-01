@@ -871,6 +871,8 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [showDayDetails, setShowDayDetails] = useState(false)
   
   const today = new Date().toISOString().split('T')[0]
 
