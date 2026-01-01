@@ -45,9 +45,22 @@ export async function middleware(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/reset-password') &&
     request.nextUrl.pathname !== '/'
   ) {
-    console.log('Middleware: Redirecting to login')
+    console.log('Middleware: No user found, redirecting to login from:', request.nextUrl.pathname)
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // If user is logged in and tries to access login page, redirect to their dashboard
+  if (user && request.nextUrl.pathname.startsWith('/login')) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    
+    const url = request.nextUrl.clone()
+    url.pathname = profile?.role === 'admin' ? '/admin' : '/dashboard'
     return NextResponse.redirect(url)
   }
 
