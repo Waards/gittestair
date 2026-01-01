@@ -870,7 +870,23 @@ function RepairsView({ repairs, clients, onBack, fetchRepairs }: any) {
 function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  
   const today = new Date().toISOString().split('T')[0]
+
+  const monthStart = startOfMonth(currentMonth)
+  const monthEnd = endOfMonth(monthStart)
+  const startDate = startOfWeek(monthStart)
+  const endDate = endOfWeek(monthEnd)
+
+  const calendarDays = eachDayOfInterval({
+    start: startDate,
+    end: endDate,
+  })
+
+  const getDayAppointments = (day: Date) => {
+    return appointments.filter((apt: any) => isSameDay(parseISO(apt.date), day))
+  }
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -886,6 +902,10 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
     setIsLoading(false)
   }
 
+  const todayAppointments = appointments.filter((apt: any) => 
+    isSameDay(parseISO(apt.date), new Date())
+  )
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -897,76 +917,134 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select defaultValue="all">
-            <SelectTrigger className="w-[140px] h-9"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
-            <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
-          </Select>
           <Button className="bg-[#0F172A] h-9" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Appointment</Button>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 grid grid-cols-3 gap-8">
-        <div className="col-span-2 space-y-6">
+      <main className="container mx-auto py-8 px-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
           <Card className="border-none shadow-sm p-6">
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-lg font-bold">January 2026</h2>
+              <h2 className="text-lg font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
               <div className="flex gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="outline" size="sm" className="h-8">Today</Button>
-                <Button variant="outline" size="icon" className="h-8 w-8"><ChevronLeft className="h-4 w-4 rotate-180" /></Button>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentMonth(new Date())}>Today</Button>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                  <ChevronLeft className="h-4 w-4 rotate-180" />
+                </Button>
               </div>
             </div>
             <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
                 <div key={day} className="bg-gray-50 p-2 text-center text-xs font-bold text-gray-500">{day}</div>
               ))}
-              {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className={`bg-white h-24 p-2 text-xs font-medium text-gray-400 ${i === 4 ? 'bg-blue-50/50' : ''}`}>
-                  {i + 28 > 31 ? (i + 28) % 31 : i + 28}
-                </div>
-              ))}
+              {calendarDays.map((day, i) => {
+                const dayAppointments = getDayAppointments(day)
+                const isToday = isSameDay(day, new Date())
+                const isCurrentMonth = isSameMonth(day, monthStart)
+
+                return (
+                  <div 
+                    key={i} 
+                    className={`bg-white min-h-[100px] p-2 text-xs font-medium transition-colors hover:bg-gray-50 cursor-pointer ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-900'} ${isToday ? 'bg-blue-50/50' : ''}`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className={isToday ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center' : ''}>
+                        {format(day, 'd')}
+                      </span>
+                      {dayAppointments.length > 0 && (
+                        <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                      )}
+                    </div>
+                    <div className="space-y-1 overflow-y-auto max-h-[70px]">
+                      {dayAppointments.slice(0, 2).map((apt: any) => (
+                        <div key={apt.id} className="p-1 bg-blue-100 text-blue-700 rounded text-[10px] truncate" title={apt.client_name}>
+                          {apt.time} {apt.client_name}
+                        </div>
+                      ))}
+                      {dayAppointments.length > 2 && (
+                        <div className="text-[10px] text-gray-400 pl-1">+{dayAppointments.length - 2} more</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </Card>
         </div>
         <div className="space-y-6">
           <Card className="border-none shadow-sm">
             <CardHeader><CardTitle className="text-base">Today's Appointments</CardTitle></CardHeader>
-            <CardContent><p className="text-sm text-gray-400 text-center py-4">No appointments today</p></CardContent>
+            <CardContent>
+              {todayAppointments.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No appointments today</p>
+              ) : (
+                <div className="space-y-3">
+                  {todayAppointments.map((apt: any) => (
+                    <div key={apt.id} className="p-3 border rounded-lg bg-gray-50 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#0F172A]">{apt.time}</span>
+                        <Badge variant="outline" className="text-[10px]">{apt.service_type}</Badge>
+                      </div>
+                      <p className="text-sm font-medium">{apt.client_name}</p>
+                      <p className="text-xs text-gray-500 truncate">{apt.address}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
           </Card>
           <Card className="border-none shadow-sm">
-            <CardHeader><CardTitle className="text-base">This Month</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">This Month ({format(currentMonth, 'MMMM')})</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex justify-between text-sm"><span>Total Bookings</span><span className="font-bold">{appointments.length}</span></div>
-              <div className="flex justify-between text-sm"><span>Pending</span><span className="font-bold">{appointments.length}</span></div>
-              <div className="flex justify-between text-sm"><span>Completed</span><span className="font-bold">0</span></div>
+              <div className="flex justify-between text-sm">
+                <span>Total Bookings</span>
+                <span className="font-bold">{appointments.filter((apt: any) => isSameMonth(parseISO(apt.date), currentMonth)).length}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Completed</span>
+                <span className="font-bold">0</span>
+              </div>
             </CardContent>
           </Card>
         </div>
       </main>
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Add Appointment</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-4 py-4">
             <div className="space-y-1"><Label>Client Name</Label><Input name="clientName" placeholder="Client Name" required /></div>
-            <div className="space-y-1"><Label>Email (Optional)</Label><Input name="email" type="email" placeholder="client@example.com" /></div>
-            <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="+639123456789" required /></div>
-            <div className="space-y-1"><Label>Address (Optional)</Label><Textarea name="address" placeholder="Client's full address" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1"><Label>Email</Label><Input name="email" type="email" placeholder="client@example.com" /></div>
+              <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="+63" required /></div>
+            </div>
+            <div className="space-y-1"><Label>Address</Label><Textarea name="address" placeholder="Full address" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" min={today} required /></div>
               <div className="space-y-1"><Label>Time</Label><Input name="time" type="time" required /></div>
             </div>
-            <div className="space-y-1">
-              <Label>Service Type</Label>
-              <Select name="serviceType" defaultValue="Installation">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Installation">Installation</SelectItem>
-                  <SelectItem value="Repair">Repair</SelectItem>
-                  <SelectItem value="Cleaning">Cleaning</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>Service Type</Label>
+                <Select name="serviceType" defaultValue="Installation">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Installation">Installation</SelectItem>
+                    <SelectItem value="Repair">Repair</SelectItem>
+                    <SelectItem value="Cleaning">Cleaning</SelectItem>
+                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Cost</Label>
+                <Input name="cost" placeholder="₱1,500" />
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Any special instructions..." /></div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#0F172A]" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create
