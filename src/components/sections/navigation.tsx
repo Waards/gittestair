@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Phone, Menu, X, User, Shield } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { BookingForm } from "@/components/booking-form";
 
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -99,14 +100,17 @@ const Navigation = () => {
                 <Phone className="w-4 h-4 text-[#0062a3]" />
                 <span>+639425384191</span>
               </div>
-              <div className="flex items-center space-x-3">
-                <a
-                  href="/booking"
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white shadow-sm hover:bg-[#0062a3]/90 h-9 px-4 py-2 transition-all active:scale-95"
-                >
-                  Book Service
-                </a>
-                {user ? (
+                <div className="flex items-center space-x-3">
+                  <BookingForm 
+                    trigger={
+                      <button
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white shadow-sm hover:bg-[#0062a3]/90 h-9 px-4 py-2 transition-all active:scale-95"
+                      >
+                        Book Service
+                      </button>
+                    }
+                  />
+                  {user ? (
                   <div className="flex items-center gap-3">
                     {role === 'admin' && (
                       <a
@@ -172,14 +176,17 @@ const Navigation = () => {
               <Phone className="w-4 h-4 mr-3 text-[#0062a3]" />
               <span>+639425384191</span>
             </div>
-            <div className="grid grid-cols-1 gap-3 px-3">
-              <a
-                href="/booking"
-                className="flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white h-10 transition-all"
-              >
-                Book Service
-              </a>
-              {user ? (
+              <div className="grid grid-cols-1 gap-3 px-3">
+                <BookingForm 
+                  trigger={
+                    <button
+                      className="flex items-center justify-center rounded-md text-sm font-medium bg-[#0062a3] text-white h-10 transition-all"
+                    >
+                      Book Service
+                    </button>
+                  }
+                />
+                {user ? (
                 <>
                   {role === 'admin' && (
                     <a
