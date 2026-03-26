@@ -4,7 +4,9 @@
     "private": true,
     "scripts": {
         "dev": "next dev --turbopack",
-        "build": "next build",
+        "dev:fresh": "node clean-and-dev.js",
+        "build": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build",
+        "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
         "start": "next start",
         "lint": "next lint"
     },

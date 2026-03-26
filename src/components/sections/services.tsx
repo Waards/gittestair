@@ -36,7 +36,7 @@ const services = [
 
 const ServicesGrid = () => {
   return (
-    <section className="py-16 bg-[#f8fafc]/30">
+    <section id="services" className="py-16 bg-[#f8fafc]/30">
       <div className="container mx-auto px-4">
         {/* Section Header */}
         <div className="text-center mb-12">
