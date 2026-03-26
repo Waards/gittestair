@@ -88,6 +88,20 @@ export async function getInstallations() {
   return data || []
 }
 
+export async function getDashboardInstallations() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('installations')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10)
+  if (error) {
+    console.error('getDashboardInstallations error:', error)
+    return []
+  }
+  return data || []
+}
+
 export async function getRepairs() {
   const supabase = await createAdminClient()
   const { data, error } = await supabase
@@ -96,6 +110,20 @@ export async function getRepairs() {
     .order('created_at', { ascending: false })
   if (error) {
     console.error('getRepairs error:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function getDashboardRepairs() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('repairs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10)
+  if (error) {
+    console.error('getDashboardRepairs error:', error)
     return []
   }
   return data || []
@@ -318,6 +346,70 @@ export async function markRepairComplete(id: string) {
   return { success: true }
 }
 
+export async function createMaintenance(formData: FormData) {
+  const supabase = await createAdminClient()
+  const type = formData.get('type') as string
+  const data = {
+    title: formData.get('serviceType') as string,
+    client_name: formData.get('clientName') as string,
+    location: formData.get('address') as string,
+    technician: formData.get('technician') as string,
+    date: formData.get('date') as string,
+    time: formData.get('time') as string,
+    cost: formData.get('cost') as string,
+    notes: formData.get('notes') as string,
+    type: type,
+    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
+    progress: type === 'Real-Time' ? 10 : 0
+  }
+
+  const { error } = await supabase
+    .from('maintenance')
+    .insert(data)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function getMaintenance() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('maintenance')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.error('getMaintenance error:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function getDashboardMaintenance() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('maintenance')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10)
+  if (error) {
+    console.error('getDashboardMaintenance error:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function markMaintenanceComplete(id: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('maintenance')
+    .update({ status: 'Completed', progress: 100 })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
 export async function getClientRequests() {
   const supabase = await createAdminClient()
   const { data, error } = await supabase
@@ -331,13 +423,44 @@ export async function getClientRequests() {
   return data || []
 }
 
+export async function getDashboardStats() {
+  const supabase = await createAdminClient()
+  try {
+    const [clientsResult, installationsResult, repairsResult, appointmentsResult, leadsResult] = await Promise.all([
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'client'),
+      supabase.from('installations').select('status', { count: 'exact', head: true }),
+      supabase.from('repairs').select('status', { count: 'exact', head: true }),
+      supabase.from('appointments').select('status', { count: 'exact', head: true }),
+      supabase.from('leads').select('id', { count: 'exact', head: true })
+    ])
+
+    return {
+      totalClients: clientsResult.count || 0,
+      totalInstallations: installationsResult.count || 0,
+      totalRepairs: repairsResult.count || 0,
+      totalAppointments: appointmentsResult.count || 0,
+      totalLeads: leadsResult.count || 0
+    }
+  } catch (error) {
+    console.error('getDashboardStats error:', error)
+    return {
+      totalClients: 0,
+      totalInstallations: 0,
+      totalRepairs: 0,
+      totalAppointments: 0,
+      totalLeads: 0
+    }
+  }
+}
+
 export async function getNotifications() {
   const supabase = await createAdminClient()
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .is('user_id', null)
+    .is('user_id', null)           // only admin/global notifications
     .order('created_at', { ascending: false })
+    .limit(50)
   if (error) {
     console.error('getNotifications error:', error)
     return []

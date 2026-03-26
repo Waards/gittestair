@@ -20,17 +20,19 @@ import {
   SelectValue 
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { 
-  User, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Settings, 
-  Calendar, 
-  Clock, 
+import {
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  Settings,
+  Calendar,
+  Clock,
   CheckCircle2,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Wrench,
+  AlertCircle
 } from 'lucide-react'
 import { submitLead } from '../app/actions/leads'
 import { toast } from 'sonner'
@@ -69,8 +71,17 @@ export function BookingForm({ trigger }: BookingFormProps) {
     serviceType: '',
     preferredDate: '',
     preferredTime: '',
-    additionalInfo: ''
+    additionalInfo: '',
+    // Technical specs (Installation only)
+    airconBrand: '',
+    airconType: '',
+    horsepower: '',
+    unitAge: '',
+    // Issue description (non-installation)
+    issueDescription: '',
   })
+
+  const isInstallation = formData.serviceType === 'Aircon Installation'
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -101,6 +112,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
         toast.error('Please fill in all required fields')
         return
       }
+      if (isInstallation && (!formData.airconBrand || !formData.airconType || !formData.horsepower)) {
+        toast.error('Please complete all required Technical Specifications')
+        return
+      }
     }
     setStep(prev => prev + 1)
   }
@@ -110,9 +125,34 @@ export function BookingForm({ trigger }: BookingFormProps) {
   const handleSubmit = async () => {
     setIsSubmitting(true)
     const data = new FormData()
-    Object.entries(formData).forEach(([key, value]) => {
-      data.append(key, value)
-    })
+
+    // Core fields
+    data.append('fullName', formData.fullName)
+    data.append('phone', formData.phone)
+    data.append('email', formData.email)
+    data.append('serviceAddress', formData.serviceAddress)
+    data.append('clientType', formData.clientType)
+    data.append('serviceType', formData.serviceType)
+    data.append('preferredDate', formData.preferredDate)
+    data.append('preferredTime', formData.preferredTime)
+
+    // Build additionalInfo
+    if (isInstallation) {
+      const techParts = [
+        `Brand: ${formData.airconBrand}`,
+        `Type: ${formData.airconType}`,
+        `HP: ${formData.horsepower}`,
+        formData.unitAge ? `Unit Age: ${formData.unitAge} yr(s)` : null,
+      ].filter(Boolean).join(' | ')
+      const combined = techParts + (formData.additionalInfo ? ` | Notes: ${formData.additionalInfo}` : '')
+      data.append('additionalInfo', combined)
+      data.append('unitBrandType', `${formData.airconBrand} ${formData.airconType}`)
+    } else {
+      const combined = formData.issueDescription
+        ? formData.issueDescription + (formData.additionalInfo ? `\n${formData.additionalInfo}` : '')
+        : formData.additionalInfo
+      data.append('additionalInfo', combined)
+    }
 
     const result = await submitLead(data)
     setIsSubmitting(false)
@@ -130,7 +170,12 @@ export function BookingForm({ trigger }: BookingFormProps) {
         serviceType: '',
         preferredDate: '',
         preferredTime: '',
-        additionalInfo: ''
+        additionalInfo: '',
+        airconBrand: '',
+        airconType: '',
+        horsepower: '',
+        unitAge: '',
+        issueDescription: '',
       })
     } else {
       toast.error(result.error || 'Failed to submit booking request')
@@ -247,9 +292,15 @@ export function BookingForm({ trigger }: BookingFormProps) {
                 <Settings className="w-5 h-5" />
                 <h3 className="font-semibold">Service Details</h3>
               </div>
+
+              {/* Service Type */}
               <div className="space-y-2">
                 <Label htmlFor="serviceType">Service Type *</Label>
-                <Select value={formData.serviceType} onValueChange={(v) => handleSelectChange('serviceType', v)}>
+                <Select value={formData.serviceType} onValueChange={(v) => {
+                  handleSelectChange('serviceType', v)
+                  // Reset tech specs when service type changes
+                  setFormData(prev => ({ ...prev, airconBrand: '', airconType: '', horsepower: '', unitAge: '', issueDescription: '' }))
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a service" />
                   </SelectTrigger>
@@ -265,16 +316,100 @@ export function BookingForm({ trigger }: BookingFormProps) {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* ── INSTALLATION: Technical Specifications ── */}
+              {isInstallation && (
+                <div className="space-y-3 border border-[#0062a3]/20 rounded-lg p-4 bg-blue-50/40">
+                  <div className="flex items-center gap-2 text-[#0062a3]">
+                    <Wrench className="w-4 h-4" />
+                    <h4 className="font-semibold text-sm">Technical Specifications</h4>
+                    <span className="text-xs text-slate-500 ml-auto">Required for installation planning</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Aircon Brand *</Label>
+                      <Select value={formData.airconBrand} onValueChange={(v) => handleSelectChange('airconBrand', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
+                            <SelectItem key={b} value={b}>{b}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">Aircon Type *</Label>
+                      <Select value={formData.airconType} onValueChange={(v) => handleSelectChange('airconType', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Window">Window</SelectItem>
+                          <SelectItem value="Split">Split</SelectItem>
+                          <SelectItem value="Inverter">Inverter</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">Horsepower (HP) *</Label>
+                      <Select value={formData.horsepower} onValueChange={(v) => handleSelectChange('horsepower', v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select HP" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['0.5 HP', '0.75 HP', '1.0 HP', '1.5 HP', '2.0 HP', '2.5 HP', '3.0 HP'].map(hp => (
+                            <SelectItem key={hp} value={hp}>{hp}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">Unit Age (Years)</Label>
+                      <Input
+                        name="unitAge"
+                        type="number"
+                        min="0"
+                        max="30"
+                        placeholder="e.g. 2"
+                        value={formData.unitAge}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── NON-INSTALLATION: Issue Description ── */}
+              {!isInstallation && formData.serviceType && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-slate-600 mb-1">
+                    <AlertCircle className="w-4 h-4" />
+                    <Label className="text-sm font-semibold">Describe the Issue <span className="text-slate-400 font-normal">(Optional)</span></Label>
+                  </div>
+                  <Textarea
+                    id="issueDescription"
+                    name="issueDescription"
+                    placeholder="e.g. AC is not cooling, making loud noise, leaking water..."
+                    className="min-h-[80px]"
+                    value={formData.issueDescription}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              )}
+
+              {/* Schedule */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="preferredDate">Preferred Date *</Label>
-                  <Input 
-                    id="preferredDate" 
-                    name="preferredDate" 
-                    type="date" 
+                  <Input
+                    id="preferredDate"
+                    name="preferredDate"
+                    type="date"
                     min={new Date().toISOString().split('T')[0]}
-                    value={formData.preferredDate} 
-                    onChange={handleInputChange} 
+                    value={formData.preferredDate}
+                    onChange={handleInputChange}
                   />
                 </div>
                 <div className="space-y-2">
@@ -291,45 +426,46 @@ export function BookingForm({ trigger }: BookingFormProps) {
                   </Select>
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="additionalInfo">Additional Information</Label>
-                <Textarea 
-                  id="additionalInfo" 
-                  name="additionalInfo" 
-                  placeholder="Enter additional information..." 
-                  className="min-h-[100px]"
-                  value={formData.additionalInfo} 
-                  onChange={handleInputChange} 
+                <Label htmlFor="additionalInfo">Additional Notes</Label>
+                <Textarea
+                  id="additionalInfo"
+                  name="additionalInfo"
+                  placeholder="Any other details or special instructions..."
+                  className="min-h-[80px]"
+                  value={formData.additionalInfo}
+                  onChange={handleInputChange}
                 />
               </div>
             </div>
           )}
 
           {step === 3 && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div className="flex items-center gap-2 text-[#0062a3] mb-2">
                 <CheckCircle2 className="w-5 h-5" />
                 <h3 className="font-semibold">Review & Confirm</h3>
               </div>
-              
-              <div className="grid grid-cols-2 gap-8">
+
+              <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <h4 className="font-medium text-sm text-slate-500 uppercase tracking-wider">Client Information</h4>
+                  <h4 className="font-medium text-xs text-slate-500 uppercase tracking-wider">Client Information</h4>
                   <div className="space-y-2">
                     <div className="flex items-start gap-2 text-sm">
-                      <User className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <User className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span>{formData.fullName}</span>
                     </div>
                     <div className="flex items-start gap-2 text-sm">
-                      <Phone className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <Phone className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span>{formData.phone}</span>
                     </div>
                     <div className="flex items-start gap-2 text-sm">
-                      <Mail className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <Mail className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span className="break-all">{formData.email}</span>
                     </div>
                     <div className="flex items-start gap-2 text-sm">
-                      <MapPin className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <MapPin className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span>{formData.serviceAddress}</span>
                     </div>
                     <div className="text-sm">
@@ -340,23 +476,47 @@ export function BookingForm({ trigger }: BookingFormProps) {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-medium text-sm text-slate-500 uppercase tracking-wider">Service Details</h4>
+                  <h4 className="font-medium text-xs text-slate-500 uppercase tracking-wider">Service Details</h4>
                   <div className="space-y-2">
                     <div className="flex items-start gap-2 text-sm">
-                      <Settings className="w-4 h-4 mt-0.5 text-slate-400" />
-                      <span>{formData.serviceType}</span>
+                      <Settings className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                      <span className="font-medium">{formData.serviceType}</span>
                     </div>
                     <div className="flex items-start gap-2 text-sm">
-                      <Calendar className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <Calendar className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span>{formData.preferredDate}</span>
                     </div>
                     <div className="flex items-start gap-2 text-sm">
-                      <Clock className="w-4 h-4 mt-0.5 text-slate-400" />
+                      <Clock className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                       <span>{formData.preferredTime}</span>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Technical Specs summary (Installation only) */}
+              {isInstallation && (
+                <div className="border border-[#0062a3]/20 rounded-lg p-4 bg-blue-50/40 space-y-2">
+                  <div className="flex items-center gap-2 text-[#0062a3] mb-1">
+                    <Wrench className="w-4 h-4" />
+                    <h4 className="font-semibold text-xs uppercase tracking-wider">Technical Specifications</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                    <div><span className="text-slate-500">Brand: </span><span className="font-medium">{formData.airconBrand}</span></div>
+                    <div><span className="text-slate-500">Type: </span><span className="font-medium">{formData.airconType}</span></div>
+                    <div><span className="text-slate-500">Horsepower: </span><span className="font-medium">{formData.horsepower}</span></div>
+                    {formData.unitAge && <div><span className="text-slate-500">Unit Age: </span><span className="font-medium">{formData.unitAge} yr(s)</span></div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Issue description summary (non-installation) */}
+              {!isInstallation && formData.issueDescription && (
+                <div className="border rounded-lg p-3 bg-slate-50 space-y-1">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Issue Description</p>
+                  <p className="text-sm text-slate-700">{formData.issueDescription}</p>
+                </div>
+              )}
 
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <p className="text-sm text-slate-600 leading-relaxed">

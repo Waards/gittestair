@@ -217,10 +217,13 @@ export async function requestService(formData: FormData) {
     .eq('id', user.id)
     .single()
 
-  const { error } = await supabase
+  const clientName = profile?.full_name || user.email?.split('@')[0] || 'Unknown'
+
+  // Insert into appointments
+  const { error: appointmentError } = await supabase
     .from('appointments')
     .insert({
-      client_name: profile?.full_name || user.email?.split('@')[0] || 'Unknown',
+      client_name: clientName,
       email: user.email,
       phone,
       address,
@@ -231,33 +234,75 @@ export async function requestService(formData: FormData) {
       status: 'pending'
     })
 
+  if (appointmentError) {
+    console.error('requestService: error inserting appointment:', appointmentError)
+    return { error: appointmentError.message }
+  }
+
+  // Insert into appropriate monitoring table based on service type
+  if (serviceType === 'Installation') {
+    await supabase
+      .from('installations')
+      .insert({
+        title: serviceType,
+        client_name: clientName,
+        location: address,
+        date,
+        time,
+        notes,
+        status: 'Scheduled',
+        progress: 0
+      })
+  } else {
+    // Repair, Cleaning, Maintenance, Inspection go to repairs table
+    await supabase
+      .from('repairs')
+      .insert({
+        title: serviceType,
+        client_name: clientName,
+        location: address,
+        date,
+        time,
+        notes,
+        status: 'Scheduled',
+        progress: 0
+      })
+  }
+
   // Create client request record for admin
   await supabase
     .from('client_requests')
     .insert({
       client_id: user.id,
-      client_name: profile?.full_name || user.email?.split('@')[0] || 'Unknown',
+      client_name: clientName,
       request_type: serviceType,
       message: notes,
       preferred_date: date,
       preferred_time: time
     })
 
-  // Create notification for admin
-  await supabase
+  // Create notification for admin with detailed information
+  const detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +
+    `Phone: ${phone}\n` +
+    `Date: ${date} at ${time}\n` +
+    `Address: ${address || 'Not specified'}\n` +
+    `${notes ? `Details: ${notes}` : ''}`
+
+  const { error: notifError } = await supabase
     .from('notifications')
     .insert({
-      title: 'New Client Request',
-      message: `${profile?.full_name || user.email} has requested a new ${serviceType} service.`,
+      title: `New ${serviceType} Service Request`,
+      message: detailedMessage,
       type: 'request',
-      link: '/admin'
+      link: '/admin',
+      is_read: false
     })
 
-  if (error) {
-    console.error('requestService: error inserting appointment:', error)
-    return { error: error.message }
+  if (notifError) {
+    console.error('Failed to create notification:', notifError)
   }
 
   revalidatePath('/dashboard')
+  revalidatePath('/admin')
   return { success: true }
 }

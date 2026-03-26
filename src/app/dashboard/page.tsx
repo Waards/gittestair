@@ -67,6 +67,8 @@ export default function ClientDashboard() {
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [serviceType, setServiceType] = useState<string>('')
+  const [airconBrand, setAirconBrand] = useState<string>('')
+  const [airconType, setAirconType] = useState<string>('')
 
   const router = useRouter()
   const supabase = createClient()
@@ -154,15 +156,34 @@ export default function ClientDashboard() {
       return
     }
 
+    // Append unit info to notes if provided
+    if (airconBrand || airconType) {
+      const unitInfo = [
+        airconBrand ? `Brand: ${airconBrand}` : null,
+        airconType ? `Type: ${airconType}` : null,
+      ].filter(Boolean).join(' | ')
+      const existingNotes = formData.get('notes') as string
+      formData.set('notes', unitInfo + (existingNotes ? `\n${existingNotes}` : ''))
+    }
+
     setIsLoading(true)
     const result = await requestService(formData)
 
-    if (result.error) {
+    if (result?.error) {
       toast.error(result.error)
+    } else if (result?.success) {
+      toast.success('Service request submitted successfully!')
+      setIsRequestDialogOpen(false)
+      setServiceType('')
+      setAirconBrand('')
+      setAirconType('')
+      fetchData()
     } else {
       toast.success('Service request submitted successfully!')
       setIsRequestDialogOpen(false)
       setServiceType('')
+      setAirconBrand('')
+      setAirconType('')
       fetchData()
     }
     setIsLoading(false)
@@ -233,7 +254,11 @@ export default function ClientDashboard() {
                   <form onSubmit={handleRequestService} className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="serviceType">Service Type *</Label>
-                      <Select value={serviceType} onValueChange={setServiceType} required>
+                      <Select value={serviceType} onValueChange={(v) => {
+                        setServiceType(v)
+                        setAirconBrand('')
+                        setAirconType('')
+                      }} required>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a service" />
                         </SelectTrigger>
@@ -246,9 +271,47 @@ export default function ClientDashboard() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {/* Unit Info — shown once a service type is selected */}
+                    {serviceType && (
+                      <div className="grid grid-cols-2 gap-3 p-3 border border-[#005596]/20 rounded-lg bg-blue-50/30">
+                        <div className="col-span-2">
+                          <p className="text-xs font-semibold text-[#005596] uppercase tracking-wide mb-2">
+                            Unit Information <span className="text-slate-400 font-normal normal-case">(if applicable)</span>
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Aircon Brand</Label>
+                          <Select value={airconBrand} onValueChange={setAirconBrand}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select brand" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
+                                <SelectItem key={b} value={b}>{b}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm">Aircon Type</Label>
+                          <Select value={airconType} onValueChange={setAirconType}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Window">Window</SelectItem>
+                              <SelectItem value="Split">Split</SelectItem>
+                              <SelectItem value="Inverter">Inverter</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone Number *</Label>
-                      <Input id="phone" name="phone" type="tel" placeholder="09XXXXXXXXX" required />
+                      <Input id="phone" name="phone" type="tel" placeholder="09XXXXXXXXX" maxLength={11 as any} required />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="address">Address</Label>
@@ -402,7 +465,7 @@ export default function ClientDashboard() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <History className="h-5 w-5 text-[#005596]" />
-                <CardTitle className="text-lg font-semibold text-[#1E293B]">Service Activity & Progress</CardTitle>
+                <CardTitle className="text-lg font-semibold text-[#1E293B]">Recent Activity</CardTitle>
               </div>
               {activities.length > 0 && (
                 <span className="text-xs font-medium text-[#64748B] bg-slate-100 px-2 py-1 rounded-full">

@@ -56,10 +56,24 @@ const Navigation = () => {
 
   const navLinks = [
     { name: "Home", href: "/" },
-    { name: "Services", href: "/services" },
-    { name: "About Us", href: "/about" },
-    { name: "Contact", href: "/contact" },
+    { name: "Services", href: "#services" },
+    { name: "About Us", href: "#about" },
+    { name: "Contact", href: "#contact" },
   ];
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (href.startsWith('#')) {
+      e.preventDefault();
+      const id = href.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      } else if (window.location.pathname !== '/') {
+        window.location.href = '/' + href;
+      }
+      setIsMenuOpen(false);
+    }
+  };
 
   return (
     <nav
@@ -87,6 +101,7 @@ const Navigation = () => {
               <a
                 key={link.name}
                 href={link.href}
+                onClick={(e) => handleNavClick(e, link.href)}
                 className="text-sm font-medium text-[#020617] hover:text-[#0062a3] transition-colors"
               >
                 {link.name}
@@ -166,7 +181,7 @@ const Navigation = () => {
               key={link.name}
               href={link.href}
               className="block px-3 py-3 text-base font-medium text-[#020617] hover:bg-[#f1f5f9] rounded-md transition-colors"
-              onClick={() => setIsMenuOpen(false)}
+              onClick={(e) => handleNavClick(e, link.href)}
             >
               {link.name}
             </a>

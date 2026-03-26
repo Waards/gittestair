@@ -22,6 +22,7 @@ export async function submitLead(formData: FormData) {
   const preferredDate = formData.get('preferredDate') as string
   const preferredTime = formData.get('preferredTime') as string
   const additionalInfo = formData.get('additionalInfo') as string
+  const unitBrandType = formData.get('unitBrandType') as string | null
 
   // Validation
   if (!fullName || !phone || !email || !serviceAddress || !clientType || !serviceType || !preferredDate || !preferredTime) {
@@ -44,6 +45,8 @@ export async function submitLead(formData: FormData) {
       preferred_date: preferredDate,
       preferred_time: preferredTime,
       additional_info: additionalInfo,
+      // unit_brand_type is not present in schema for this project setup,
+      // so we store brand/type details inside additional_info instead.
       status: 'Pending'
     })
 

@@ -12,6 +12,10 @@ import {
   createAppointment,
   createInstallation,
   createRepair,
+  createMaintenance,
+  getMaintenance,
+  getDashboardMaintenance,
+  markMaintenanceComplete,
   markInstallationComplete,
   markRepairComplete,
   getClientRequests,
@@ -29,7 +33,10 @@ import {
   createTechnician,
   updateTechnician,
   updateTechnicianStatus,
-  deleteTechnician
+  deleteTechnician,
+  getDashboardInstallations,
+  getDashboardRepairs,
+  getDashboardStats
 } from '@/app/actions/admin'
 import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead } from '@/app/actions/leads'
 import { 
@@ -103,14 +110,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
+import { AdminSidebar } from '@/components/admin-sidebar'
 
-type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
+type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
 
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
   const [clients, setClients] = useState<any[]>([])
   const [installations, setInstallations] = useState<any[]>([])
   const [repairs, setRepairs] = useState<any[]>([])
+  const [maintenance, setMaintenance] = useState<any[]>([])
   const [appointments, setAppointments] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
   const [leads, setLeads] = useState<any[]>([])
@@ -134,44 +144,88 @@ export default function AdminDashboard() {
   const supabase = createClient()
 
   useEffect(() => {
-    fetchAllData()
+    fetchDashboardData()
   }, [])
 
-  const fetchAllData = async () => {
+  const fetchDashboardData = async () => {
     setIsFetching(true)
     try {
+      // Only fetch essential dashboard data initially (very fast)
       const results = await Promise.allSettled([
-        getClients(),
-        getInstallations(),
-        getRepairs(),
-        getAppointments(),
+        getDashboardInstallations(),
+        getDashboardRepairs(),
+        getDashboardMaintenance(),
         getSettings(),
-        getClientRequests(),
         getNotifications(),
-        getLeads(),
-        getTechnicians()
+        getClients(), // Fetch clients for dashboard display
+        getAppointments() // Fetch recent appointments/requests
       ])
       
-      if (results[0].status === 'fulfilled') setClients(results[0].value || [])
-      if (results[1].status === 'fulfilled') setInstallations(results[1].value || [])
-      if (results[2].status === 'fulfilled') setRepairs(results[2].value || [])
-      if (results[3].status === 'fulfilled') setAppointments(results[3].value || [])
-      if (results[4].status === 'fulfilled') setSettings(results[4].value)
-      if (results[5].status === 'fulfilled') setRequests(results[5].value || [])
-      if (results[6].status === 'fulfilled') setNotifications(results[6].value || [])
-      if (results[7].status === 'fulfilled') setLeads(results[7].value || [])
-      if (results[8].status === 'fulfilled') setTechnicians(results[8].value || [])
+      if (results[0].status === 'fulfilled') setInstallations(results[0].value || [])
+      if (results[1].status === 'fulfilled') setRepairs(results[1].value || [])
+      if (results[2].status === 'fulfilled') setMaintenance(results[2].value || [])
+      if (results[3].status === 'fulfilled') setSettings(results[3].value)
+      if (results[4].status === 'fulfilled') setNotifications(results[4].value || [])
+      if (results[5].status === 'fulfilled') setClients(results[5].value || [])
+      if (results[6].status === 'fulfilled') setAppointments(results[6].value || [])
 
       if (results.some(r => r.status === 'rejected')) {
-        const rejected = results.filter(r => r.status === 'rejected')
-        console.error('Some data failed to load:', rejected)
+        console.error('Some dashboard data failed to load')
         toast.warning('Some dashboard data could not be loaded')
       }
     } catch (error) {
-      console.error('fetchAllData error:', error)
-      toast.error('Failed to fetch dashboard data')
+      console.error('fetchDashboardData error:', error)
+      toast.error('Failed to load dashboard')
     } finally {
       setIsFetching(false)
+    }
+  }
+
+  // Lazy load data when view changes
+  useEffect(() => {
+    if (view === 'clients' && clients.length === 0) {
+      getClients().then(setClients)
+    } else if (view === 'installations' && installations.length === 0) {
+      getInstallations().then(setInstallations)
+    } else if (view === 'repairs' && repairs.length === 0) {
+      getRepairs().then(setRepairs)
+    } else if (view === 'maintenance' && maintenance.length === 0) {
+      getMaintenance().then(setMaintenance)
+    } else if (view === 'requests' && requests.length === 0) {
+      getClientRequests().then(setRequests)
+    } else if (view === 'leads' && leads.length === 0) {
+      getLeads().then(setLeads)
+    } else if (view === 'technicians' && technicians.length === 0) {
+      getTechnicians().then(setTechnicians)
+    }
+  }, [view, clients.length, installations.length, repairs.length, requests.length, leads.length, technicians.length])
+
+  // Generic refresh function for components that need to refetch data
+  const refreshData = async () => {
+    switch (view) {
+      case 'clients':
+        getClients().then(setClients)
+        break
+      case 'installations':
+        getInstallations().then(setInstallations)
+        break
+      case 'repairs':
+        getRepairs().then(setRepairs)
+        break
+      case 'maintenance':
+        getMaintenance().then(setMaintenance)
+        break
+      case 'requests':
+        getClientRequests().then(setRequests)
+        break
+      case 'leads':
+        getLeads().then(setLeads)
+        break
+      case 'technicians':
+        getTechnicians().then(setTechnicians)
+        break
+      default:
+        fetchDashboardData()
     }
   }
 
@@ -187,74 +241,106 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      {view === 'dashboard' && (
-        <div className="flex flex-col w-full">
-          {/* Header */}
-          <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#005596] rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xl">A</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-[#005596]">Azelea Admin</h1>
-                <p className="text-xs text-gray-500">Welcome back, Administrator</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setShowNotifications(true)} 
-                  className="hidden sm:flex items-center gap-2 border-gray-200"
-                >
-                  <Bell className="h-4 w-4" />
-                  Notification
-                  {notifications.filter(n => !n.is_read).length > 0 && (
-                    <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-red-500 hover:bg-red-600">
-                      {notifications.filter(n => !n.is_read).length}
-                    </Badge>
-                  )}
-                </Button>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setView('settings')} className="hidden sm:flex items-center gap-2 border-gray-200">
-                <SettingsIcon className="h-4 w-4" />
-                Settings
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSignOut} className="flex items-center gap-2 border-gray-200 text-red-600 hover:text-red-700 hover:bg-red-50">
-                <LogOut className="h-4 w-4" />
-                Sign Out
-              </Button>
-            </div>
-          </header>
+    <div className="flex h-screen bg-[#F8FAFC]">
+      {/* Sidebar Navigation */}
+      <AdminSidebar
+        view={view}
+        onViewChange={setView}
+        onSettings={() => setView('settings')}
+        onReminders={() => setShowReminders(true)}
+        onSignOut={handleSignOut}
+      />
 
-          <main className="container mx-auto py-8 px-6 space-y-8">
+      {/* Main Content */}
+      <div className="flex-1 transition-all duration-300 overflow-auto h-screen">
+        {view === 'dashboard' && (
+          <div className="flex flex-col w-full h-full">
+            {/* Header */}
+            <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-20 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div>
+                  <h1 className="text-base sm:text-lg font-bold text-[#005596]">Dashboard</h1>
+                  <p className="text-xs text-gray-500 hidden sm:block">Welcome back, Administrator</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setShowNotifications(true)} 
+                    className="hidden sm:flex items-center gap-2 border-gray-200"
+                  >
+                    <Bell className="h-4 w-4" />
+                    Notification
+                    {notifications.filter(n => !n.is_read).length > 0 && (
+                      <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-red-500 hover:bg-red-600">
+                        {notifications.filter(n => !n.is_read).length}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </header>
+
+            <main className="flex-1 w-full py-6 sm:py-8 px-4 sm:px-6 space-y-6 sm:space-y-8">
             {/* Stats Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-blue-600" />} />
-                <StatCard title="Total Bookings" value={(installations.length + repairs.length).toString()} icon={<Calendar className="text-blue-600" />} />
+                <StatCard title="Total Bookings" value={(installations.length + repairs.length + maintenance.length).toString()} icon={<Calendar className="text-blue-600" />} />
                 <StatCard title="Total Leads" value={leads.length.toString()} icon={<TrendingUp className="text-purple-600" />} />
                 <StatCard title="Installations" value={installations.length.toString()} icon={<Wrench className="text-green-600" />} />
+                <StatCard 
+                  title="Pending Installations" 
+                  value={installations.filter(i => i.status !== 'Completed').length.toString()} 
+                  icon={<Clock className="text-yellow-600" />} 
+                />
+                <StatCard 
+                  title="Completed Installations" 
+                  value={installations.filter(i => i.status === 'Completed').length.toString()} 
+                  icon={<CheckCircle className="text-green-600" />} 
+                />
                 <StatCard title="Repairs" value={repairs.length.toString()} icon={<PenTool className="text-orange-600" />} />
-                <StatCard title="Pending Bookings" value={(installations.filter(i => i.status !== 'Completed').length + repairs.filter(r => r.status !== 'Completed').length).toString()} icon={<Clock className="text-yellow-600" />} />
-                <StatCard title="Completed" value={(installations.filter(i => i.status === 'Completed').length + repairs.filter(r => r.status === 'Completed').length).toString()} icon={<CheckCircle className="text-green-600" />} />
+                <StatCard 
+                  title="Pending Repairs" 
+                  value={repairs.filter(r => r.status !== 'Completed').length.toString()} 
+                  icon={<Clock className="text-yellow-600" />} 
+                />
+                <StatCard 
+                  title="Completed Repairs" 
+                  value={repairs.filter(r => r.status === 'Completed').length.toString()} 
+                  icon={<CheckCircle className="text-green-600" />} 
+                />
+                <StatCard title="Maintenance" value={maintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
+                <StatCard 
+                  title="Pending Maintenance" 
+                  value={maintenance.filter(m => m.status !== 'Completed').length.toString()} 
+                  icon={<Clock className="text-yellow-600" />} 
+                />
+                <StatCard 
+                  title="Completed Maintenance" 
+                  value={maintenance.filter(m => m.status === 'Completed').length.toString()} 
+                  icon={<CheckCircle className="text-green-600" />} 
+                />
               </div>
 
 
-            {/* Recent Bookings */}
+            {/* Recent Activity */}
             <Card className="border-none shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-bold">Recent Bookings</CardTitle>
+                <CardTitle className="text-lg font-bold">Recent Activity</CardTitle>
               </CardHeader>
               <CardContent>
-                {installations.length === 0 && repairs.length === 0 ? (
+                {installations.length === 0 && repairs.length === 0 && maintenance.length === 0 && appointments.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <p className="text-gray-400">No bookings found</p>
+                    <p className="text-gray-400">No activity found</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {[...installations, ...repairs]
+                    {[...installations, ...repairs, ...maintenance, ...appointments.map(apt => ({
+                      ...apt,
+                      title: apt.service_type
+                    }))]
                       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                       .slice(0, 5)
                       .map((item, i) => (
@@ -283,70 +369,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            {/* Action Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <ActionCard 
-                title="Manage Clients" 
-                description="View and manage client records" 
-                icon={<UserCheck className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('clients')}
-              />
-              <ActionCard 
-                title="Installations" 
-                description="Monitor installation projects" 
-                icon={<Wrench className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('installations')}
-              />
-              <ActionCard 
-                title="Repairs" 
-                description="Track repair requests" 
-                icon={<PenTool className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('repairs')}
-              />
-              <ActionCard 
-                title="Schedule" 
-                description="View and manage appointments" 
-                icon={<CalendarDays className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('schedule')}
-              />
-              <ActionCard 
-                title="Reports" 
-                description="View business analytics" 
-                icon={<BarChart3 className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('reports')}
-              />
-                <ActionCard 
-                  title="Client Requests" 
-                  description="View and manage service requests" 
-                  icon={<FileText className="w-8 h-8 text-[#005596]" />}
-                  onClick={() => setView('requests')}
-                />
-                <ActionCard 
-                  title="Generated Leads" 
-                  description="View leads from landing page" 
-                  icon={<TrendingUp className="w-8 h-8 text-[#005596]" />}
-                  onClick={() => setView('leads')}
-                />
-                <ActionCard 
-                  title="Settings" 
 
-                description="Configure system preferences" 
-                icon={<SettingsIcon className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setView('settings')}
-              />
-              <ActionCard 
-                title="Reminders" 
-                description="Manage follow-up reminders" 
-                icon={<BellRing className="w-8 h-8 text-[#005596]" />}
-                onClick={() => setShowReminders(true)}
-              />
-              <ActionCard 
-                  title="Technicians" 
-                  description="Manage technician schedules" 
-                  icon={<HardHat className="w-8 h-8 text-[#005596]" />}
-                  onClick={() => setView('technicians')}
-                />
-            </div>
           </main>
         </div>
       )}
@@ -356,7 +379,7 @@ export default function AdminDashboard() {
           clients={clients} 
           isFetching={isFetching} 
           onBack={() => setView('dashboard')} 
-          fetchClients={fetchAllData}
+          fetchClients={refreshData}
         />
       )}
 
@@ -365,7 +388,7 @@ export default function AdminDashboard() {
           installations={installations} 
           clients={clients}
           onBack={() => setView('dashboard')} 
-          fetchInstallations={fetchAllData}
+          fetchInstallations={refreshData}
           onViewDetails={handleViewBookingDetails}
         />
       )}
@@ -375,7 +398,17 @@ export default function AdminDashboard() {
           repairs={repairs} 
           clients={clients}
           onBack={() => setView('dashboard')} 
-          fetchRepairs={fetchAllData}
+          fetchRepairs={refreshData}
+          onViewDetails={handleViewBookingDetails}
+        />
+      )}
+
+      {view === 'maintenance' && (
+        <MaintenanceView 
+          maintenance={maintenance} 
+          clients={clients}
+          onBack={() => setView('dashboard')} 
+          fetchMaintenance={refreshData}
           onViewDetails={handleViewBookingDetails}
         />
       )}
@@ -384,7 +417,7 @@ export default function AdminDashboard() {
         <ScheduleView 
           appointments={appointments} 
           onBack={() => setView('dashboard')} 
-          fetchAppointments={fetchAllData}
+          fetchAppointments={refreshData}
         />
       )}
 
@@ -401,15 +434,21 @@ export default function AdminDashboard() {
         <SettingsView 
           settings={settings}
           onBack={() => setView('dashboard')} 
-          fetchSettings={fetchAllData}
+          fetchSettings={refreshData}
         />
       )}
 
       {view === 'requests' && (
-        <RequestsView 
+        <RequestsView
           requests={requests}
-          onBack={() => setView('dashboard')} 
-          fetchRequests={fetchAllData}
+          technicians={technicians}
+          onBack={() => setView('dashboard')}
+          fetchRequests={refreshData}
+          router={router}
+          setView={setView}
+          setInstallations={setInstallations}
+          setRepairs={setRepairs}
+          setMaintenance={setMaintenance}
         />
       )}
 
@@ -417,7 +456,7 @@ export default function AdminDashboard() {
           <LeadsView 
             leads={leads}
             onBack={() => setView('dashboard')} 
-            fetchLeads={fetchAllData}
+            fetchLeads={refreshData}
             onGoToClients={() => setView('clients')}
           />
         )}
@@ -426,9 +465,11 @@ export default function AdminDashboard() {
         <TechniciansView 
           technicians={technicians}
           onBack={() => setView('dashboard')} 
-          fetchTechnicians={fetchAllData}
+          fetchTechnicians={refreshData}
         />
       )}
+
+      </div>
 
 
       {/* Modals */}
@@ -566,13 +607,14 @@ export default function AdminDashboard() {
               {notifications.some(n => !n.is_read) && (
                 <Button 
                   variant="ghost" 
-                  size="xs" 
+                  size="sm" 
                   className="text-xs text-blue-600 hover:text-blue-700"
                   onClick={async () => {
                     for (const n of notifications.filter(notif => !notif.is_read)) {
                       await markNotificationAsRead(n.id)
                     }
-                    fetchAllData()
+                    // Update local state instead of refetching all data
+                    setNotifications(notifications.map(notif => ({ ...notif, is_read: true })))
                   }}
                 >
                   Mark all as read
@@ -594,7 +636,8 @@ export default function AdminDashboard() {
                   onClick={async () => {
                     if (!n.is_read) {
                       await markNotificationAsRead(n.id)
-                      fetchAllData()
+                      // Update local state instead of refetching all data
+                      setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, is_read: true } : notif))
                     }
                   }}
                 >
@@ -829,48 +872,116 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
       </main>
 
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Lead Details</DialogTitle>
           </DialogHeader>
           {selectedLead && (
             <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Full Name</p>
-                  <p className="text-sm font-bold">{selectedLead.full_name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Client Type</p>
-                  <p className="text-sm font-bold">{selectedLead.client_type}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Email</p>
-                  <p className="text-sm">{selectedLead.email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Phone</p>
-                  <p className="text-sm">{selectedLead.phone_number}</p>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <p className="text-xs text-gray-500 font-medium">Service Address</p>
-                  <p className="text-sm">{selectedLead.service_address}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Service Type</p>
-                  <p className="text-sm font-bold text-blue-600">{selectedLead.service_type}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Preferred Schedule</p>
-                  <p className="text-sm">{selectedLead.preferred_date} at {selectedLead.preferred_time}</p>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <p className="text-xs text-gray-500 font-medium">Additional Information</p>
-                  <div className="bg-gray-50 p-3 rounded border text-sm italic">
-                    {selectedLead.additional_info || 'No additional information provided'}
+
+              {/* Lead Profile */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead Profile</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Potential Client Name</p>
+                    <p className="text-sm font-bold">{selectedLead.full_name}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Lead Category</p>
+                    <Badge variant="outline" className={selectedLead.client_type === 'Corporate' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+                      {selectedLead.client_type || 'Residential'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Email</p>
+                    <p className="text-sm flex items-center gap-1"><Mail className="h-3 w-3 text-gray-400" /> {selectedLead.email}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Contact Number</p>
+                    <p className="text-sm flex items-center gap-1"><Phone className="h-3 w-3 text-gray-400" /> {selectedLead.phone_number}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Lead Source</p>
+                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                      {selectedLead.lead_source || 'Website'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Date Submitted</p>
+                    <p className="text-sm">{format(parseISO(selectedLead.created_at), 'MMM d, yyyy')}</p>
                   </div>
                 </div>
               </div>
+
+              {/* Requirement Details */}
+              <div className="space-y-3 pt-3 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Requirement Details</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Service Requested</p>
+                    <p className="text-sm font-bold text-blue-600 flex items-center gap-1"><Wrench className="h-3 w-3" /> {selectedLead.service_type}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Unit Brand / Type</p>
+                    <p className="text-sm">
+                      {selectedLead.unit_brand_type ||
+                        selectedLead.additional_info?.match(/Brand: ([^|]+)/)?.[1] ||
+                        selectedLead.additional_info?.match(/Type: ([^|]+)/)?.[1] ||
+                        'Not specified'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Preferred Schedule</p>
+                    <p className="text-sm">{selectedLead.preferred_date} at {selectedLead.preferred_time}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Service Address</p>
+                    <p className="text-sm flex items-start gap-1"><MapPin className="h-3 w-3 mt-0.5 text-gray-400" /> {selectedLead.service_address}</p>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <p className="text-xs text-gray-500 font-medium">Initial Notes / Inquiry</p>
+                    <div className="bg-gray-50 p-3 rounded border text-sm italic">
+                      {selectedLead.additional_info || 'No additional information provided'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sales Intelligence */}
+              <div className="space-y-3 pt-3 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sales Intelligence</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Lead Temperature</p>
+                    <Badge className={
+                      selectedLead.lead_temperature === 'Hot' ? 'bg-red-100 text-red-700' :
+                      selectedLead.lead_temperature === 'Warm' ? 'bg-orange-100 text-orange-700' :
+                      'bg-blue-100 text-blue-700'
+                    }>
+                      {selectedLead.lead_temperature || 'Cold'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Potential Deal Value</p>
+                    <p className="text-sm font-bold text-green-700">
+                      {selectedLead.potential_deal_value ? `₱${Number(selectedLead.potential_deal_value).toLocaleString()}` : 'TBD'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Follow-up Status</p>
+                    <Badge className={
+                      selectedLead.status === 'Converted' ? 'bg-green-100 text-green-700' :
+                      selectedLead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
+                      selectedLead.status === 'Lost' ? 'bg-red-100 text-red-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }>
+                      {selectedLead.status === 'Pending' ? 'Inquiry' : selectedLead.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowDetails(false)}>Close</Button>
               </div>
@@ -2056,7 +2167,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
       </Dialog>
 
       <Dialog open={showDayDetails} onOpenChange={setShowDayDetails}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedDay && format(selectedDay, 'MMMM d, yyyy')}
@@ -2067,49 +2178,98 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
               <p className="text-center text-gray-500 py-8">No appointments for this day</p>
             ) : (
               selectedDay && getDayAppointments(selectedDay).map((apt: any) => (
-                <div key={apt.id} className="p-4 border rounded-xl space-y-3 bg-gray-50/50">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <Badge className="mb-2 bg-blue-100 text-blue-700 border-blue-200">
+                <div key={apt.id} className="border rounded-xl overflow-hidden">
+                  {/* Job Header */}
+                  <div className={`px-4 py-2 flex items-center justify-between ${apt.status === 'Completed' ? 'bg-green-600' : 'bg-blue-600'} text-white`}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide">
+                        {apt.status === 'Completed' ? 'Completed' : 'Scheduled'}
+                      </span>
+                      {apt.id && (
+                        <span className="text-xs opacity-75">
+                          #{apt.id.toString().slice(-6).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-sm">{apt.time}</span>
+                  </div>
+
+                  <div className="p-4 bg-gray-50/50 space-y-4">
+                    {/* Service Type */}
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-white text-gray-700 border border-gray-200">
                         {apt.service_type}
                       </Badge>
-                      <h4 className="font-bold text-[#005596] text-lg">{apt.client_name}</h4>
                     </div>
-                    <span className="font-bold text-blue-600 bg-white px-2 py-1 rounded border shadow-sm text-sm">
-                      {apt.time}
-                    </span>
+
+                    {/* Who & Where */}
+                    <div className="space-y-2 text-sm">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Who & Where</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <UserCheck className="h-4 w-4 text-gray-400 shrink-0" />
+                          <span className="font-medium">{apt.client_name}</span>
+                        </div>
+                        {apt.technician && (
+                          <div className="flex items-center gap-2 text-gray-700">
+                            <HardHat className="h-4 w-4 text-gray-400 shrink-0" />
+                            <span>{apt.technician}</span>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-2 text-gray-600">
+                          <MapPin className="h-4 w-4 mt-0.5 text-gray-400 shrink-0" />
+                          <span>{apt.address}</span>
+                        </div>
+                        {apt.phone && (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <Phone className="h-4 w-4 text-gray-400 shrink-0" />
+                            <span>{apt.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* What & When */}
+                    <div className="space-y-2 text-sm">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">What & When</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white rounded-lg border border-gray-100 p-2">
+                          <p className="text-[10px] text-gray-400 font-medium">Date & Time</p>
+                          <p className="font-semibold text-[#005596]">{format(parseISO(apt.date), 'MMM d')} at {apt.time}</p>
+                        </div>
+                        <div className="bg-white rounded-lg border border-gray-100 p-2">
+                          <p className="text-[10px] text-gray-400 font-medium">Est. Completion</p>
+                          <p className="font-semibold text-gray-700">{apt.estimated_completion || '2 Hours'}</p>
+                        </div>
+                        {apt.cost && (
+                          <div className="bg-white rounded-lg border border-gray-100 p-2">
+                            <p className="text-[10px] text-gray-400 font-medium">Service Fee</p>
+                            <p className="font-semibold text-green-700">{apt.cost}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {apt.notes && (
+                      <div className="p-3 bg-white rounded-lg border border-gray-100 text-sm italic text-gray-500">
+                        "{apt.notes}"
+                      </div>
+                    )}
+
+                    {/* Quick Actions */}
+                    <div className="pt-2 border-t flex gap-2 flex-wrap">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-full">Quick Actions</p>
+                      <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs">
+                        Update Status
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs">
+                        Reschedule
+                      </Button>
+                      <Button size="sm" className="bg-[#005596] hover:bg-[#00447a] h-8 text-xs">
+                        View Full Work Order
+                      </Button>
+                    </div>
                   </div>
-                  
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 mt-0.5 text-gray-400" />
-                      <span>{apt.address}</span>
-                    </div>
-                    {apt.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        <span>{apt.phone}</span>
-                      </div>
-                    )}
-                    {apt.email && (
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                        <span>{apt.email}</span>
-                      </div>
-                    )}
-                    {apt.cost && (
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-gray-400" />
-                        <span className="font-medium text-[#005596]">{apt.cost}</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {apt.notes && (
-                    <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100 text-sm italic text-gray-500">
-                      "{apt.notes}"
-                    </div>
-                  )}
                 </div>
               ))
             )}
@@ -2124,17 +2284,67 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
 }
 
 function ReportsView({ installations, repairs, clients, onBack }: any) {
-  const completedInstallations = installations.filter((i: any) => i.status === 'Completed')
-  const completedRepairs = repairs.filter((r: any) => r.status === 'Completed')
-  
-  const calculateTotal = (items: any[]) => {
-    return items.reduce((acc, item) => {
-      const val = parseInt(item.cost?.replace(/[^0-9]/g, '') || '0')
-      return acc + val
-    }, 0)
-  }
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [serviceTypeFilter, setServiceTypeFilter] = useState('all')
+  const [technicianFilter, setTechnicianFilter] = useState('all')
+  const [locationFilter, setLocationFilter] = useState('')
 
-  const totalRevenue = calculateTotal([...completedInstallations, ...completedRepairs])
+  const allItems = [...installations, ...repairs]
+
+  const filteredItems = allItems.filter((item: any) => {
+    const matchesDateFrom = !dateFrom || item.date >= dateFrom
+    const matchesDateTo = !dateTo || item.date <= dateTo
+    const matchesService = serviceTypeFilter === 'all' ||
+      item.title?.toLowerCase().includes(serviceTypeFilter.toLowerCase())
+    const matchesTech = technicianFilter === 'all' || item.technician === technicianFilter
+    const matchesLocation = !locationFilter ||
+      item.location?.toLowerCase().includes(locationFilter.toLowerCase()) ||
+      item.address?.toLowerCase().includes(locationFilter.toLowerCase())
+    return matchesDateFrom && matchesDateTo && matchesService && matchesTech && matchesLocation
+  })
+
+  const completedItems = filteredItems.filter((i: any) => i.status === 'Completed')
+  const calculateTotal = (items: any[]) =>
+    items.reduce((acc, item) => acc + parseInt(item.cost?.replace(/[^0-9]/g, '') || '0'), 0)
+  const totalRevenue = calculateTotal(completedItems)
+  const completionRate = filteredItems.length > 0
+    ? Math.round((completedItems.length / filteredItems.length) * 100)
+    : 0
+
+  // Most frequent issue
+  const issueCounts: Record<string, number> = {}
+  filteredItems.forEach((item: any) => {
+    const key = item.service_type || (item.title?.includes('Repair') ? 'Repair' : 'Installation')
+    issueCounts[key] = (issueCounts[key] || 0) + 1
+  })
+  const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1])
+
+  // Unique technicians for filter dropdown
+  const uniqueTechnicians = [...new Set(allItems.map((i: any) => i.technician).filter(Boolean))]
+
+  const handleExportCSV = () => {
+    const headers = ['Title', 'Client', 'Date', 'Time', 'Technician', 'Cost', 'Status', 'Location']
+    const csvContent = [
+      headers.join(','),
+      ...filteredItems.map((item: any) => [
+        `"${item.title || ''}"`,
+        `"${item.client_name || ''}"`,
+        `"${item.date || ''}"`,
+        `"${item.time || ''}"`,
+        `"${item.technician || ''}"`,
+        `"${item.cost || ''}"`,
+        `"${item.status || ''}"`,
+        `"${item.location || item.address || ''}"`,
+      ].join(','))
+    ].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `report_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+    toast.success('CSV exported successfully')
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -2142,38 +2352,183 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
-            <h1 className="text-xl font-bold text-[#005596]">Reports</h1>
-            <p className="text-sm text-gray-500">Overall summary (no analytics/graphs)</p>
+            <h1 className="text-xl font-bold text-[#005596]">Reports & Analytics</h1>
+            <p className="text-sm text-gray-500">Generate and export business reports</p>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm"><Download className="h-4 w-4 mr-2" />Export CSV</Button>
-          <Button variant="outline" size="sm"><FileText className="h-4 w-4 mr-2" />Export PDF</Button>
         </div>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-8">
-        <div className="grid grid-cols-4 gap-6">
-          <ReportStatCard title="Total Revenue" value={`₱${totalRevenue.toLocaleString()}`} icon={<TrendingUp className="text-green-500" />} />
-          <ReportStatCard title="Profit" value={`₱${(totalRevenue * 0.4).toLocaleString()}`} icon={<TrendingUp className="text-blue-500" />} />
-          <ReportStatCard title="Services Completed" value={(completedInstallations.length + completedRepairs.length).toString()} icon={<Calendar className="text-blue-500" />} />
-          <ReportStatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-purple-500" />} />
-        </div>
+
+        {/* Filter Control Panel */}
         <Card className="border-none shadow-sm">
-          <CardHeader><CardTitle className="text-lg">Recent Bookings</CardTitle></CardHeader>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4 text-[#005596]" />
+              Generate Report — Filter Selection
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Date From</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Date To</Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Service Type</Label>
+                <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
+                  <SelectTrigger><SelectValue placeholder="All Services" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Services</SelectItem>
+                    <SelectItem value="Installation">Installation</SelectItem>
+                    <SelectItem value="Repair">Repair</SelectItem>
+                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                    <SelectItem value="Cleaning">Cleaning</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Technician</Label>
+                <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                  <SelectTrigger><SelectValue placeholder="All Technicians" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Technicians</SelectItem>
+                    {uniqueTechnicians.map((t: any) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Location / Area Filter</Label>
+              <Input
+                placeholder="Filter by location or area..."
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t">
+              <p className="text-sm text-gray-500">
+                Showing <span className="font-bold text-[#005596]">{filteredItems.length}</span> records
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setDateFrom(''); setDateTo(''); setServiceTypeFilter('all')
+                  setTechnicianFilter('all'); setLocationFilter('')
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Visual Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <Card className="border-none shadow-sm border-l-4 border-l-green-500">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Revenue</p>
+                  <p className="text-3xl font-bold text-green-700 mt-1">₱{totalRevenue.toLocaleString()}</p>
+                  <p className="text-xs text-gray-400 mt-1">From {completedItems.length} completed jobs</p>
+                </div>
+                <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center">
+                  <TrendingUp className="h-6 w-6 text-green-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-none shadow-sm border-l-4 border-l-blue-500">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Completion Rate</p>
+                  <p className="text-3xl font-bold text-blue-700 mt-1">{completionRate}%</p>
+                  <div className="mt-2">
+                    <Progress value={completionRate} className="h-1.5" />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">{completedItems.length} of {filteredItems.length} jobs</p>
+                </div>
+                <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
+                  <CheckCircle className="h-6 w-6 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-none shadow-sm border-l-4 border-l-purple-500">
+            <CardContent className="p-6">
+              <div>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-3">Most Frequent Issues</p>
+                {sortedIssues.length === 0 ? (
+                  <p className="text-sm text-gray-400">No data</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedIssues.slice(0, 3).map(([issue, count]) => (
+                      <div key={issue} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-600 truncate">{issue}</span>
+                          <span className="font-bold text-purple-700 ml-2">
+                            {filteredItems.length > 0 ? Math.round((count / filteredItems.length) * 100) : 0}%
+                          </span>
+                        </div>
+                        <Progress
+                          value={filteredItems.length > 0 ? (count / filteredItems.length) * 100 : 0}
+                          className="h-1.5"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Data Export */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Data Export</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-3 flex-wrap">
+              <Button variant="outline" onClick={handleExportCSV} className="gap-2">
+                <Download className="h-4 w-4" />Export as Excel/CSV
+              </Button>
+              <Button variant="outline" className="gap-2">
+                <FileText className="h-4 w-4" />Export as PDF
+              </Button>
+              <Button variant="outline" className="gap-2 border-green-200 text-green-700 hover:bg-green-50">
+                <FileText className="h-4 w-4" />Generate Official Receipt
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Bookings Table */}
+        <Card className="border-none shadow-sm">
+          <CardHeader><CardTitle className="text-lg">Bookings ({filteredItems.length})</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {[...installations, ...repairs].length === 0 ? <p className="text-center py-12 text-gray-400">No bookings found</p> : (
-              [...installations, ...repairs]
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            {filteredItems.length === 0 ? <p className="text-center py-12 text-gray-400">No bookings found</p> : (
+              filteredItems
+                .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .map((item: any) => (
                 <div key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg">
                   <div className="space-y-1">
                     <p className="font-bold text-[#005596] capitalize">{item.title}</p>
-                    <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'}</p>
+                    <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'} • {item.technician || 'Unassigned'}</p>
                   </div>
                   <div className="flex items-center gap-8">
                     <div className="text-right">
                       <p className="font-bold">{item.cost || '₱0'}</p>
-                      <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-red-500'}`}>{item.status}</p>
+                      <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-blue-500'}`}>{item.status}</p>
                     </div>
                     <Button variant="outline" size="sm" className="h-8"><FileText className="h-3 w-3 mr-2" />Receipt</Button>
                   </div>
@@ -2302,13 +2657,14 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="w-full justify-start h-12 bg-white border border-gray-200 p-1 mb-8">
+          <TabsList className="w-full justify-start h-12 bg-white border border-gray-200 p-1 mb-8 overflow-x-auto flex-nowrap">
             <TabsTrigger value="company" className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Company</TabsTrigger>
+            <TabsTrigger value="service-config" className="flex items-center gap-2"><SettingsIcon className="h-4 w-4" /> Service Config</TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center gap-2"><BellDot className="h-4 w-4" /> Notifications</TabsTrigger>
             <TabsTrigger value="reminders" className="flex items-center gap-2"><BellRing className="h-4 w-4" /> Reminders</TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Security</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="company">
             <Card className="border-none shadow-sm">
               <CardHeader><CardTitle className="text-lg">Company Information</CardTitle></CardHeader>
@@ -2333,6 +2689,111 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                 </form>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Service & Business Config Tab */}
+          <TabsContent value="service-config">
+            <div className="space-y-6">
+              {/* Company Branding */}
+              <Card className="border-none shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Company Branding</CardTitle>
+                  <CardDescription>Configure branding used in receipts and PDF documents</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>Company Logo (for Receipt / PDF)</Label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                        <Building2 className="h-8 w-8 text-gray-300" />
+                      </div>
+                      <div className="space-y-1 flex-1">
+                        <Input type="file" accept="image/*" className="cursor-pointer" />
+                        <p className="text-xs text-gray-400">PNG or JPG recommended. Max 2MB.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Office Address</Label>
+                      <Textarea
+                        defaultValue={settings?.company_address}
+                        placeholder="Full office address..."
+                        rows={3}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Business Contact Info</Label>
+                      <div className="space-y-2">
+                        <Input placeholder="Phone number" defaultValue={settings?.company_phone} />
+                        <Input placeholder="Email address" defaultValue={settings?.company_email} />
+                        <Input placeholder="Website URL (optional)" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button className="bg-[#005596]">Save Branding Settings</Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Notification Rules */}
+              <Card className="border-none shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Notification Rules</CardTitle>
+                  <CardDescription>Configure automated SMS and in-app notification triggers</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[
+                    { id: 'sms-client-24h', label: 'Send SMS to Client 24 hours before appointment', defaultChecked: true },
+                    { id: 'sms-tech-assign', label: 'Send SMS to Technician on Assignment', defaultChecked: true },
+                    { id: 'sms-client-complete', label: 'Send SMS to Client when job is Completed', defaultChecked: false },
+                    { id: 'sms-client-reschedule', label: 'Notify Client on Reschedule', defaultChecked: false },
+                  ].map((rule) => (
+                    <div key={rule.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <Checkbox id={rule.id} defaultChecked={rule.defaultChecked} />
+                      <label htmlFor={rule.id} className="text-sm font-medium text-gray-700 cursor-pointer flex-1">
+                        {rule.label}
+                      </label>
+                    </div>
+                  ))}
+                  <div className="flex justify-end pt-2">
+                    <Button className="bg-[#005596]">Save Notification Rules</Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Message Template Editor */}
+              <Card className="border-none shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Message Template Editor</CardTitle>
+                  <CardDescription>Customize the SMS and notification messages sent to clients and technicians</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>Client Appointment Reminder (24h before)</Label>
+                    <Textarea
+                      rows={3}
+                      defaultValue="Hi {client_name}, this is a reminder that your {service_type} is scheduled for {date} at {time}. Please contact us at {company_phone} for any concerns."
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-gray-400">Variables: {'{'+'client_name}'}, {'{'+'service_type}'}, {'{'+'date}'}, {'{'+'time}'}, {'{'+'company_phone}'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Technician Assignment Notification</Label>
+                    <Textarea
+                      rows={3}
+                      defaultValue="Hi {technician_name}, you have been assigned to a {service_type} job for {client_name} on {date} at {time}. Location: {address}."
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-gray-400">Variables: {'{'+'technician_name}'}, {'{'+'service_type}'}, {'{'+'client_name}'}, {'{'+'date}'}, {'{'+'time}'}, {'{'+'address}'}</p>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button className="bg-[#005596]">Save Templates</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="notifications">
@@ -2699,8 +3160,15 @@ function MiniStatCard({ title, value, icon }: { title: string, value: string, ic
   )
 }
 
-function RequestsView({ requests, onBack, fetchRequests }: any) {
+function RequestsView({ requests, technicians = [], onBack, fetchRequests, router, setView, setInstallations, setRepairs, setMaintenance }: any) {
   const [isLoading, setIsLoading] = useState(false)
+  const [showApproveDialog, setShowApproveDialog] = useState(false)
+  const [selectedRequestForApprove, setSelectedRequestForApprove] = useState<any>(null)
+  const [approveServiceCategory, setApproveServiceCategory] = useState('')
+  const [approveTechnician, setApproveTechnician] = useState('')
+  const [approvePriority, setApprovePriority] = useState('Normal')
+  const [approveServiceStatus, setApproveServiceStatus] = useState('Scheduled')
+  const [approveBookingSource, setApproveBookingSource] = useState('Website')
 
   const handleStatusUpdate = async (id: string, status: string) => {
     setIsLoading(true)
@@ -2711,6 +3179,113 @@ function RequestsView({ requests, onBack, fetchRequests }: any) {
       fetchRequests()
     }
     setIsLoading(false)
+  }
+
+  const handleApproveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!selectedRequestForApprove) return
+    
+    setIsLoading(true)
+    try {
+      // Get form data
+      const form = e.currentTarget
+      const formData = new FormData(form)
+      
+      // Ensure required fields
+      if (!approveServiceCategory) {
+        toast.error('Please select a service category')
+        setIsLoading(false)
+        return
+      }
+      
+      if (!approveTechnician) {
+        toast.error('Please select a technician')
+        setIsLoading(false)
+        return
+      }
+
+      // Get field values from form
+      const appointmentDate = (form.querySelector('input[name="appointmentDate"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_date
+      const appointmentTime = (form.querySelector('input[name="appointmentTime"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_time
+      const serviceFee = (form.querySelector('input[name="serviceFee"]') as HTMLInputElement)?.value || '0'
+      const partsCost = (form.querySelector('input[name="partsCost"]') as HTMLInputElement)?.value || '0'
+      const totalCost = (form.querySelector('input[name="totalCost"]') as HTMLInputElement)?.value || '0'
+      const clientName = selectedRequestForApprove.client_name
+      const address = selectedRequestForApprove.address
+      
+      // Create the appropriate job based on service category
+      let createFunction: any
+      let setState: any
+      
+      if (approveServiceCategory === 'Installation') {
+        createFunction = createInstallation
+        setState = setInstallations
+      } else if (approveServiceCategory === 'Repair') {
+        createFunction = createRepair
+        setState = setRepairs
+      } else if (approveServiceCategory === 'Maintenance') {
+        createFunction = createMaintenance
+        setState = setMaintenance
+      }
+      
+      if (!createFunction) {
+        toast.error('Invalid service category')
+        setIsLoading(false)
+        return
+      }
+
+      // Create job
+      const jobFormData = new FormData()
+      jobFormData.append('serviceType', approveServiceCategory)
+      jobFormData.append('clientName', clientName)
+      jobFormData.append('address', address)
+      jobFormData.append('technician', approveTechnician)
+      jobFormData.append('date', appointmentDate)
+      jobFormData.append('time', appointmentTime)
+      jobFormData.append('cost', totalCost)
+      jobFormData.append('notes', selectedRequestForApprove.message || '')
+      jobFormData.append('type', 'Standard')
+      
+      const jobResult = await createFunction(jobFormData)
+      
+      if (jobResult.error) {
+        toast.error(`Failed to create job: ${jobResult.error}`)
+        setIsLoading(false)
+        return
+      }
+      
+      // Update request status to Approved
+      await updateRequestStatus(selectedRequestForApprove.id, 'Approved')
+      
+      // Show success and navigate
+      toast.success(`Request approved and ${approveServiceCategory} job created!`)
+      
+      // Refresh data
+      await fetchRequests()
+      
+      // Fetch updated jobs list and navigate to the service view
+      if (approveServiceCategory === 'Installation') {
+        const updatedInstallations = await getInstallations()
+        setInstallations(updatedInstallations)
+        setView('installations')
+      } else if (approveServiceCategory === 'Repair') {
+        const updatedRepairs = await getRepairs()
+        setRepairs(updatedRepairs)
+        setView('repairs')
+      } else if (approveServiceCategory === 'Maintenance') {
+        const updatedMaintenance = await getMaintenance()
+        setMaintenance(updatedMaintenance)
+        setView('maintenance')
+      }
+      
+      setShowApproveDialog(false)
+      setSelectedRequestForApprove(null)
+    } catch (error) {
+      console.error('Approve error:', error)
+      toast.error('Failed to approve request')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -2739,8 +3314,8 @@ function RequestsView({ requests, onBack, fetchRequests }: any) {
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
                         <Badge className={
-                          request.status === 'Approved' ? 'bg-green-100 text-green-700' : 
-                          request.status === 'Rejected' ? 'bg-red-100 text-red-700' : 
+                          request.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                          request.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                           'bg-yellow-100 text-yellow-700'
                         }>
                           {request.status}
@@ -2766,17 +3341,25 @@ function RequestsView({ requests, onBack, fetchRequests }: any) {
                     </div>
                     {request.status === 'Pending' && (
                       <div className="flex gap-2 ml-6">
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           className="bg-green-600 hover:bg-green-700"
-                          onClick={() => handleStatusUpdate(request.id, 'Approved')}
+                          onClick={() => {
+                            setSelectedRequestForApprove(request)
+                            setApproveServiceCategory(request.request_type || '')
+                            setApproveTechnician('')
+                            setApprovePriority('Normal')
+                            setApproveServiceStatus('Scheduled')
+                            setApproveBookingSource('Website')
+                            setShowApproveDialog(true)
+                          }}
                           disabled={isLoading}
                         >
                           Approve
                         </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="text-red-600 border-red-200 hover:bg-red-50"
                           onClick={() => handleStatusUpdate(request.id, 'Rejected')}
                           disabled={isLoading}
@@ -2792,6 +3375,392 @@ function RequestsView({ requests, onBack, fetchRequests }: any) {
           )}
         </div>
       </main>
+
+      {/* Approve / Convert to Formal Job Modal */}
+      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="h-5 w-5" />
+              Approve Request — Convert to Formal Job
+            </DialogTitle>
+          </DialogHeader>
+          {selectedRequestForApprove && (
+            <form onSubmit={handleApproveSubmit} className="space-y-6 py-2">
+
+              {/* Service Category */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Service Category</p>
+                <div className="flex gap-4">
+                  {['Installation', 'Repair', 'Maintenance'].map((cat) => (
+                    <label key={cat} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={approveServiceCategory === cat}
+                        onCheckedChange={() => setApproveServiceCategory(cat)}
+                      />
+                      <span className="text-sm font-medium">{cat}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Client Information */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Client Information</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Client Name</Label>
+                    <Input defaultValue={selectedRequestForApprove.client_name} name="clientName" readOnly className="bg-gray-50" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Contact Number</Label>
+                    <Input defaultValue={selectedRequestForApprove.phone || ''} name="contactNumber" placeholder="09XXXXXXXXX" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Service Address</Label>
+                    <Input defaultValue={selectedRequestForApprove.address || ''} name="serviceAddress" placeholder="Full address" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Nearest Landmark</Label>
+                    <Input name="landmark" placeholder="e.g., Near SM City" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Technical Specifications */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Technical Specifications</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Aircon Brand</Label>
+                    <Input name="airconBrand" placeholder="e.g., Samsung, LG" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Aircon Type</Label>
+                    <Select name="airconType" defaultValue="Split">
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Window">Window</SelectItem>
+                        <SelectItem value="Split">Split</SelectItem>
+                        <SelectItem value="Inverter">Inverter</SelectItem>
+                        <SelectItem value="Central">Central</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Horsepower (HP)</Label>
+                    <Select name="horsepower" defaultValue="1.0">
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0.5">0.5 HP</SelectItem>
+                        <SelectItem value="0.75">0.75 HP</SelectItem>
+                        <SelectItem value="1.0">1.0 HP</SelectItem>
+                        <SelectItem value="1.5">1.5 HP</SelectItem>
+                        <SelectItem value="2.0">2.0 HP</SelectItem>
+                        <SelectItem value="2.5">2.5 HP</SelectItem>
+                        <SelectItem value="3.0">3.0 HP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Unit Age (Years)</Label>
+                    <Input name="unitAge" type="number" min="0" placeholder="e.g., 3" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Scheduling & Assignment */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Scheduling & Assignment</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Assigned Technician</Label>
+                    <Select value={approveTechnician} onValueChange={setApproveTechnician}>
+                      <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {technicians.filter((t: any) => t.status === 'Active').map((t: any) => (
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                        ))}
+                        {technicians.filter((t: any) => t.status === 'Active').length === 0 && (
+                          <>
+                            <SelectItem value="Chris">Chris</SelectItem>
+                            <SelectItem value="Emman">Emman</SelectItem>
+                            <SelectItem value="Carlos">Carlos</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Priority Level</Label>
+                    <Select value={approvePriority} onValueChange={setApprovePriority}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Low">Low</SelectItem>
+                        <SelectItem value="Normal">Normal</SelectItem>
+                        <SelectItem value="High">High</SelectItem>
+                        <SelectItem value="Emergency">Emergency</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Appointment Date</Label>
+                    <Input name="appointmentDate" type="date" defaultValue={selectedRequestForApprove.preferred_date || ''} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Appointment Time</Label>
+                    <Input name="appointmentTime" type="time" defaultValue={selectedRequestForApprove.preferred_time || ''} />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label>Estimated Duration</Label>
+                    <Select name="estimatedDuration" defaultValue="2 Hours">
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1 Hour">1 Hour</SelectItem>
+                        <SelectItem value="2 Hours">2 Hours</SelectItem>
+                        <SelectItem value="3 Hours">3 Hours</SelectItem>
+                        <SelectItem value="4 Hours">4 Hours</SelectItem>
+                        <SelectItem value="Half Day">Half Day</SelectItem>
+                        <SelectItem value="Full Day">Full Day</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Monitoring & Status */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Monitoring & Status</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Service Status</Label>
+                    <Select value={approveServiceStatus} onValueChange={setApproveServiceStatus}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Scheduled">Scheduled</SelectItem>
+                        <SelectItem value="In Progress">In Progress</SelectItem>
+                        <SelectItem value="Completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Booking Source</Label>
+                    <Select value={approveBookingSource} onValueChange={setApproveBookingSource}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Website">Website</SelectItem>
+                        <SelectItem value="Facebook">Facebook</SelectItem>
+                        <SelectItem value="Walk-in">Walk-in</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financials */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Financials</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label>Service Fee (₱)</Label>
+                    <Input name="serviceFee" type="number" placeholder="0.00" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Est. Parts Cost (₱)</Label>
+                    <Input name="partsCost" type="number" placeholder="0.00" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Total Cost (₱)</Label>
+                    <Input name="totalCost" type="number" placeholder="0.00" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
+                <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm & Approve
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onViewDetails }: any) {
+  const [showAdd, setShowAdd] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [type, setType] = useState('Real-Time')
+  const today = new Date().toISOString().split('T')[0]
+
+  const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    formData.append('type', type)
+    const result = await createMaintenance(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Maintenance service added')
+      fetchMaintenance()
+      setShowAdd(false)
+    }
+    setIsLoading(false)
+  }
+
+  const handleComplete = async (id: string) => {
+    const result = await markMaintenanceComplete(id)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Maintenance marked as completed')
+      fetchMaintenance()
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <div>
+            <h1 className="text-xl font-bold text-[#005596]">Maintenance Monitoring</h1>
+            <p className="text-sm text-gray-500">Track and manage maintenance requests</p>
+          </div>
+        </div>
+        <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Maintenance</Button>
+      </header>
+      <main className="container mx-auto py-8 px-6 space-y-6">
+        <Card className="border-none shadow-sm p-4">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input className="pl-10" placeholder="Search maintenance by client, service type, or technician..." />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
+              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
+            </Select>
+          </div>
+        </Card>
+        <div className="grid grid-cols-4 gap-6">
+          <MiniStatCard title="Total Maintenance" value={maintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="In Progress" value={maintenance.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value={maintenance.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Completed" value={maintenance.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+        </div>
+        <div className="space-y-4">
+          <h2 className="font-bold text-[#005596]">Maintenance Services ({maintenance.length})</h2>
+          {maintenance.map((item: any) => (
+            <Card key={item.id} className="border-none shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-[#005596]">{item.title}</h3>
+                      <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
+                      <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> {item.technician}</span>
+                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
+                    <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{item.progress}%</span></div>
+                  <Progress value={item.progress} className="h-2" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {maintenance.length === 0 && <div className="text-center py-12 text-gray-400">No maintenance services found</div>}
+        </div>
+      </main>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Add Maintenance Service (from existing client)</DialogTitle></DialogHeader>
+          <form onSubmit={handleAdd} className="py-4 space-y-6">
+            <div className="space-y-2">
+              <Label>Service Type *</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  type="button"
+                  onClick={() => setType('Real-Time')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Clock className="mx-auto h-8 w-8 text-[#005596]" />
+                  <div className="font-bold">Real-Time Maintenance</div>
+                  <div className="text-xs text-gray-500">Start immediately</div>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setType('Schedule')}
+                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
+                  <div className="font-bold">Schedule Maintenance</div>
+                  <div className="text-xs text-gray-500">Pick date & time</div>
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Service Type</Label>
+              <Input name="serviceType" placeholder="e.g., Cleaning, Filter Replacement" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Client Name</Label>
+                <Input name="clientName" placeholder="Client name" required />
+              </div>
+              <div className="space-y-2">
+                <Label>Address</Label>
+                <Input name="address" placeholder="Service address" required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Technician</Label>
+                <Input name="technician" placeholder="Technician name" required />
+              </div>
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input name="date" type="date" defaultValue={today} required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Time</Label>
+                <Input name="time" type="time" required />
+              </div>
+              <div className="space-y-2">
+                <Label>Cost</Label>
+                <Input name="cost" type="number" placeholder="0.00" required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea name="notes" placeholder="Additional notes..." />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#005596]" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Add Maintenance
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -3077,50 +4046,123 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
       </main>
 
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Technician</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreateTechnician} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Full Name *</Label>
-              <Input name="fullName" placeholder="Juan Dela Cruz" required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleCreateTechnician} className="space-y-5 py-4">
+
+            {/* Personal Information */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Personal Information</p>
               <div className="space-y-2">
-                <Label>Email</Label>
-                <Input name="email" type="email" placeholder="juan@example.com" />
+                <Label>Full Name *</Label>
+                <Input name="fullName" placeholder="Juan Dela Cruz" required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Contact Number</Label>
+                  <Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email Address</Label>
+                  <Input name="email" type="email" placeholder="juan@example.com" />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Phone Number</Label>
-                <Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} />
+                <Label>Profile Picture</Label>
+                <Input name="profilePicture" type="file" accept="image/*" className="cursor-pointer" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Specialization</Label>
-              <Select name="specialization" defaultValue="General">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select specialization" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="General">General</SelectItem>
-                  <SelectItem value="Installation">Installation</SelectItem>
-                  <SelectItem value="Repair">Repair</SelectItem>
-                  <SelectItem value="Maintenance">Maintenance</SelectItem>
-                  <SelectItem value="Split Type">Split Type</SelectItem>
-                  <SelectItem value="Window Type">Window Type</SelectItem>
-                  <SelectItem value="Central AC">Central AC</SelectItem>
-                </SelectContent>
-              </Select>
+
+            {/* Skills & Capacity */}
+            <div className="space-y-3 pt-2 border-t">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skills & Capacity</p>
+              <div className="space-y-2">
+                <Label>Expertise</Label>
+                <Select name="specialization" defaultValue="General">
+                  <SelectTrigger><SelectValue placeholder="Select expertise" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="General">General</SelectItem>
+                    <SelectItem value="Inverter Specialist">Inverter Specialist</SelectItem>
+                    <SelectItem value="Installation Expert">Installation Expert</SelectItem>
+                    <SelectItem value="Repair Specialist">Repair Specialist</SelectItem>
+                    <SelectItem value="Maintenance Expert">Maintenance Expert</SelectItem>
+                    <SelectItem value="Split Type">Split Type</SelectItem>
+                    <SelectItem value="Window Type">Window Type</SelectItem>
+                    <SelectItem value="Central AC">Central AC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Max Jobs per Day</Label>
+                <Select name="maxJobsPerDay" defaultValue="3">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 job</SelectItem>
+                    <SelectItem value="2">2 jobs</SelectItem>
+                    <SelectItem value="3">3 jobs</SelectItem>
+                    <SelectItem value="4">4 jobs</SelectItem>
+                    <SelectItem value="5">5 jobs</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Hire Date</Label>
-              <Input name="hireDate" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+
+            {/* Availability & Duty Settings */}
+            <div className="space-y-3 pt-2 border-t">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Availability & Duty Settings</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Duty Status</Label>
+                  <Select name="dutyStatus" defaultValue="Active">
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="On Leave">On Leave</SelectItem>
+                      <SelectItem value="Inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Weekly Off-Day</Label>
+                  <Select name="weeklyOffDay" defaultValue="Sunday">
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Sunday">Sunday</SelectItem>
+                      <SelectItem value="Monday">Monday</SelectItem>
+                      <SelectItem value="Saturday">Saturday</SelectItem>
+                      <SelectItem value="Saturday-Sunday">Saturday & Sunday</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Shift Start</Label>
+                  <Input name="shiftStart" type="time" defaultValue="08:00" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Shift End</Label>
+                  <Input name="shiftEnd" type="time" defaultValue="17:00" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Leave Start Date</Label>
+                  <Input name="leaveStart" type="date" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Leave End Date</Label>
+                  <Input name="leaveEnd" type="date" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Hire Date</Label>
+                <Input name="hireDate" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea name="notes" placeholder="Any additional notes..." />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea name="notes" placeholder="Any additional notes..." />
-            </div>
+
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#00529B]" disabled={isLoading}>
@@ -3132,47 +4174,120 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
       </Dialog>
 
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Technician</DialogTitle>
           </DialogHeader>
           {selectedTechnician && (
-            <form onSubmit={handleUpdateTechnician} className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Full Name *</Label>
-                <Input name="fullName" defaultValue={selectedTechnician.full_name} required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleUpdateTechnician} className="space-y-5 py-4">
+
+              {/* Personal Information */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Personal Information</p>
                 <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input name="email" type="email" defaultValue={selectedTechnician.email} />
+                  <Label>Full Name *</Label>
+                  <Input name="fullName" defaultValue={selectedTechnician.full_name} required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Contact Number</Label>
+                    <Input name="phone" defaultValue={selectedTechnician.phone} maxLength={11} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email Address</Label>
+                    <Input name="email" type="email" defaultValue={selectedTechnician.email} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Phone Number</Label>
-                  <Input name="phone" defaultValue={selectedTechnician.phone} maxLength={11} />
+                  <Label>Profile Picture</Label>
+                  <Input name="profilePicture" type="file" accept="image/*" className="cursor-pointer" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Specialization</Label>
-                <Select name="specialization" defaultValue={selectedTechnician.specialization || 'General'}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select specialization" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="General">General</SelectItem>
-                    <SelectItem value="Installation">Installation</SelectItem>
-                    <SelectItem value="Repair">Repair</SelectItem>
-                    <SelectItem value="Maintenance">Maintenance</SelectItem>
-                    <SelectItem value="Split Type">Split Type</SelectItem>
-                    <SelectItem value="Window Type">Window Type</SelectItem>
-                    <SelectItem value="Central AC">Central AC</SelectItem>
-                  </SelectContent>
-                </Select>
+
+              {/* Skills & Capacity */}
+              <div className="space-y-3 pt-2 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skills & Capacity</p>
+                <div className="space-y-2">
+                  <Label>Expertise</Label>
+                  <Select name="specialization" defaultValue={selectedTechnician.specialization || 'General'}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="General">General</SelectItem>
+                      <SelectItem value="Inverter Specialist">Inverter Specialist</SelectItem>
+                      <SelectItem value="Installation Expert">Installation Expert</SelectItem>
+                      <SelectItem value="Repair Specialist">Repair Specialist</SelectItem>
+                      <SelectItem value="Maintenance Expert">Maintenance Expert</SelectItem>
+                      <SelectItem value="Split Type">Split Type</SelectItem>
+                      <SelectItem value="Window Type">Window Type</SelectItem>
+                      <SelectItem value="Central AC">Central AC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Jobs per Day</Label>
+                  <Select name="maxJobsPerDay" defaultValue={selectedTechnician.max_jobs_per_day?.toString() || '3'}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 job</SelectItem>
+                      <SelectItem value="2">2 jobs</SelectItem>
+                      <SelectItem value="3">3 jobs</SelectItem>
+                      <SelectItem value="4">4 jobs</SelectItem>
+                      <SelectItem value="5">5 jobs</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Textarea name="notes" defaultValue={selectedTechnician.notes} placeholder="Any additional notes..." />
+
+              {/* Availability & Duty Settings */}
+              <div className="space-y-3 pt-2 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Availability & Duty Settings</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Duty Status</Label>
+                    <Select name="dutyStatus" defaultValue={selectedTechnician.status || 'Active'}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Active">Active</SelectItem>
+                        <SelectItem value="On Leave">On Leave</SelectItem>
+                        <SelectItem value="Inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Weekly Off-Day</Label>
+                    <Select name="weeklyOffDay" defaultValue={selectedTechnician.weekly_off_day || 'Sunday'}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Sunday">Sunday</SelectItem>
+                        <SelectItem value="Monday">Monday</SelectItem>
+                        <SelectItem value="Saturday">Saturday</SelectItem>
+                        <SelectItem value="Saturday-Sunday">Saturday & Sunday</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Shift Start</Label>
+                    <Input name="shiftStart" type="time" defaultValue={selectedTechnician.shift_start || '08:00'} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Shift End</Label>
+                    <Input name="shiftEnd" type="time" defaultValue={selectedTechnician.shift_end || '17:00'} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Leave Start Date</Label>
+                    <Input name="leaveStart" type="date" defaultValue={selectedTechnician.leave_start || ''} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Leave End Date</Label>
+                    <Input name="leaveEnd" type="date" defaultValue={selectedTechnician.leave_end || ''} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea name="notes" defaultValue={selectedTechnician.notes} placeholder="Any additional notes..." />
+                </div>
               </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
                 <Button type="submit" className="bg-[#00529B]" disabled={isLoading}>
@@ -3185,12 +4300,13 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
       </Dialog>
 
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Technician Details</DialogTitle>
           </DialogHeader>
           {selectedTechnician && (
             <div className="space-y-6 py-4">
+              {/* Header */}
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
                   <HardHat className="h-8 w-8 text-gray-400" />
@@ -3198,8 +4314,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                 <div>
                   <h3 className="text-xl font-bold text-[#005596]">{selectedTechnician.full_name}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge 
-                      variant="outline" 
+                    <Badge
+                      variant="outline"
                       className={
                         selectedTechnician.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
                         selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
@@ -3214,48 +4330,112 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                   </div>
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Email</p>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-gray-400" />
-                    {selectedTechnician.email || 'Not provided'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Phone</p>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-gray-400" />
-                    {selectedTechnician.phone || 'Not provided'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Hire Date</p>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                    {selectedTechnician.hire_date ? format(parseISO(selectedTechnician.hire_date), 'MMM d, yyyy') : 'Not provided'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Created At</p>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    {selectedTechnician.created_at ? format(parseISO(selectedTechnician.created_at), 'MMM d, yyyy') : 'N/A'}
-                  </p>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <p className="text-xs text-gray-500 font-medium">Notes</p>
-                  <div className="bg-gray-50 p-3 rounded border text-sm italic">
-                    {selectedTechnician.notes || 'No notes provided'}
+
+              {/* Personal Information */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Personal Information</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Email</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-gray-400" />
+                      {selectedTechnician.email || 'Not provided'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Contact Number</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-gray-400" />
+                      {selectedTechnician.phone || 'Not provided'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Hire Date</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      {selectedTechnician.hire_date ? format(parseISO(selectedTechnician.hire_date), 'MMM d, yyyy') : 'Not provided'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Date Added</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-gray-400" />
+                      {selectedTechnician.created_at ? format(parseISO(selectedTechnician.created_at), 'MMM d, yyyy') : 'N/A'}
+                    </p>
                   </div>
                 </div>
               </div>
-              
+
+              {/* Skills & Capacity */}
+              <div className="space-y-3 pt-3 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Skills & Capacity</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Expertise</p>
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      {selectedTechnician.specialization || 'General'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Max Jobs per Day</p>
+                    <p className="text-sm font-bold text-[#005596]">
+                      {selectedTechnician.max_jobs_per_day || 3} {selectedTechnician.max_jobs_per_day === 1 ? 'job' : 'jobs'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Availability & Duty Settings */}
+              <div className="space-y-3 pt-3 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Availability & Duty Settings</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Duty Status</p>
+                    <Badge
+                      variant="outline"
+                      className={
+                        selectedTechnician.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
+                        selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        'bg-red-50 text-red-700 border-red-200'
+                      }
+                    >
+                      {selectedTechnician.status || 'Active'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Weekly Off-Day</p>
+                    <p className="text-sm font-medium">{selectedTechnician.weekly_off_day || 'Sunday'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 font-medium">Regular Shift</p>
+                    <p className="text-sm font-medium flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-gray-400" />
+                      {selectedTechnician.shift_start || '08:00'} – {selectedTechnician.shift_end || '17:00'}
+                    </p>
+                  </div>
+                  {(selectedTechnician.leave_start || selectedTechnician.leave_end) && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-500 font-medium">Leave Schedule</p>
+                      <p className="text-sm font-medium">
+                        {selectedTechnician.leave_start || '—'} → {selectedTechnician.leave_end || '—'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2 pt-3 border-t">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</p>
+                <div className="bg-gray-50 p-3 rounded border text-sm italic">
+                  {selectedTechnician.notes || 'No notes provided'}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>Close</Button>
-                <Button 
-                  className="bg-[#005596]" 
+                <Button
+                  className="bg-[#005596]"
                   onClick={() => {
                     setShowDetailsDialog(false)
                     setShowEditDialog(true)
