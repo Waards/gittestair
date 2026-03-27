@@ -254,7 +254,7 @@ export default function ClientDashboard() {
                   <form onSubmit={handleRequestService} className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label htmlFor="serviceType">Service Type *</Label>
-                      <Select value={serviceType} onValueChange={(v) => {
+                      <Select value={serviceType} onValueChange={(v: string) => {
                         setServiceType(v)
                         setAirconBrand('')
                         setAirconType('')
@@ -282,7 +282,7 @@ export default function ClientDashboard() {
                         </div>
                         <div className="space-y-2">
                           <Label className="text-sm">Aircon Brand</Label>
-                          <Select value={airconBrand} onValueChange={setAirconBrand}>
+                          <Select value={airconBrand} onValueChange={(v: string) => setAirconBrand(v)}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select brand" />
                             </SelectTrigger>
@@ -295,7 +295,7 @@ export default function ClientDashboard() {
                         </div>
                         <div className="space-y-2">
                           <Label className="text-sm">Aircon Type</Label>
-                          <Select value={airconType} onValueChange={setAirconType}>
+                          <Select value={airconType} onValueChange={(v: string) => setAirconType(v)}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
