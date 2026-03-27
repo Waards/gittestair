@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   Dialog, 
   DialogContent, 
@@ -59,9 +59,15 @@ interface BookingFormProps {
 }
 
 export function BookingForm({ trigger }: BookingFormProps) {
+  const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState(1)
   const [isOpen, setIsOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -183,16 +189,21 @@ export function BookingForm({ trigger }: BookingFormProps) {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      setIsOpen(open)
-      if (!open) {
-        setStep(1)
-      }
-    }}>
-      <DialogTrigger asChild>
-        {trigger || <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+    <>
+      {!mounted ? (
+        // Render trigger on server to prevent hydration mismatch
+        trigger || <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>
+      ) : (
+        <Dialog open={isOpen} onOpenChange={(open) => {
+          setIsOpen(open)
+          if (!open) {
+            setStep(1)
+          }
+        }}>
+          <DialogTrigger asChild>
+            {trigger || <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>}
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
         <DialogHeader className="p-6 bg-white border-b">
           <div className="flex justify-center items-center gap-8 mb-4">
             {[1, 2, 3].map((s) => (
@@ -565,5 +576,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
         </div>
       </DialogContent>
     </Dialog>
+      )}
+    </>
   )
 }
