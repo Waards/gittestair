@@ -175,6 +175,8 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     setIsFetching(true)
     try {
+      console.log('Fetching dashboard data...')
+      
       // Only fetch essential dashboard data initially (very fast)
       const results = await Promise.allSettled([
         getDashboardInstallations(),
@@ -182,10 +184,18 @@ export default function AdminDashboard() {
         getDashboardMaintenance(),
         getSettings(),
         getNotifications(),
-        getClients(), // Fetch clients for dashboard display
-        getAppointments(), // Fetch recent appointments/requests
-        getLeads() // Fetch leads for dashboard display
+        getClients(),
+        getAppointments(),
+        getLeads()
       ])
+
+      // Log each result
+      const resultNames = ['installations', 'repairs', 'maintenance', 'settings', 'notifications', 'clients', 'appointments', 'leads']
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`Failed to fetch ${resultNames[i]}:`, r.reason)
+        }
+      })
 
       if (results[0].status === 'fulfilled') setInstallations(results[0].value || [])
       if (results[1].status === 'fulfilled') setRepairs(results[1].value || [])
@@ -196,9 +206,21 @@ export default function AdminDashboard() {
       if (results[6].status === 'fulfilled') setAppointments(results[6].value || [])
       if (results[7].status === 'fulfilled') setLeads(results[7].value || [])
 
-      if (results.some(r => r.status === 'rejected')) {
-        console.error('Some dashboard data failed to load')
-        toast.warning('Some dashboard data could not be loaded')
+      console.log('Dashboard data loaded:', {
+        installations: results[0].status,
+        repairs: results[1].status,
+        maintenance: results[2].status,
+        settings: results[3].status,
+        notifications: results[4].status,
+        clients: results[5].status,
+        appointments: results[6].status,
+        leads: results[7].status,
+      })
+
+      const failedCount = results.filter(r => r.status === 'rejected').length
+      if (failedCount > 0) {
+        console.error(`${failedCount} data sources failed to load`)
+        toast.warning(`${failedCount} data sources could not be loaded`)
       }
     } catch (error) {
       console.error('fetchDashboardData error:', error)

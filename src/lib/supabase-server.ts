@@ -29,9 +29,19 @@ export async function createClient() {
 }
 
 export async function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !serviceKey) {
+    console.error('Missing Supabase env vars:', { 
+      hasUrl: !!supabaseUrl, 
+      hasKey: !!serviceKey 
+    })
+  }
+  
   return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseUrl!,
+    serviceKey!,
     {
       auth: {
         autoRefreshToken: false,
