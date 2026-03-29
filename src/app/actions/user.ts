@@ -306,3 +306,82 @@ export async function requestService(formData: FormData) {
   revalidatePath('/admin')
   return { success: true }
 }
+
+export async function updateProfile(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const fullName = formData.get('fullName') as string
+  const phone = formData.get('phone') as string
+  const address = formData.get('address') as string
+
+  if (phone && !validatePHPhone(phone)) {
+    return { error: PHONE_VALIDATION_ERROR }
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ 
+      full_name: fullName,
+      phone: phone,
+      address: address 
+    })
+    .eq('id', user.id)
+
+  if (error) {
+    console.error('updateProfile error:', error)
+    return { error: error.message }
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function getUserMaintenanceWithItems() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return []
+  }
+
+  // Get user's profile to match by client_name
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', user.id)
+    .single()
+
+  const clientName = profile?.full_name
+
+  // Get maintenance records for this client
+  const { data: maintenance, error } = await supabase
+    .from('maintenance')
+    .select('*')
+    .eq('client_name', clientName)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('getUserMaintenanceWithItems error:', error)
+    return []
+  }
+
+  // Get all maintenance items if there are maintenance records
+  let items: any[] = []
+  if (maintenance && maintenance.length > 0) {
+    const { data: itemsData } = await supabase
+      .from('maintenance_items')
+      .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
+      .in('maintenance_id', (maintenance || []).map(m => m.id))
+    items = itemsData || []
+  }
+
+  // Attach items to maintenance records
+  const maintenanceWithItems = (maintenance || []).map(m => ({
+    ...m,
+    items: items.filter((item: any) => item.maintenance_id === m.id)
+  }))
+
+  return maintenanceWithItems
+}

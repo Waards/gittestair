@@ -9,8 +9,8 @@ export default function Footer() {
           {/* Column 1: Brand Info */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">A</span>
+              <div className="w-10 h-10 flex items-center justify-center transition-transform hover:scale-105">
+                <img src="/logo.png" alt="Azelea Logo" className="w-full h-full object-contain rounded-full" />
               </div>
               <span className="font-bold text-xl text-foreground">Azelea</span>
             </div>

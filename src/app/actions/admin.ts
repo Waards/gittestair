@@ -251,6 +251,32 @@ export async function createAppointment(formData: FormData) {
     return { error: PHONE_VALIDATION_ERROR }
   }
 
+  const dateStr = formData.get('date') as string
+  if (dateStr) {
+    // Enforce Max Bookings per day (Maximum 4 bookings)
+    const { count: appointmentsCount, error: apptError } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('date', dateStr)
+
+    const { count: leadsCount, error: leadsError } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('preferred_date', dateStr)
+      .neq('status', 'Cancelled')
+
+    if (apptError || leadsError) {
+      console.error('Error checking availability:', apptError || leadsError)
+      return { error: 'Failed to verify booking availability. Please try again later.' }
+    }
+
+    const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
+    
+    if (totalBookings >= 4) {
+      return { error: 'This date is fully booked (Max 4 bookings). Please select another day.' }
+    }
+  }
+
   const data = {
     client_name: formData.get('clientName') as string,
     email: formData.get('email') as string,
@@ -624,6 +650,362 @@ export async function deleteTechnician(id: string) {
     .from('technicians')
     .delete()
     .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function updateAppointmentStatus(id: string, status: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  // Notify client if reachable
+  const { data: apt } = await supabase.from('appointments').select('*').eq('id', id).single()
+  if (apt?.email) {
+    const { data: client } = await supabase.from('profiles').select('id').eq('email', apt.email).single()
+    if (client?.id) {
+      await supabase.from('notifications').insert({
+        user_id: client.id,
+        title: 'Appointment Status Updated',
+        message: `Your appointment status is now: ${status}.`,
+        type: 'update',
+        link: '/dashboard'
+      })
+    }
+  }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function rescheduleAppointment(id: string, date: string, time: string) {
+  const supabase = await createAdminClient()
+  
+  // Enforce Max Bookings per day (Maximum 4 bookings) for the new date
+  const { count: appointmentsCount, error: apptError } = await supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('date', date)
+
+  const { count: leadsCount, error: leadsError } = await supabase
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('preferred_date', date)
+    .neq('status', 'Cancelled')
+
+  if (apptError || leadsError) {
+    return { error: 'Failed to verify booking availability for the new date.' }
+  }
+
+  const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
+  
+  if (totalBookings >= 4) {
+    return { error: 'The new date is fully booked (Max 4 bookings). Please select another day.' }
+  }
+
+  const { error } = await supabase
+    .from('appointments')
+    .update({ date, time })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+// --------------------------------------------------------------------
+// ASSET REGISTRY - client_units
+// --------------------------------------------------------------------
+
+export async function registerUnit(formData: FormData) {
+  const supabase = await createAdminClient()
+  const clientId = formData.get('clientId') as string
+  const unitName = formData.get('unitName') as string
+  const brand = formData.get('brand') as string
+  const unitType = formData.get('unitType') as string
+  const technology = formData.get('technology') as string
+  const horsepower = parseFloat(formData.get('horsepower') as string)
+  const indoorSerial = formData.get('indoorSerial') as string
+  const outdoorSerial = formData.get('outdoorSerial') as string
+  const installationDate = formData.get('installationDate') as string
+  if (!clientId || !unitName || !brand || !unitType || !technology || !horsepower) {
+    return { error: 'Please fill in all required fields.' }
+  }
+  const { data, error } = await supabase
+    .from('client_units')
+    .insert({ client_id: clientId, unit_name: unitName, brand, unit_type: unitType, technology, horsepower, indoor_serial: indoorSerial || null, outdoor_serial: outdoorSerial || null, installation_date: installationDate || null })
+    .select().single()
+  if (error) { console.error('registerUnit error:', error); return { error: error.message } }
+  revalidatePath('/admin')
+  return { success: true, unit: data }
+}
+
+export async function getClientUnits(clientId?: string) {
+  const supabase = await createAdminClient()
+  let query = supabase.from('client_units').select('*, profiles(full_name, email)').order('created_at', { ascending: false })
+  if (clientId) { query = query.eq('client_id', clientId) }
+  const { data, error } = await query
+  if (error) { console.error('getClientUnits error:', error); return [] }
+  return data || []
+}
+
+export async function deleteClientUnit(unitId: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from('client_units').delete().eq('id', unitId)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+// --------------------------------------------------------------------
+// REPAIR DIAGNOSIS - repair_jobs
+// --------------------------------------------------------------------
+
+export async function logRepairJob(formData: FormData) {
+  const supabase = await createAdminClient()
+  const unitId = formData.get('unitId') as string
+  const clientId = formData.get('clientId') as string
+  const errorCode = formData.get('errorCode') as string
+  const symptom = formData.get('symptom') as string
+  const partsJson = formData.get('partsReplaced') as string
+  const beforePhotoUrl = formData.get('beforePhotoUrl') as string
+  const afterPhotoUrl = formData.get('afterPhotoUrl') as string
+  if (!clientId) { return { error: 'Client is required.' } }
+  let partsReplaced: any[] = []
+  try { partsReplaced = partsJson ? JSON.parse(partsJson) : [] } catch { partsReplaced = [] }
+  const { data, error } = await supabase
+    .from('repair_jobs')
+    .insert({ unit_id: unitId || null, client_id: clientId, error_code: errorCode || null, symptom: symptom || null, parts_replaced: partsReplaced, before_photo_url: beforePhotoUrl || null, after_photo_url: afterPhotoUrl || null, status: 'Open' })
+    .select().single()
+  if (error) { console.error('logRepairJob error:', error); return { error: error.message } }
+  revalidatePath('/admin')
+  return { success: true, job: data }
+}
+
+export async function getRepairJobs() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('repair_jobs')
+    .select('*, client_units(unit_name, brand, unit_type), profiles(full_name)')
+    .order('created_at', { ascending: false })
+  if (error) { console.error('getRepairJobs error:', error); return [] }
+  return data || []
+}
+
+export async function updateRepairJobStatus(jobId: string, status: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from('repair_jobs').update({ status }).eq('id', jobId)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+// --------------------------------------------------------------------
+// MAINTENANCE WITH MULTI-UNIT SUPPORT
+// --------------------------------------------------------------------
+
+export async function createMaintenanceWithUnits(formData: FormData) {
+  const supabase = await createAdminClient()
+  
+  const clientId = formData.get('clientId') as string
+  const clientName = formData.get('clientName') as string
+  const location = formData.get('address') as string
+  const technician = formData.get('technician') as string
+  const date = formData.get('date') as string
+  const time = formData.get('time') as string
+  const notes = formData.get('notes') as string
+  const type = formData.get('type') as string
+  
+  // Parse JSON strings for unit IDs and service types
+  let unitIds: string[] = []
+  let serviceTypes: string[] = []
+  
+  try {
+    const unitIdsJson = formData.get('unitIdsJson') as string
+    const serviceTypesJson = formData.get('serviceTypesJson') as string
+    unitIds = unitIdsJson ? JSON.parse(unitIdsJson) : []
+    serviceTypes = serviceTypesJson ? JSON.parse(serviceTypesJson) : []
+  } catch (e) {
+    console.error('Error parsing unit data:', e)
+    return { error: 'Invalid unit data' }
+  }
+  
+  if (!clientName || !date || !time || unitIds.length === 0) {
+    return { error: 'Please fill in all required fields and select at least one unit.' }
+  }
+  
+  // Create the main maintenance record
+  const { data: maintenance, error: maintenanceError } = await supabase
+    .from('maintenance')
+    .insert({
+      title: 'Multi-Unit Maintenance',
+      client_name: clientName,
+      location,
+      technician,
+      date,
+      time,
+      notes,
+      type: type || 'Scheduled',
+      status: 'Scheduled',
+      progress: 0,
+      is_multi_unit: true,
+      client_id: clientId || null
+    })
+    .select()
+    .single()
+  
+  if (maintenanceError) {
+    console.error('createMaintenanceWithUnits error:', maintenanceError)
+    return { error: maintenanceError.message }
+  }
+  
+  // Create maintenance items for each selected unit
+  const maintenanceItems = unitIds.map((unitId, index) => ({
+    maintenance_id: maintenance.id,
+    unit_id: unitId,
+    service_type: serviceTypes[index] || 'Cleaning',
+    status: 'Pending',
+    next_cleaning_date: null
+  }))
+  
+  const { error: itemsError } = await supabase
+    .from('maintenance_items')
+    .insert(maintenanceItems)
+  
+  if (itemsError) {
+    console.error('createMaintenanceWithUnits items error:', itemsError)
+    // Rollback - delete the maintenance record
+    await supabase.from('maintenance').delete().eq('id', maintenance.id)
+    return { error: itemsError.message }
+  }
+  
+  revalidatePath('/admin')
+  return { success: true, maintenance }
+}
+
+export async function getMaintenanceWithItems() {
+  const supabase = await createAdminClient()
+  
+  // Get all maintenance records
+  const { data: maintenance, error } = await supabase
+    .from('maintenance')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (error) {
+    console.error('getMaintenanceWithItems error:', error)
+    return []
+  }
+  
+  // Get all maintenance items
+  const { data: items } = await supabase
+    .from('maintenance_items')
+    .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
+  
+  // Attach items to maintenance records
+  const maintenanceWithItems = (maintenance || []).map(m => ({
+    ...m,
+    items: (items || []).filter(item => item.maintenance_id === m.id)
+  }))
+  
+  return maintenanceWithItems
+}
+
+export async function updateMaintenanceItemStatus(itemId: string, status: string) {
+  const supabase = await createAdminClient()
+  
+  const updateData: any = { status }
+  
+  // If marking as Done, set completed_at and calculate next cleaning date
+  if (status === 'Done') {
+    const completedAt = new Date()
+    updateData.completed_at = completedAt.toISOString()
+    
+    // Auto-generate next cleaning date (default +3 months)
+    const nextDate = new Date(completedAt)
+    nextDate.setMonth(nextDate.getMonth() + 3)
+    updateData.next_cleaning_date = nextDate.toISOString().split('T')[0]
+  }
+  
+  const { error } = await supabase
+    .from('maintenance_items')
+    .update(updateData)
+    .eq('id', itemId)
+  
+  if (error) return { error: error.message }
+  
+  // Update parent maintenance status based on items
+  await updateMaintenanceParentStatus(itemId)
+  
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+async function updateMaintenanceParentStatus(itemId: string) {
+  const supabase = await createAdminClient()
+  
+  // Get the maintenance item to find its parent
+  const { data: item } = await supabase
+    .from('maintenance_items')
+    .select('maintenance_id')
+    .eq('id', itemId)
+    .single()
+  
+  if (!item) return
+  
+  // Get all items for this maintenance
+  const { data: items } = await supabase
+    .from('maintenance_items')
+    .select('status')
+    .eq('maintenance_id', item.maintenance_id)
+  
+  if (!items || items.length === 0) return
+  
+  const allDone = items.every(i => i.status === 'Done')
+  const anyInProgress = items.some(i => i.status === 'In Progress')
+  const anyPending = items.some(i => i.status === 'Pending')
+  
+  let newStatus = 'Scheduled'
+  let progress = 0
+  
+  if (allDone) {
+    newStatus = 'Completed'
+    progress = 100
+  } else if (anyInProgress) {
+    newStatus = 'In Progress'
+    progress = Math.round((items.filter(i => i.status === 'Done').length / items.length) * 100)
+  } else if (anyPending) {
+    newStatus = 'Scheduled'
+    progress = Math.round((items.filter(i => i.status === 'Done').length / items.length) * 100)
+  }
+  
+  await supabase
+    .from('maintenance')
+    .update({ status: newStatus, progress })
+    .eq('id', item.maintenance_id)
+}
+
+export async function updateMaintenanceItemServiceType(itemId: string, serviceType: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('maintenance_items')
+    .update({ service_type: serviceType })
+    .eq('id', itemId)
+  
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function deleteMaintenanceItem(itemId: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('maintenance_items')
+    .delete()
+    .eq('id', itemId)
+  
   if (error) return { error: error.message }
   revalidatePath('/admin')
   return { success: true }

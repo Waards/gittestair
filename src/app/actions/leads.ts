@@ -33,6 +33,29 @@ export async function submitLead(formData: FormData) {
     return { error: PHONE_VALIDATION_ERROR }
   }
 
+  // Enforce Max Bookings per day (Maximum 4 bookings)
+  const { count: appointmentsCount, error: apptError } = await supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('date', preferredDate)
+
+  const { count: leadsCount, error: leadsError } = await supabase
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('preferred_date', preferredDate)
+    .neq('status', 'Cancelled')
+
+  if (apptError || leadsError) {
+    console.error('Error checking availability:', apptError || leadsError)
+    return { error: 'Failed to verify booking availability. Please try again later.' }
+  }
+
+  const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
+  
+  if (totalBookings >= 4) {
+    return { error: 'This date is fully booked (Max 4 bookings). Please select another day.' }
+  }
+
   const { error } = await supabase
     .from('leads')
     .insert({
@@ -168,13 +191,13 @@ export async function convertLeadToClient(leadId: string) {
     return { error: profileError.message }
   }
 
-  const { error: deleteError } = await supabase
+  const { error: convertError } = await supabase
     .from('leads')
-    .delete()
+    .update({ status: 'Converted' })
     .eq('id', leadId)
 
-  if (deleteError) {
-    console.error('convertLeadToClient: error deleting lead:', deleteError)
+  if (convertError) {
+    console.error('convertLeadToClient: error updating lead status:', convertError)
   }
 
   await supabase
