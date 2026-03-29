@@ -34,7 +34,7 @@ const Navigation = () => {
     
     checkAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setUser(session?.user || null);
       if (session) {
         supabase
@@ -42,7 +42,7 @@ const Navigation = () => {
           .select('role')
           .eq('id', session.user.id)
           .single()
-          .then(({ data }) => setRole(data?.role || 'client'));
+          .then(({ data }: any) => setRole(data?.role || 'client'));
       } else {
         setRole(null);
       }
@@ -87,8 +87,8 @@ const Navigation = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo Section */}
           <a href="/" className="flex items-center space-x-2 shrink-0">
-            <div className="w-8 h-8 bg-[#0062a3] rounded-lg flex items-center justify-center transition-transform hover:scale-105">
-              <span className="text-white font-bold text-sm">A</span>
+            <div className="w-12 h-12 flex items-center justify-center transition-transform hover:scale-105">
+              <img src="/logo.png" alt="Azelea Logo" className="w-full h-full object-contain rounded-full" />
             </div>
             <span className="font-bold text-xl text-[#020617] tracking-tight">
               Azelea

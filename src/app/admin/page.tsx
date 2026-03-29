@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
-  createClientUser, 
-  getClients, 
-  getInstallations, 
-  getRepairs, 
-  getAppointments, 
-  getSettings, 
+import {
+  createClientUser,
+  getClients,
+  getInstallations,
+  getRepairs,
+  getAppointments,
+  getSettings,
   updateSettings,
   createAppointment,
   createInstallation,
@@ -36,21 +36,34 @@ import {
   deleteTechnician,
   getDashboardInstallations,
   getDashboardRepairs,
-  getDashboardStats
+  getDashboardStats,
+  updateAppointmentStatus,
+  rescheduleAppointment,
+  registerUnit,
+  getClientUnits,
+  deleteClientUnit,
+  logRepairJob,
+  getRepairJobs,
+  updateRepairJobStatus,
+  createMaintenanceWithUnits,
+  getMaintenanceWithItems,
+  updateMaintenanceItemStatus,
+  updateMaintenanceItemServiceType,
+  deleteMaintenanceItem
 } from '@/app/actions/admin'
 import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead } from '@/app/actions/leads'
-import { 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  format, 
-  isSameMonth, 
-  isSameDay, 
-  addMonths, 
-  subMonths, 
-  parseISO 
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  format,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  parseISO
 } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,16 +71,16 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { 
-  Loader2, 
-  Copy, 
-  CheckCircle2, 
-  Users, 
-  Calendar, 
-  Wrench, 
-  PenTool, 
-  Clock, 
-  CheckCircle, 
+import {
+  Loader2,
+  Copy,
+  CheckCircle2,
+  Users,
+  Calendar,
+  Wrench,
+  PenTool,
+  Clock,
+  CheckCircle,
   TrendingUp,
   Bell,
   Settings as SettingsIcon,
@@ -98,15 +111,22 @@ import {
   Home,
   Edit2,
   Trash2,
-  HardHat
+  HardHat,
+  Thermometer,
+  Zap,
+  AlertTriangle,
+  Package,
+  Camera,
+  ClipboardList
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Progress } from '@/components/ui/progress'
 import { validatePHPhone, PHONE_VALIDATION_ERROR, cn } from '@/lib/utils'
+import { calculateDynamicProgress } from '@/lib/progress'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -127,6 +147,8 @@ export default function AdminDashboard() {
   const [technicians, setTechnicians] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [settings, setSettings] = useState<any>(null)
+  const [clientUnits, setClientUnits] = useState<any[]>([])
+  const [repairJobs, setRepairJobs] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
@@ -139,12 +161,15 @@ export default function AdminDashboard() {
   const [isSendingReminder, setIsSendingReminder] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<any>(null)
   const [showBookingDetails, setShowBookingDetails] = useState(false)
-  
+  const [, setTick] = useState<number>(0)
+
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     fetchDashboardData()
+    const interval = setInterval(() => setTick(t => t + 1), 60000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchDashboardData = async () => {
@@ -158,9 +183,10 @@ export default function AdminDashboard() {
         getSettings(),
         getNotifications(),
         getClients(), // Fetch clients for dashboard display
-        getAppointments() // Fetch recent appointments/requests
+        getAppointments(), // Fetch recent appointments/requests
+        getLeads() // Fetch leads for dashboard display
       ])
-      
+
       if (results[0].status === 'fulfilled') setInstallations(results[0].value || [])
       if (results[1].status === 'fulfilled') setRepairs(results[1].value || [])
       if (results[2].status === 'fulfilled') setMaintenance(results[2].value || [])
@@ -168,6 +194,7 @@ export default function AdminDashboard() {
       if (results[4].status === 'fulfilled') setNotifications(results[4].value || [])
       if (results[5].status === 'fulfilled') setClients(results[5].value || [])
       if (results[6].status === 'fulfilled') setAppointments(results[6].value || [])
+      if (results[7].status === 'fulfilled') setLeads(results[7].value || [])
 
       if (results.some(r => r.status === 'rejected')) {
         console.error('Some dashboard data failed to load')
@@ -185,12 +212,19 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (view === 'clients' && clients.length === 0) {
       getClients().then(setClients)
-    } else if (view === 'installations' && installations.length === 0) {
+    } else if (view === 'installations') {
       getInstallations().then(setInstallations)
-    } else if (view === 'repairs' && repairs.length === 0) {
+      getClientUnits().then(setClientUnits)
+      if (clients.length === 0) getClients().then(setClients)
+    } else if (view === 'repairs') {
       getRepairs().then(setRepairs)
+      getRepairJobs().then(setRepairJobs)
+      getClientUnits().then(setClientUnits)
+      if (clients.length === 0) getClients().then(setClients)
     } else if (view === 'maintenance' && maintenance.length === 0) {
       getMaintenance().then(setMaintenance)
+      getClientUnits().then(setClientUnits)
+      if (clients.length === 0) getClients().then(setClients)
     } else if (view === 'requests' && requests.length === 0) {
       getClientRequests().then(setRequests)
     } else if (view === 'leads' && leads.length === 0) {
@@ -198,7 +232,7 @@ export default function AdminDashboard() {
     } else if (view === 'technicians' && technicians.length === 0) {
       getTechnicians().then(setTechnicians)
     }
-  }, [view, clients.length, installations.length, repairs.length, requests.length, leads.length, technicians.length])
+  }, [view])
 
   // Generic refresh function for components that need to refetch data
   const refreshData = async () => {
@@ -208,9 +242,12 @@ export default function AdminDashboard() {
         break
       case 'installations':
         getInstallations().then(setInstallations)
+        getClientUnits().then(setClientUnits)
         break
       case 'repairs':
         getRepairs().then(setRepairs)
+        getRepairJobs().then(setRepairJobs)
+        getClientUnits().then(setClientUnits)
         break
       case 'maintenance':
         getMaintenance().then(setMaintenance)
@@ -265,10 +302,10 @@ export default function AdminDashboard() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setShowNotifications(true)} 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowNotifications(true)}
                     className="hidden sm:flex items-center gap-2 border-gray-200"
                   >
                     <Bell className="h-4 w-4" />
@@ -284,190 +321,194 @@ export default function AdminDashboard() {
             </header>
 
             <main className="flex-1 w-full py-6 sm:py-8 px-4 sm:px-6 space-y-6 sm:space-y-8">
-            {/* Stats Grid */}
+              {/* Stats Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-blue-600" />} />
                 <StatCard title="Total Bookings" value={(installations.length + repairs.length + maintenance.length).toString()} icon={<Calendar className="text-blue-600" />} />
                 <StatCard title="Total Leads" value={leads.length.toString()} icon={<TrendingUp className="text-purple-600" />} />
                 <StatCard title="Installations" value={installations.length.toString()} icon={<Wrench className="text-green-600" />} />
-                <StatCard 
-                  title="Pending Installations" 
-                  value={installations.filter(i => i.status !== 'Completed').length.toString()} 
-                  icon={<Clock className="text-yellow-600" />} 
+                <StatCard
+                  title="Pending Installations"
+                  value={installations.filter(i => i.status !== 'Completed').length.toString()}
+                  icon={<Clock className="text-yellow-600" />}
                 />
-                <StatCard 
-                  title="Completed Installations" 
-                  value={installations.filter(i => i.status === 'Completed').length.toString()} 
-                  icon={<CheckCircle className="text-green-600" />} 
+                <StatCard
+                  title="Completed Installations"
+                  value={installations.filter(i => i.status === 'Completed').length.toString()}
+                  icon={<CheckCircle className="text-green-600" />}
                 />
                 <StatCard title="Repairs" value={repairs.length.toString()} icon={<PenTool className="text-orange-600" />} />
-                <StatCard 
-                  title="Pending Repairs" 
-                  value={repairs.filter(r => r.status !== 'Completed').length.toString()} 
-                  icon={<Clock className="text-yellow-600" />} 
+                <StatCard
+                  title="Pending Repairs"
+                  value={repairs.filter(r => r.status !== 'Completed').length.toString()}
+                  icon={<Clock className="text-yellow-600" />}
                 />
-                <StatCard 
-                  title="Completed Repairs" 
-                  value={repairs.filter(r => r.status === 'Completed').length.toString()} 
-                  icon={<CheckCircle className="text-green-600" />} 
+                <StatCard
+                  title="Completed Repairs"
+                  value={repairs.filter(r => r.status === 'Completed').length.toString()}
+                  icon={<CheckCircle className="text-green-600" />}
                 />
                 <StatCard title="Maintenance" value={maintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
-                <StatCard 
-                  title="Pending Maintenance" 
-                  value={maintenance.filter(m => m.status !== 'Completed').length.toString()} 
-                  icon={<Clock className="text-yellow-600" />} 
+                <StatCard
+                  title="Pending Maintenance"
+                  value={maintenance.filter(m => m.status !== 'Completed').length.toString()}
+                  icon={<Clock className="text-yellow-600" />}
                 />
-                <StatCard 
-                  title="Completed Maintenance" 
-                  value={maintenance.filter(m => m.status === 'Completed').length.toString()} 
-                  icon={<CheckCircle className="text-green-600" />} 
+                <StatCard
+                  title="Completed Maintenance"
+                  value={maintenance.filter(m => m.status === 'Completed').length.toString()}
+                  icon={<CheckCircle className="text-green-600" />}
                 />
               </div>
 
 
-            {/* Recent Activity */}
-            <Card className="border-none shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-bold">Recent Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {installations.length === 0 && repairs.length === 0 && maintenance.length === 0 && appointments.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <p className="text-gray-400">No activity found</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {[...installations, ...repairs, ...maintenance, ...appointments.map(apt => ({
-                      ...apt,
-                      title: apt.service_type
-                    }))]
-                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                      .slice(0, 5)
-                      .map((item, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200">
-                            {item.title.toLowerCase().includes('repair') ? <PenTool className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+              {/* Recent Activity */}
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-bold">Recent Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {installations.length === 0 && repairs.length === 0 && maintenance.length === 0 && appointments.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <p className="text-gray-400">No activity found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {[...installations, ...repairs, ...maintenance, ...appointments.map(apt => ({
+                        ...apt,
+                        title: apt.service_type
+                      }))]
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .slice(0, 5)
+                        .map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200">
+                                {item.title.toLowerCase().includes('repair') ? <PenTool className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+                              </div>
+                              <div>
+                                <p className="font-bold text-[#005596]">{item.title}</p>
+                                <p className="text-xs text-gray-500">{item.client_name} • {item.date}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={item.status === 'Completed' ? 'default' : 'secondary'} className={item.status === 'Completed' ? 'bg-green-100 text-green-700 border-green-200' : ''}>
+                                {item.status}
+                              </Badge>
+                              <Button variant="ghost" size="sm" onClick={() => handleViewBookingDetails(item)}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-[#005596]">{item.title}</p>
-                            <p className="text-xs text-gray-500">{item.client_name} • {item.date}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={item.status === 'Completed' ? 'default' : 'secondary'} className={item.status === 'Completed' ? 'bg-green-100 text-green-700 border-green-200' : ''}>
-                            {item.status}
-                          </Badge>
-                          <Button variant="ghost" size="sm" onClick={() => handleViewBookingDetails(item)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
 
-          </main>
-        </div>
-      )}
+            </main>
+          </div>
+        )}
 
-      {view === 'clients' && (
-        <ClientsView 
-          clients={clients} 
-          isFetching={isFetching} 
-          onBack={() => setView('dashboard')} 
-          fetchClients={refreshData}
-        />
-      )}
+        {view === 'clients' && (
+          <ClientsView
+            clients={clients}
+            isFetching={isFetching}
+            onBack={() => setView('dashboard')}
+            fetchClients={refreshData}
+          />
+        )}
 
-      {view === 'installations' && (
-        <InstallationsView 
-          installations={installations} 
-          clients={clients}
-          onBack={() => setView('dashboard')} 
-          fetchInstallations={refreshData}
-          onViewDetails={handleViewBookingDetails}
-        />
-      )}
+        {view === 'installations' && (
+          <InstallationsView
+            installations={installations}
+            clients={clients}
+            clientUnits={clientUnits}
+            onBack={() => setView('dashboard')}
+            fetchInstallations={refreshData}
+            onViewDetails={handleViewBookingDetails}
+          />
+        )}
 
-      {view === 'repairs' && (
-        <RepairsView 
-          repairs={repairs} 
-          clients={clients}
-          onBack={() => setView('dashboard')} 
-          fetchRepairs={refreshData}
-          onViewDetails={handleViewBookingDetails}
-        />
-      )}
+        {view === 'repairs' && (
+          <RepairsView
+            repairs={repairs}
+            clients={clients}
+            clientUnits={clientUnits}
+            repairJobs={repairJobs}
+            onBack={() => setView('dashboard')}
+            fetchRepairs={refreshData}
+            onViewDetails={handleViewBookingDetails}
+          />
+        )}
 
-      {view === 'maintenance' && (
-        <MaintenanceView 
-          maintenance={maintenance} 
-          clients={clients}
-          onBack={() => setView('dashboard')} 
-          fetchMaintenance={refreshData}
-          onViewDetails={handleViewBookingDetails}
-        />
-      )}
+        {view === 'maintenance' && (
+          <MaintenanceView
+            maintenance={maintenance}
+            clients={clients}
+            clientUnits={clientUnits}
+            onBack={() => setView('dashboard')}
+            fetchMaintenance={refreshData}
+            onViewDetails={handleViewBookingDetails}
+          />
+        )}
 
-      {view === 'schedule' && (
-        <ScheduleView 
-          appointments={appointments} 
-          onBack={() => setView('dashboard')} 
-          fetchAppointments={refreshData}
-        />
-      )}
+        {view === 'schedule' && (
+          <ScheduleView
+            appointments={appointments}
+            onBack={() => setView('dashboard')}
+            fetchAppointments={refreshData}
+          />
+        )}
 
-      {view === 'reports' && (
-        <ReportsView 
-          installations={installations}
-          repairs={repairs}
-          clients={clients}
-          onBack={() => setView('dashboard')} 
-        />
-      )}
+        {view === 'reports' && (
+          <ReportsView
+            installations={installations}
+            repairs={repairs}
+            clients={clients}
+            onBack={() => setView('dashboard')}
+          />
+        )}
 
-      {view === 'settings' && (
-        <SettingsView 
-          settings={settings}
-          onBack={() => setView('dashboard')} 
-          fetchSettings={refreshData}
-        />
-      )}
+        {view === 'settings' && (
+          <SettingsView
+            settings={settings}
+            onBack={() => setView('dashboard')}
+            fetchSettings={refreshData}
+          />
+        )}
 
-      {view === 'requests' && (
-        <RequestsView
-          requests={requests}
-          technicians={technicians}
-          onBack={() => setView('dashboard')}
-          fetchRequests={refreshData}
-          router={router}
-          setView={setView}
-          setInstallations={setInstallations}
-          setRepairs={setRepairs}
-          setMaintenance={setMaintenance}
-        />
-      )}
+        {view === 'requests' && (
+          <RequestsView
+            requests={requests}
+            technicians={technicians}
+            onBack={() => setView('dashboard')}
+            fetchRequests={refreshData}
+            router={router}
+            setView={setView}
+            setInstallations={setInstallations}
+            setRepairs={setRepairs}
+            setMaintenance={setMaintenance}
+          />
+        )}
 
-      {view === 'leads' && (
-          <LeadsView 
+        {view === 'leads' && (
+          <LeadsView
             leads={leads}
-            onBack={() => setView('dashboard')} 
+            onBack={() => setView('dashboard')}
             fetchLeads={refreshData}
             onGoToClients={() => setView('clients')}
           />
         )}
 
-      {view === 'technicians' && (
-        <TechniciansView 
-          technicians={technicians}
-          onBack={() => setView('dashboard')} 
-          fetchTechnicians={refreshData}
-        />
-      )}
+        {view === 'technicians' && (
+          <TechniciansView
+            technicians={technicians}
+            onBack={() => setView('dashboard')}
+            fetchTechnicians={refreshData}
+          />
+        )}
 
       </div>
 
@@ -484,9 +525,9 @@ export default function AdminDashboard() {
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input 
-                className="pl-10" 
-                placeholder="Search clients to remind..." 
+              <Input
+                className="pl-10"
+                placeholder="Search clients to remind..."
                 onChange={(e) => {
                   const query = e.target.value.toLowerCase()
                   // Simple local search for the reminders list
@@ -507,8 +548,8 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 clients.filter(c => !c.is_archived).map((client) => (
-                  <div 
-                    key={client.id} 
+                  <div
+                    key={client.id}
                     data-name={client.full_name}
                     className="client-reminder-item flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-200 transition-all"
                   >
@@ -521,8 +562,8 @@ export default function AdminDashboard() {
                         <p className="text-xs text-gray-500">{client.email}</p>
                       </div>
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       className="text-blue-600 border-blue-200 hover:bg-blue-50"
                       onClick={() => {
@@ -556,16 +597,16 @@ export default function AdminDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Reminder Title</Label>
-              <Input 
-                value={reminderTitle} 
+              <Input
+                value={reminderTitle}
                 onChange={(e) => setReminderTitle(e.target.value)}
                 placeholder="e.g. Aircon Cleaning Reminder"
               />
             </div>
             <div className="space-y-2">
               <Label>Message</Label>
-              <Textarea 
-                value={reminderMessage} 
+              <Textarea
+                value={reminderMessage}
                 onChange={(e) => setReminderMessage(e.target.value)}
                 placeholder="Enter your reminder message here..."
                 rows={4}
@@ -573,8 +614,8 @@ export default function AdminDashboard() {
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button variant="outline" onClick={() => setShowReminderForm(false)}>Cancel</Button>
-              <Button 
-                className="bg-[#005596]" 
+              <Button
+                className="bg-[#005596]"
                 disabled={isSendingReminder || !reminderMessage}
                 onClick={async () => {
                   setIsSendingReminder(true)
@@ -605,9 +646,9 @@ export default function AdminDashboard() {
             <DialogTitle className="flex items-center justify-between">
               Notifications
               {notifications.some(n => !n.is_read) && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="text-xs text-blue-600 hover:text-blue-700"
                   onClick={async () => {
                     for (const n of notifications.filter(notif => !notif.is_read)) {
@@ -630,8 +671,8 @@ export default function AdminDashboard() {
               </div>
             ) : (
               notifications.map((n) => (
-                <div 
-                  key={n.id} 
+                <div
+                  key={n.id}
                   className={`p-4 rounded-xl border transition-colors ${n.is_read ? 'bg-white border-gray-100' : 'bg-blue-50/50 border-blue-100'}`}
                   onClick={async () => {
                     if (!n.is_read) {
@@ -702,9 +743,9 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-500 font-medium">Progress</p>
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
-                      <span>{selectedBooking.progress}% Completed</span>
+                      <span>{Math.round(calculateDynamicProgress(selectedBooking))}% Completed</span>
                     </div>
-                    <Progress value={selectedBooking.progress} className="h-2" />
+                    <Progress value={Math.round(calculateDynamicProgress(selectedBooking))} status={selectedBooking?.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
                   </div>
                 </div>
                 <div className="space-y-1 col-span-2">
@@ -794,9 +835,9 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
                         <Badge className={
-                          lead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' : 
-                          lead.status === 'Converted' ? 'bg-green-100 text-green-700' : 
-                          'bg-yellow-100 text-yellow-700'
+                          lead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
+                            lead.status === 'Converted' ? 'bg-green-100 text-green-700' :
+                              'bg-yellow-100 text-yellow-700'
                         }>
                           {lead.status}
                         </Badge>
@@ -820,8 +861,8 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                       </div>
                     </div>
                     <div className="flex gap-2 ml-6">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => {
                           setSelectedLead(lead)
@@ -830,9 +871,18 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                       >
                         View Details
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => handleDeleteLead(lead.id)}
+                        disabled={isLoading}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                       {lead.status === 'Pending' && (
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           className="bg-blue-600 hover:bg-blue-700"
                           onClick={() => handleStatusUpdate(lead.id, 'Contacted')}
                           disabled={isLoading}
@@ -841,26 +891,15 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                         </Button>
                       )}
                       {lead.status === 'Contacted' && (
-                        <>
-                          <Button 
-                            size="sm" 
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => handleAddClient(lead.id)}
-                            disabled={isLoading}
-                          >
-                            <UserCheck className="h-4 w-4 mr-2" />
-                            Add Client
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => handleDeleteLead(lead.id)}
-                            disabled={isLoading}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleAddClient(lead.id)}
+                          disabled={isLoading}
+                        >
+                          <UserCheck className="h-4 w-4 mr-2" />
+                          Add Client
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -956,8 +995,8 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                     <p className="text-xs text-gray-500 font-medium">Lead Temperature</p>
                     <Badge className={
                       selectedLead.lead_temperature === 'Hot' ? 'bg-red-100 text-red-700' :
-                      selectedLead.lead_temperature === 'Warm' ? 'bg-orange-100 text-orange-700' :
-                      'bg-blue-100 text-blue-700'
+                        selectedLead.lead_temperature === 'Warm' ? 'bg-orange-100 text-orange-700' :
+                          'bg-blue-100 text-blue-700'
                     }>
                       {selectedLead.lead_temperature || 'Cold'}
                     </Badge>
@@ -972,9 +1011,9 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                     <p className="text-xs text-gray-500 font-medium">Follow-up Status</p>
                     <Badge className={
                       selectedLead.status === 'Converted' ? 'bg-green-100 text-green-700' :
-                      selectedLead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
-                      selectedLead.status === 'Lost' ? 'bg-red-100 text-red-700' :
-                      'bg-yellow-100 text-yellow-700'
+                        selectedLead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
+                          selectedLead.status === 'Lost' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
                     }>
                       {selectedLead.status === 'Pending' ? 'Inquiry' : selectedLead.status}
                     </Badge>
@@ -991,38 +1030,38 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
       </Dialog>
 
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="h-5 w-5" />
-                Client Added Successfully
-              </DialogTitle>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <p className="text-sm text-gray-600">
-                The lead has been converted to a client. Please share the generated password with the client so they can access their dashboard.
-              </p>
-              <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
-                <span className="text-sm font-medium text-blue-700">Generated Password (select and copy)</span>
-                <Input 
-                  readOnly 
-                  value={generatedPassword || ''} 
-                  className="text-lg font-mono font-bold text-blue-900 bg-white border-blue-200 select-all"
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
-              </div>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Client Added Successfully
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <p className="text-sm text-gray-600">
+              The lead has been converted to a client. Please share the generated password with the client so they can access their dashboard.
+            </p>
+            <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
+              <span className="text-sm font-medium text-blue-700">Generated Password (select and copy)</span>
+              <Input
+                readOnly
+                value={generatedPassword || ''}
+                className="text-lg font-mono font-bold text-blue-900 bg-white border-blue-200 select-all"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
             </div>
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>Close</Button>
-              <Button className="bg-[#005596]" onClick={() => {
-                setShowPasswordDialog(false)
-                onGoToClients()
-              }}>
-                Go to Manage Clients
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>Close</Button>
+            <Button className="bg-[#005596]" onClick={() => {
+              setShowPasswordDialog(false)
+              onGoToClients()
+            }}>
+              Go to Manage Clients
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1047,7 +1086,7 @@ function StatCard({ title, value, icon }: { title: string, value: string, icon: 
 
 function ActionCard({ title, description, icon, onClick }: { title: string, description: string, icon: React.ReactNode, onClick?: () => void }) {
   return (
-    <Card 
+    <Card
       className={`border-none shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col items-center justify-center p-8 text-center space-y-4`}
       onClick={onClick}
     >
@@ -1077,26 +1116,26 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   const [showPassword, setShowPassword] = useState(false)
   const itemsPerPage = 5
 
-    const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault()
-      const formData = new FormData(e.currentTarget)
-      const phone = formData.get('phone') as string
+  const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const phone = formData.get('phone') as string
 
-      if (phone && !validatePHPhone(phone)) {
-        toast.error(PHONE_VALIDATION_ERROR)
-        return
-      }
+    if (phone && !validatePHPhone(phone)) {
+      toast.error(PHONE_VALIDATION_ERROR)
+      return
+    }
 
-      setIsLoading(true)
-      setGeneratedPassword(null)
-      const result = await createClientUser(formData)
+    setIsLoading(true)
+    setGeneratedPassword(null)
+    const result = await createClientUser(formData)
 
     if (result.error) toast.error(result.error)
     else if (result.success && result.password) {
       toast.success('Client created successfully')
       setGeneratedPassword(result.password)
       fetchClients()
-      ;(e.target as HTMLFormElement).reset()
+        ; (e.target as HTMLFormElement).reset()
     }
     setIsLoading(false)
   }
@@ -1137,7 +1176,7 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
         `"${c.created_at || ''}"`
       ].join(','))
     ].join('\n')
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
@@ -1147,17 +1186,17 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   }
 
   const filteredClients = clients.filter((client: any) => {
-    const matchesSearch = 
+    const matchesSearch =
       client.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.phone?.includes(searchQuery) ||
       client.address?.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesType = typeFilter === 'all' || 
+
+    const matchesType = typeFilter === 'all' ||
       (client.client_type || 'Residential').toLowerCase() === typeFilter.toLowerCase()
-    
+
     const matchesArchived = showArchived ? client.is_archived === true : client.is_archived !== true
-    
+
     return matchesSearch && matchesType && matchesArchived
   })
 
@@ -1195,11 +1234,11 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
           </Button>
         </div>
       </header>
-      
+
       <main className="container mx-auto py-8 px-6 space-y-6">
         <div className="flex justify-end">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => {
               setShowArchived(!showArchived)
@@ -1214,9 +1253,9 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
         <div className="flex gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input 
-              className="pl-10" 
-              placeholder="Search by name, email, phone, or address..." 
+            <Input
+              className="pl-10"
+              placeholder="Search by name, email, phone, or address..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
@@ -1293,11 +1332,11 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-[#005596]">{client.full_name}</span>
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className={
-                            (client.client_type || 'Residential') === 'Corporate' 
-                              ? 'bg-purple-50 text-purple-700 border-purple-200 text-[10px]' 
+                            (client.client_type || 'Residential') === 'Corporate'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200 text-[10px]'
                               : 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
                           }
                         >
@@ -1322,8 +1361,8 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setSelectedClient(client)
@@ -1333,8 +1372,8 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                       View Details
                     </Button>
                     {showArchived ? (
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="text-green-600 border-green-200 hover:bg-green-50"
                         onClick={() => handleUnarchive(client.id)}
@@ -1343,8 +1382,8 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                         Restore
                       </Button>
                     ) : (
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="text-red-600 border-red-200 hover:bg-red-50"
                         onClick={() => handleArchive(client.id)}
@@ -1364,8 +1403,8 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                   Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredClients.length)} of {filteredClients.length} clients
                 </p>
                 <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
@@ -1383,8 +1422,8 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                       {page}
                     </Button>
                   ))}
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
@@ -1399,9 +1438,9 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
       </main>
 
       <Dialog open={showDetails} onOpenChange={(open) => {
-          setShowDetails(open)
-          if (!open) setShowPassword(false)
-        }}>
+        setShowDetails(open)
+        if (!open) setShowPassword(false)
+      }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Client Details</DialogTitle>
@@ -1414,11 +1453,11 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-[#005596]">{selectedClient.full_name}</h3>
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={
-                      (selectedClient.client_type || 'Residential') === 'Corporate' 
-                        ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                      (selectedClient.client_type || 'Residential') === 'Corporate'
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
                         : 'bg-blue-50 text-blue-700 border-blue-200'
                     }
                   >
@@ -1426,7 +1465,7 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                   </Badge>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Email</p>
@@ -1450,32 +1489,32 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
                   </p>
                 </div>
                 <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Created At</p>
-                    <p className="text-sm font-medium flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-400" />
-                      {selectedClient.created_at ? format(parseISO(selectedClient.created_at), 'MMM d, yyyy') : 'N/A'}
+                  <p className="text-xs text-gray-500 font-medium">Created At</p>
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                    {selectedClient.created_at ? format(parseISO(selectedClient.created_at), 'MMM d, yyyy') : 'N/A'}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Generated Password</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-mono bg-gray-50 px-2 py-1 rounded flex-1">
+                      {showPassword ? (selectedClient.password || 'N/A') : (selectedClient.password ? '••••••••' : 'N/A')}
                     </p>
+                    {selectedClient.password && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Generated Password</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-mono bg-gray-50 px-2 py-1 rounded flex-1">
-                        {showPassword ? (selectedClient.password || 'N/A') : (selectedClient.password ? '••••••••' : 'N/A')}
-                      </p>
-                      {selectedClient.password && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                </div>
               </div>
-              
+
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowDetails(false)}>Close</Button>
               </div>
@@ -1494,14 +1533,14 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
               <Label>Full Name</Label>
               <Input name="fullName" placeholder="John Doe" required />
             </div>
-              <div className="space-y-2">
-                <Label>Email Address</Label>
-                <Input name="email" type="email" placeholder="john@example.com" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone Number</Label>
-                <Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} required />
-              </div>
+            <div className="space-y-2">
+              <Label>Email Address</Label>
+              <Input name="email" type="email" placeholder="john@example.com" required />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone Number</Label>
+              <Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} required />
+            </div>
 
             <div className="space-y-2">
               <Label>Client Type</Label>
@@ -1525,9 +1564,9 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
           {generatedPassword && (
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg space-y-2">
               <span className="text-sm font-medium text-blue-700">Generated Password (select and copy)</span>
-              <Input 
-                readOnly 
-                value={generatedPassword} 
+              <Input
+                readOnly
+                value={generatedPassword}
                 className="text-lg font-mono font-bold text-blue-900 bg-white border-blue-200 select-all"
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
@@ -1539,11 +1578,17 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   )
 }
 
-function InstallationsView({ installations, clients, onBack, fetchInstallations, onViewDetails }: any) {
+function InstallationsView({ installations, clients, clientUnits, onBack, fetchInstallations, onViewDetails }: any) {
   const [showAdd, setShowAdd] = useState(false)
+  const [showRegisterUnit, setShowRegisterUnit] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [type, setType] = useState('Real-Time')
+  const [technology, setTechnology] = useState('Inverter')
+  const [selectedUnit, setSelectedUnit] = useState<any>(null)
   const today = new Date().toISOString().split('T')[0]
+
+  const BRANDS = ['LG', 'Samsung', 'Carrier', 'Daikin', 'Midea', 'Aux', 'Panasonic', 'Kolin', 'Sharp', 'Fujidenzo', 'Generic']
+  const HP_OPTIONS = ['0.5', '1.0', '1.5', '2.0', '2.5', '3.0']
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -1569,39 +1614,66 @@ function InstallationsView({ installations, clients, onBack, fetchInstallations,
     }
   }
 
+  const handleRegisterUnit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    formData.set('technology', technology)
+    const result = await registerUnit(formData)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Unit registered successfully!')
+      fetchInstallations()
+      setShowRegisterUnit(false)
+      setTechnology('Inverter')
+    }
+    setIsLoading(false)
+  }
+
+  const handleDeleteUnit = async (unitId: string) => {
+    if (!confirm('Delete this registered unit? This cannot be undone.')) return
+    const result = await deleteClientUnit(unitId)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Unit removed from registry')
+      fetchInstallations()
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back</Button>
           <div>
-            <h1 className="text-xl font-bold text-[#005596]">Installation Monitoring</h1>
-            <p className="text-sm text-gray-500">Track and manage installation projects</p>
+            <h1 className="text-xl font-bold text-[#005596]">Installations & Asset Registry</h1>
+            <p className="text-sm text-gray-500">Manage service jobs and registered aircon units</p>
           </div>
         </div>
-        <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Installation</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" className="border-[#005596] text-[#005596] hover:bg-blue-50" onClick={() => setShowRegisterUnit(true)}>
+            <Plus className="h-4 w-4 mr-2" />Register New Unit
+          </Button>
+          <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4 mr-2" />Add Installation Job
+          </Button>
+        </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
-        <Card className="border-none shadow-sm p-4">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input className="pl-10" placeholder="Search installations by client, service type, or technician..." />
-            </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
-            </Select>
-          </div>
-        </Card>
+
+      <main className="container mx-auto py-8 px-6 space-y-8">
+        {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Installations" value={installations.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="Total Jobs" value={installations.length.toString()} icon={<Wrench className="text-blue-600" />} />
           <MiniStatCard title="Scheduled" value={installations.filter((i: any) => i.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
           <MiniStatCard title="In Progress" value={installations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Completed" value={installations.filter((i: any) => i.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+          <MiniStatCard title="Registered Units" value={clientUnits.length.toString()} icon={<ClipboardList className="text-emerald-600" />} />
         </div>
+
+        {/* Installation Jobs */}
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596]">Installations ({installations.length})</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><Wrench className="h-5 w-5" /> Installation Jobs ({installations.length})</h2>
+          </div>
           {installations.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
@@ -1631,74 +1703,139 @@ function InstallationsView({ installations, clients, onBack, fetchInstallations,
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-medium">
                     <span>Installation Progress</span>
-                    <span>{item.progress}%</span>
+                    <span>{Math.round(calculateDynamicProgress(item))}%</span>
                   </div>
-                  <Progress value={item.progress} className="h-2" />
+                  <Progress value={Math.round(calculateDynamicProgress(item))} status={item.status === 'Completed' ? 'completed' : item.status === 'In Progress' ? 'in_progress' : 'pending'} className="h-2" />
                 </div>
               </CardContent>
             </Card>
           ))}
-          {installations.length === 0 && <div className="text-center py-12 text-gray-400">No installations found</div>}
+          {installations.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No installation jobs found</div>}
+        </div>
+
+        {/* Asset Registry Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Asset Registry ({clientUnits.length})</h2>
+          </div>
+
+          {clientUnits.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-xl border border-dashed border-[#005596]/20">
+              <ClipboardList className="h-12 w-12 mx-auto mb-3 text-gray-200" />
+              <p className="font-semibold text-gray-500">No units registered yet</p>
+              <p className="text-sm text-gray-400 mb-4">Click "Register New Unit" to give an aircon its Digital Identity</p>
+              <Button className="bg-[#005596]" onClick={() => setShowRegisterUnit(true)}><Plus className="h-4 w-4 mr-2" />Register First Unit</Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {clientUnits.map((unit: any) => (
+                <Card key={unit.id} className="border border-[#005596]/10 shadow-sm hover:shadow-md transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-[#005596]/10 rounded-xl">
+                          <Thermometer className="h-5 w-5 text-[#005596]" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[#1E293B] text-sm">{unit.unit_name}</h3>
+                          <p className="text-xs text-gray-500">{unit.profiles?.full_name || 'Unknown Client'}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteUnit(unit.id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+                      <div className="bg-slate-50 rounded-lg p-2">
+                        <p className="text-gray-400 font-medium uppercase tracking-wide text-[9px] mb-0.5">Brand</p>
+                        <p className="font-bold text-[#1E293B]">{unit.brand}</p>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-2">
+                        <p className="text-gray-400 font-medium uppercase tracking-wide text-[9px] mb-0.5">Type</p>
+                        <p className="font-bold text-[#1E293B]">{unit.unit_type}</p>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-2">
+                        <p className="text-gray-400 font-medium uppercase tracking-wide text-[9px] mb-0.5">HP</p>
+                        <p className="font-bold text-[#1E293B]">{unit.horsepower} HP</p>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-2">
+                        <p className="text-gray-400 font-medium uppercase tracking-wide text-[9px] mb-0.5">Technology</p>
+                        <p className="font-bold text-[#1E293B] flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-amber-500" />{unit.technology}
+                        </p>
+                      </div>
+                    </div>
+
+                    {(unit.indoor_serial || unit.outdoor_serial) && (
+                      <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
+                        {unit.indoor_serial && <p className="text-[10px] text-gray-500"><span className="font-semibold">Indoor S/N:</span> {unit.indoor_serial}</p>}
+                        {unit.outdoor_serial && <p className="text-[10px] text-gray-500"><span className="font-semibold">Outdoor S/N:</span> {unit.outdoor_serial}</p>}
+                      </div>
+                    )}
+
+                    {unit.installation_date && (
+                      <div className="mt-2 flex items-center gap-1 text-[10px] text-gray-400">
+                        <Calendar className="h-3 w-3" /> Installed: {unit.installation_date}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </main>
 
+      {/* Add Installation Job Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Installation (from existing client)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Installation Job</DialogTitle></DialogHeader>
           <div className="py-4 space-y-6">
             <div className="space-y-2">
               <Label>Installation Type *</Label>
               <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => setType('Real-Time')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+                <button onClick={() => setType('Real-Time')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Clock className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Real-Time Installation</div>
+                  <div className="font-bold">Real-Time</div>
                   <div className="text-xs text-gray-500">Start immediately</div>
                 </button>
-                <button 
-                  onClick={() => setType('Schedule')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+                <button onClick={() => setType('Schedule')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Schedule Installation</div>
+                  <div className="font-bold">Schedule</div>
                   <div className="text-xs text-gray-500">Pick date & time</div>
                 </button>
               </div>
             </div>
-
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>Client *</Label>
                   <Select name="clientName" required>
                     <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label>Service Type *</Label>
                   <Select name="serviceType" required>
-                    <SelectTrigger><SelectValue placeholder="Select installation type" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Air Conditioning Installation">Air Conditioning Installation</SelectItem>
-                      <SelectItem value="Split Type Installation">Split Type Installation</SelectItem>
-                      <SelectItem value="Window Type Installation">Window Type Installation</SelectItem>
-                      <SelectItem value="Inverter Installation">Inverter Installation</SelectItem>
-                      <SelectItem value="Central AC Installation">Central AC Installation</SelectItem>
+                      <SelectItem value="Air Conditioning Installation">AC Installation</SelectItem>
+                      <SelectItem value="Split Type Installation">Split Type</SelectItem>
+                      <SelectItem value="Window Type Installation">Window Type</SelectItem>
+                      <SelectItem value="Inverter Installation">Inverter</SelectItem>
+                      <SelectItem value="Central AC Installation">Central AC</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-
               <div className="space-y-1">
                 <Label>Technician *</Label>
                 <Select name="technician" required>
                   <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                   <SelectContent>
+                    {clients.map ? null : null}
                     <SelectItem value="Chris">Chris</SelectItem>
                     <SelectItem value="Emman">Emman</SelectItem>
                     <SelectItem value="Carlos">Carlos</SelectItem>
@@ -1707,60 +1844,142 @@ function InstallationsView({ installations, clients, onBack, fetchInstallations,
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <Label>Cost *</Label>
-                  <Select name="cost" required>
-                    <SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
+                <div className="space-y-1"><Label>Cost *</Label>
+                  <Select name="cost" required><SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="₱1,500">₱1,500</SelectItem>
-                      <SelectItem value="₱2,500">₱2,500</SelectItem>
-                      <SelectItem value="₱3,500">₱3,500</SelectItem>
-                      <SelectItem value="₱5,000">₱5,000</SelectItem>
+                      <SelectItem value="₱1,500">₱1,500</SelectItem><SelectItem value="₱2,500">₱2,500</SelectItem>
+                      <SelectItem value="₱3,500">₱3,500</SelectItem><SelectItem value="₱5,000">₱5,000</SelectItem>
                       <SelectItem value="Custom">Custom</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label>Date *</Label>
-                  <Input name="date" type="date" min={today} required />
-                </div>
-                <div className="space-y-1">
-                  <Label>Time *</Label>
-                  <Input name="time" type="time" required />
-                </div>
+                <div className="space-y-1"><Label>Date *</Label><Input name="date" type="date" min={today} required /></div>
+                <div className="space-y-1"><Label>Time *</Label><Input name="time" type="time" required /></div>
               </div>
-
-              <div className="space-y-1">
-                <Label>Address *</Label>
-                <Input name="address" placeholder="Installation address" required />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Notes</Label>
-                <Textarea name="notes" placeholder="Additional notes" />
-              </div>
-
+              <div className="space-y-1"><Label>Address *</Label><Input name="address" placeholder="Installation address" required /></div>
+              <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Additional notes" /></div>
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-                <Button type="submit" className="bg-[#005596]" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Installation
-                </Button>
+                <Button type="submit" className="bg-[#005596]" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Job</Button>
               </div>
             </form>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register New Unit Dialog */}
+      <Dialog open={showRegisterUnit} onOpenChange={setShowRegisterUnit}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#005596]">
+              <ClipboardList className="h-5 w-5" /> Register Aircon Unit
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleRegisterUnit} className="space-y-5 py-2">
+            {/* Client */}
+            <div className="space-y-1">
+              <Label>Client *</Label>
+              <Select name="clientId" required>
+                <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
+                <SelectContent>
+                  {clients.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.full_name} — {c.email}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Unit Details */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Unit Details</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Unit Name / Label *</Label>
+                  <Input name="unitName" placeholder="e.g. Master's BR, Living Room" required />
+                </div>
+                <div className="space-y-1">
+                  <Label>Brand *</Label>
+                  <Select name="brand" required>
+                    <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                    <SelectContent>{BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Unit Type *</Label>
+                  <Select name="unitType" required>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Split Type">Split Type</SelectItem>
+                      <SelectItem value="Window">Window</SelectItem>
+                      <SelectItem value="Cassette">Cassette</SelectItem>
+                      <SelectItem value="Floor Mounted">Floor Mounted</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Horsepower (HP) *</Label>
+                  <Select name="horsepower" required>
+                    <SelectTrigger><SelectValue placeholder="Select HP" /></SelectTrigger>
+                    <SelectContent>{HP_OPTIONS.map(hp => <SelectItem key={hp} value={hp}>{hp} HP</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Technology Toggle */}
+              <div className="space-y-2">
+                <Label>Technology *</Label>
+                <div className="flex gap-3">
+                  {['Inverter', 'Non-Inverter'].map(t => (
+                    <button key={t} type="button" onClick={() => setTechnology(t)}
+                      className={`flex-1 py-3 border rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${technology === t ? 'bg-[#005596] text-white border-[#005596]' : 'border-gray-200 text-gray-600 hover:border-[#005596]'}`}>
+                      <Zap className="h-4 w-4" />{t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Serial Numbers */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Serial Numbers</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1"><Label>Indoor Unit Serial</Label><Input name="indoorSerial" placeholder="e.g. LG-IND-2024-001" /></div>
+                <div className="space-y-1"><Label>Outdoor Unit Serial</Label><Input name="outdoorSerial" placeholder="e.g. LG-OUT-2024-001" /></div>
+              </div>
+            </div>
+
+            {/* Installation Date */}
+            <div className="space-y-1">
+              <Label>Installation Date</Label>
+              <Input name="installationDate" type="date" />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowRegisterUnit(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#005596] px-8" disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Register Unit
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
   )
 }
 
-function RepairsView({ repairs, clients, onBack, fetchRepairs, onViewDetails }: any) {
+function RepairsView({ repairs, clients, clientUnits, repairJobs, onBack, fetchRepairs, onViewDetails }: any) {
   const [showAdd, setShowAdd] = useState(false)
+  const [showLogRepair, setShowLogRepair] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [type, setType] = useState('Real-Time')
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [parts, setParts] = useState<{ name: string, qty: number, price: number }[]>([])
+  const [newPartName, setNewPartName] = useState('')
+  const [newPartQty, setNewPartQty] = useState(1)
+  const [newPartPrice, setNewPartPrice] = useState(0)
   const today = new Date().toISOString().split('T')[0]
+
+  // Units for the currently selected client
+  const filteredUnits = clientUnits.filter((u: any) => u.client_id === selectedClientId)
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -1769,56 +1988,82 @@ function RepairsView({ repairs, clients, onBack, fetchRepairs, onViewDetails }: 
     formData.append('type', type)
     const result = await createRepair(formData)
     if (result.error) toast.error(result.error)
-    else {
-      toast.success('Repair added')
-      fetchRepairs()
-      setShowAdd(false)
-    }
+    else { toast.success('Repair added'); fetchRepairs(); setShowAdd(false) }
     setIsLoading(false)
   }
 
   const handleComplete = async (id: string) => {
     const result = await markRepairComplete(id)
     if (result.error) toast.error(result.error)
+    else { toast.success('Repair marked as completed'); fetchRepairs() }
+  }
+
+  const addPart = () => {
+    if (!newPartName.trim()) return
+    setParts(prev => [...prev, { name: newPartName.trim(), qty: newPartQty, price: newPartPrice }])
+    setNewPartName(''); setNewPartQty(1); setNewPartPrice(0)
+  }
+
+  const removePart = (i: number) => setParts(prev => prev.filter((_, idx) => idx !== i))
+
+  const totalPartsValue = parts.reduce((sum, p) => sum + (p.qty * p.price), 0)
+
+  const handleLogRepair = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const formData = new FormData(e.currentTarget)
+    formData.set('clientId', selectedClientId)
+    formData.set('partsReplaced', JSON.stringify(parts))
+    const result = await logRepairJob(formData)
+    if (result.error) toast.error(result.error)
     else {
-      toast.success('Repair marked as completed')
+      toast.success('Repair diagnosis logged!')
       fetchRepairs()
+      setShowLogRepair(false)
+      setParts([])
+      setSelectedClientId('')
     }
+    setIsLoading(false)
+  }
+
+  const handleUpdateJobStatus = async (jobId: string, status: string) => {
+    const result = await updateRepairJobStatus(jobId, status)
+    if (result.error) toast.error(result.error)
+    else { toast.success(`Job marked as ${status}`); fetchRepairs() }
   }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
+          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back</Button>
           <div>
-            <h1 className="text-xl font-bold text-[#005596]">Repairs Monitoring</h1>
-            <p className="text-sm text-gray-500">Track and manage repair requests</p>
+            <h1 className="text-xl font-bold text-[#005596]">Repairs & Diagnosis</h1>
+            <p className="text-sm text-gray-500">Track service jobs and unit-specific repair logs</p>
           </div>
         </div>
-        <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Repair</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" className="border-rose-400 text-rose-600 hover:bg-rose-50" onClick={() => setShowLogRepair(true)}>
+            <AlertTriangle className="h-4 w-4 mr-2" />Log Repair Diagnosis
+          </Button>
+          <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4 mr-2" />Add Repair Job
+          </Button>
+        </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
-        <Card className="border-none shadow-sm p-4">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input className="pl-10" placeholder="Search repairs by client, service type, or technician..." />
-            </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
-            </Select>
-          </div>
-        </Card>
+
+      <main className="container mx-auto py-8 px-6 space-y-8">
+        {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Repairs" value={repairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
+          <MiniStatCard title="Total Jobs" value={repairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
           <MiniStatCard title="In Progress" value={repairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
           <MiniStatCard title="Scheduled" value={repairs.filter((r: any) => r.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
-          <MiniStatCard title="Completed" value={repairs.filter((r: any) => r.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+          <MiniStatCard title="Diagnosis Logs" value={repairJobs.length.toString()} icon={<ClipboardList className="text-rose-600" />} />
         </div>
+
+        {/* Repair Service Jobs */}
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596]">Repairs ({repairs.length})</h2>
+          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><PenTool className="h-5 w-5" /> Repair Jobs ({repairs.length})</h2>
           {repairs.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
@@ -1840,125 +2085,260 @@ function RepairsView({ repairs, clients, onBack, fetchRepairs, onViewDetails }: 
                     <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{item.progress}%</span></div>
-                  <Progress value={item.progress} className="h-2" />
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
+                  <Progress value={Math.round(calculateDynamicProgress(item))} status={item.status === 'Completed' ? 'completed' : item.status === 'In Progress' ? 'in_progress' : 'pending'} className="h-2" />
                 </div>
               </CardContent>
             </Card>
           ))}
-          {repairs.length === 0 && <div className="text-center py-12 text-gray-400">No repairs found</div>}
+          {repairs.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No repair jobs found</div>}
+        </div>
+
+        {/* Repair Diagnosis Logs */}
+        <div className="space-y-4">
+          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Repair Diagnosis Logs ({repairJobs.length})</h2>
+          {repairJobs.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-xl border border-dashed border-rose-200">
+              <AlertTriangle className="h-10 w-10 mx-auto mb-3 text-rose-200" />
+              <p className="font-semibold text-gray-500">No diagnosis logs yet</p>
+              <p className="text-sm text-gray-400 mb-4">Log unit-specific fault information with error codes and parts replaced</p>
+              <Button variant="outline" className="border-rose-400 text-rose-600" onClick={() => setShowLogRepair(true)}><Plus className="h-4 w-4 mr-2" />Log First Diagnosis</Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {repairJobs.map((job: any) => {
+                const totalCost = (job.parts_replaced || []).reduce((sum: number, p: any) => sum + ((p.qty || 1) * (p.price || 0)), 0)
+                return (
+                  <Card key={job.id} className="border border-rose-100 shadow-sm">
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-rose-50 rounded-xl"><AlertTriangle className="h-5 w-5 text-rose-500" /></div>
+                          <div>
+                            <h3 className="font-bold text-[#1E293B] text-sm">{job.profiles?.full_name || 'Unknown Client'}</h3>
+                            {job.client_units && <p className="text-xs text-[#005596] font-semibold">{job.client_units.brand} {job.client_units.unit_name} ({job.client_units.unit_type})</p>}
+                            {!job.client_units && <p className="text-xs text-gray-400 italic">No specific unit linked</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className={job.status === 'Resolved' ? 'bg-green-100 text-green-700' : job.status === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}>{job.status}</Badge>
+                          {job.status === 'Open' && <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 text-xs h-7" onClick={() => handleUpdateJobStatus(job.id, 'In Progress')}>Start</Button>}
+                          {job.status === 'In Progress' && <Button size="sm" className="bg-green-600 hover:bg-green-700 text-xs h-7" onClick={() => handleUpdateJobStatus(job.id, 'Resolved')}>Resolve</Button>}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        {job.error_code && (
+                          <div className="bg-red-50 border border-red-100 rounded-lg p-2.5">
+                            <p className="text-[9px] font-bold text-red-400 uppercase tracking-widest mb-0.5">Error Code</p>
+                            <p className="font-bold text-red-700 text-sm font-mono">{job.error_code}</p>
+                          </div>
+                        )}
+                        {job.symptom && (
+                          <div className="bg-slate-50 rounded-lg p-2.5 col-span-1">
+                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Symptom</p>
+                            <p className="text-sm text-gray-700">{job.symptom}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {(job.parts_replaced || []).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Parts Replaced ({job.parts_replaced.length})</p>
+                          <div className="space-y-1">
+                            {job.parts_replaced.map((p: any, i: number) => (
+                              <div key={i} className="flex justify-between text-xs text-gray-700 bg-slate-50 px-3 py-1.5 rounded">
+                                <span className="font-medium">{p.name}</span>
+                                <span className="text-gray-500">x{p.qty || 1} — <span className="font-bold text-[#005596]">₱{((p.qty || 1) * (p.price || 0)).toLocaleString()}</span></span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between text-xs font-bold px-3 py-1 border-t border-slate-200 mt-1">
+                              <span>Total Parts Cost</span><span className="text-[#005596]">₱{totalCost.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {(job.before_photo_url || job.after_photo_url) && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 flex gap-3">
+                          {job.before_photo_url && <a href={job.before_photo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline"><Camera className="h-3 w-3" /> Before Photo</a>}
+                          {job.after_photo_url && <a href={job.after_photo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-green-600 hover:underline"><Camera className="h-3 w-3" /> After Photo</a>}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
         </div>
       </main>
 
+      {/* Add Repair Job Dialog */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Repair (from existing client)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Repair Job</DialogTitle></DialogHeader>
           <div className="py-4 space-y-6">
             <div className="space-y-2">
               <Label>Repair Type *</Label>
               <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => setType('Real-Time')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+                <button onClick={() => setType('Real-Time')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Clock className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Real-Time Repair</div>
+                  <div className="font-bold">Real-Time</div>
                   <div className="text-xs text-gray-500">Start immediately</div>
                 </button>
-                <button 
-                  onClick={() => setType('Schedule')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
+                <button onClick={() => setType('Schedule')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Schedule Repair</div>
+                  <div className="font-bold">Schedule</div>
                   <div className="text-xs text-gray-500">Pick date & time</div>
                 </button>
               </div>
             </div>
-
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label>Client *</Label>
-                  <Select name="clientName" required>
-                    <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}
-                    </SelectContent>
+                <div className="space-y-1"><Label>Client *</Label>
+                  <Select name="clientName" required><SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
+                    <SelectContent>{clients.map((c: any) => <SelectItem key={c.id} value={c.full_name}>{c.full_name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label>Service Type *</Label>
-                  <Select name="serviceType" required>
-                    <SelectTrigger><SelectValue placeholder="Select repair type" /></SelectTrigger>
+                <div className="space-y-1"><Label>Service Type *</Label>
+                  <Select name="serviceType" required><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Air Conditioning Repair">Air Conditioning Repair</SelectItem>
+                      <SelectItem value="Air Conditioning Repair">AC Repair</SelectItem>
                       <SelectItem value="Compressor Repair">Compressor Repair</SelectItem>
-                      <SelectItem value="Refrigerant Leak Repair">Refrigerant Leak Repair</SelectItem>
-                      <SelectItem value="Electrical Issue Repair">Electrical Issue Repair</SelectItem>
+                      <SelectItem value="Refrigerant Leak Repair">Refrigerant Leak</SelectItem>
+                      <SelectItem value="Electrical Issue Repair">Electrical Issue</SelectItem>
                       <SelectItem value="Thermostat Repair">Thermostat Repair</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-
-              <div className="space-y-1">
-                <Label>Technician *</Label>
-                <Select name="technician" required>
-                  <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+              <div className="space-y-1"><Label>Technician *</Label>
+                <Select name="technician" required><SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Chris">Chris</SelectItem>
-                    <SelectItem value="Emman">Emman</SelectItem>
-                    <SelectItem value="Carlos">Carlos</SelectItem>
-                    <SelectItem value="Arnold">Arnold</SelectItem>
+                    <SelectItem value="Chris">Chris</SelectItem><SelectItem value="Emman">Emman</SelectItem>
+                    <SelectItem value="Carlos">Carlos</SelectItem><SelectItem value="Arnold">Arnold</SelectItem>
                     <SelectItem value="Bobby">Bobby</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <Label>Cost *</Label>
-                  <Select name="cost" required>
-                    <SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
+                <div className="space-y-1"><Label>Cost *</Label>
+                  <Select name="cost" required><SelectTrigger><SelectValue placeholder="Cost" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="₱500">₱500</SelectItem>
-                      <SelectItem value="₱1,000">₱1,000</SelectItem>
-                      <SelectItem value="₱1,500">₱1,500</SelectItem>
-                      <SelectItem value="₱2,500">₱2,500</SelectItem>
+                      <SelectItem value="₱500">₱500</SelectItem><SelectItem value="₱1,000">₱1,000</SelectItem>
+                      <SelectItem value="₱1,500">₱1,500</SelectItem><SelectItem value="₱2,500">₱2,500</SelectItem>
                       <SelectItem value="Custom">Custom</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label>Date *</Label>
-                  <Input name="date" type="date" min={today} required />
-                </div>
-                <div className="space-y-1">
-                  <Label>Time *</Label>
-                  <Input name="time" type="time" required />
-                </div>
+                <div className="space-y-1"><Label>Date *</Label><Input name="date" type="date" min={today} required /></div>
+                <div className="space-y-1"><Label>Time *</Label><Input name="time" type="time" required /></div>
               </div>
-
-              <div className="space-y-1">
-                <Label>Address *</Label>
-                <Input name="address" placeholder="Repair address" required />
-              </div>
-
-              <div className="space-y-1">
-                <Label>Notes</Label>
-                <Textarea name="notes" placeholder="Additional notes" />
-              </div>
-
+              <div className="space-y-1"><Label>Address *</Label><Input name="address" placeholder="Repair address" required /></div>
+              <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Additional notes" /></div>
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-                <Button type="submit" className="bg-[#005596]" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Repair
-                </Button>
+                <Button type="submit" className="bg-[#005596]" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Job</Button>
               </div>
             </form>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Log Repair Diagnosis Dialog */}
+      <Dialog open={showLogRepair} onOpenChange={setShowLogRepair}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600"><AlertTriangle className="h-5 w-5" /> Log Repair Diagnosis</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleLogRepair} className="space-y-5 py-2">
+
+            {/* Client + Unit Picker */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Unit Affected</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Client *</Label>
+                  <Select value={selectedClientId} onValueChange={setSelectedClientId} required>
+                    <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
+                    <SelectContent>{clients.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Unit (from Asset Registry)</Label>
+                  <Select name="unitId" disabled={!selectedClientId || filteredUnits.length === 0}>
+                    <SelectTrigger><SelectValue placeholder={!selectedClientId ? 'Select client first' : filteredUnits.length === 0 ? 'No units registered' : 'Select unit...'} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific unit</SelectItem>
+                      {filteredUnits.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.unit_name} — {u.brand} {u.unit_type}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Error & Symptom */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-rose-500 uppercase tracking-widest">Diagnostics</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Error Code</Label>
+                  <Input name="errorCode" placeholder="e.g. E1, F3, P4" className="font-mono" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Symptom / Issue Description</Label>
+                <Textarea name="symptom" placeholder="Describe what the client reported and what you observed..." className="min-h-[80px]" />
+              </div>
+            </div>
+
+            {/* Parts & Inventory */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest flex items-center gap-2"><Package className="h-4 w-4" /> Parts Replaced</p>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1 space-y-1"><Label className="text-xs">Part Name</Label><Input value={newPartName} onChange={e => setNewPartName(e.target.value)} placeholder="e.g. Capacitor, Fan Motor" /></div>
+                <div className="w-20 space-y-1"><Label className="text-xs">Qty</Label><Input type="number" min={1} value={newPartQty} onChange={e => setNewPartQty(parseInt(e.target.value) || 1)} /></div>
+                <div className="w-28 space-y-1"><Label className="text-xs">Unit Price (₱)</Label><Input type="number" min={0} value={newPartPrice} onChange={e => setNewPartPrice(parseFloat(e.target.value) || 0)} /></div>
+                <Button type="button" onClick={addPart} size="sm" className="bg-[#005596] h-10 px-3"><Plus className="h-4 w-4" /></Button>
+              </div>
+              {parts.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {parts.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between bg-white border border-slate-100 rounded-lg px-3 py-2 text-sm">
+                      <span className="font-medium">{p.name}</span>
+                      <div className="flex items-center gap-3 text-gray-500">
+                        <span>x{p.qty}</span>
+                        <span className="font-bold text-[#005596]">₱{(p.qty * p.price).toLocaleString()}</span>
+                        <button type="button" onClick={() => removePart(i)} className="text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between font-bold text-sm px-3 py-2 bg-[#005596]/5 rounded-lg border border-[#005596]/10">
+                    <span>Total Parts Cost</span><span className="text-[#005596]">₱{totalPartsValue.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Photo Evidence */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest flex items-center gap-2"><Camera className="h-4 w-4" /> Photo Evidence</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1"><Label>Before Photo URL</Label><Input name="beforePhotoUrl" type="url" placeholder="https://..." /></div>
+                <div className="space-y-1"><Label>After Photo URL</Label><Input name="afterPhotoUrl" type="url" placeholder="https://..." /></div>
+              </div>
+              <p className="text-[10px] text-gray-400">Upload your photos to any hosting service (e.g. Imgur, Google Drive) and paste the link here.</p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowLogRepair(false)}>Cancel</Button>
+              <Button type="submit" className="bg-rose-600 hover:bg-rose-700 px-8" disabled={isLoading || !selectedClientId}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Diagnosis
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
@@ -1966,13 +2346,48 @@ function RepairsView({ repairs, clients, onBack, fetchRepairs, onViewDetails }: 
 }
 
 function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
+
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [showDayDetails, setShowDayDetails] = useState(false)
-  
+
+  const [statusModalOpen, setStatusModalOpen] = useState(false)
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
+  const [workOrderModalOpen, setWorkOrderModalOpen] = useState(false)
+  const [selectedApt, setSelectedApt] = useState<any>(null)
+  const [selectedStatus, setSelectedStatus] = useState('')
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
+
   const today = new Date().toISOString().split('T')[0]
+
+  const handleUpdateStatus = async () => {
+    if (!selectedApt) return
+    setIsLoading(true)
+    const res = await updateAppointmentStatus(selectedApt.id, selectedStatus)
+    if (res.error) toast.error(res.error)
+    else {
+      toast.success('Status updated')
+      setStatusModalOpen(false)
+      fetchAppointments()
+    }
+    setIsLoading(false)
+  }
+
+  const handleReschedule = async () => {
+    if (!selectedApt || !rescheduleDate || !rescheduleTime) return
+    setIsLoading(true)
+    const res = await rescheduleAppointment(selectedApt.id, rescheduleDate, rescheduleTime)
+    if (res.error) toast.error(res.error)
+    else {
+      toast.success('Appointment rescheduled')
+      setRescheduleModalOpen(false)
+      fetchAppointments()
+    }
+    setIsLoading(false)
+  }
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(monthStart)
@@ -1992,7 +2407,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const phone = formData.get('phone') as string
-    
+
     if (!validatePHPhone(phone)) {
       toast.error(PHONE_VALIDATION_ERROR)
       return
@@ -2009,7 +2424,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
     setIsLoading(false)
   }
 
-  const todayAppointments = appointments.filter((apt: any) => 
+  const todayAppointments = appointments.filter((apt: any) =>
     isSameDay(parseISO(apt.date), new Date())
   )
 
@@ -2051,15 +2466,15 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
                 const isToday = isSameDay(day, new Date())
                 const isCurrentMonth = isSameMonth(day, monthStart)
 
-                  return (
-                    <div 
-                      key={i} 
-                      className={`bg-white min-h-[100px] p-2 text-xs font-medium transition-colors hover:bg-gray-50 cursor-pointer ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-900'} ${isToday ? 'bg-blue-50/50' : ''}`}
-                      onClick={() => {
-                        setSelectedDay(day)
-                        setShowDayDetails(true)
-                      }}
-                    >
+                return (
+                  <div
+                    key={i}
+                    className={`bg-white min-h-[100px] p-2 text-xs font-medium transition-colors hover:bg-gray-50 cursor-pointer ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-900'} ${isToday ? 'bg-blue-50/50' : ''}`}
+                    onClick={() => {
+                      setSelectedDay(day)
+                      setShowDayDetails(true)
+                    }}
+                  >
                     <div className="flex justify-between items-center mb-1">
                       <span className={isToday ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center' : ''}>
                         {format(day, 'd')}
@@ -2129,7 +2544,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
             <div className="space-y-1"><Label>Client Name</Label><Input name="clientName" placeholder="Client Name" required /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1"><Label>Email</Label><Input name="email" type="email" placeholder="client@example.com" /></div>
-                <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} required /></div>
+              <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} required /></div>
 
             </div>
             <div className="space-y-1"><Label>Address</Label><Textarea name="address" placeholder="Full address" /></div>
@@ -2259,13 +2674,13 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
                     {/* Quick Actions */}
                     <div className="pt-2 border-t flex gap-2 flex-wrap">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-full">Quick Actions</p>
-                      <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs">
+                      <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setSelectedStatus(apt.status || 'Scheduled'); setStatusModalOpen(true) }}>
                         Update Status
                       </Button>
-                      <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs">
+                      <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setRescheduleDate(apt.date || ''); setRescheduleTime(apt.time || ''); setRescheduleModalOpen(true) }}>
                         Reschedule
                       </Button>
-                      <Button size="sm" className="bg-[#005596] hover:bg-[#00447a] h-8 text-xs">
+                      <Button size="sm" className="bg-[#005596] hover:bg-[#00447a] text-white h-8 text-xs" onClick={() => { setSelectedApt(apt); setWorkOrderModalOpen(true) }}>
                         View Full Work Order
                       </Button>
                     </div>
@@ -2279,6 +2694,67 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={statusModalOpen} onOpenChange={setStatusModalOpen}>
+        <DialogContent className="sm:max-w-xs z-[100]">
+          <DialogHeader><DialogTitle>Update Status</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+              <SelectContent className="z-[105]">
+                <SelectItem value="Scheduled">Scheduled</SelectItem>
+                <SelectItem value="In Progress">In Progress</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button className="w-full bg-[#005596] text-white" onClick={handleUpdateStatus} disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Status
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rescheduleModalOpen} onOpenChange={setRescheduleModalOpen}>
+        <DialogContent className="sm:max-w-xs z-[100]">
+          <DialogHeader><DialogTitle>Reschedule Appointment</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>New Date</Label>
+              <Input type="date" min={today} value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>New Time</Label>
+              <Input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
+            </div>
+            <Button className="w-full bg-[#005596] text-white" onClick={handleReschedule} disabled={isLoading || !rescheduleDate || !rescheduleTime}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={workOrderModalOpen} onOpenChange={setWorkOrderModalOpen}>
+        <DialogContent className="sm:max-w-lg z-[100]">
+          <DialogHeader><DialogTitle>Full Work Order</DialogTitle></DialogHeader>
+          {selectedApt && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500 block">Client</span><span className="font-bold">{selectedApt.client_name}</span></div>
+                <div><span className="text-gray-500 block">Phone</span><span className="font-bold">{selectedApt.phone || 'N/A'}</span></div>
+                <div className="col-span-2"><span className="text-gray-500 block">Address</span><span className="font-bold">{selectedApt.address}</span></div>
+                <div><span className="text-gray-500 block">Date</span><span className="font-bold">{selectedApt.date}</span></div>
+                <div><span className="text-gray-500 block">Time</span><span className="font-bold">{selectedApt.time}</span></div>
+                <div><span className="text-gray-500 block">Service</span><span className="font-bold">{selectedApt.service_type}</span></div>
+                <div><span className="text-gray-500 block">Cost</span><span className="font-bold">{selectedApt.cost || 'TBD'}</span></div>
+                <div><span className="text-gray-500 block">Status</span><Badge>{selectedApt.status}</Badge></div>
+                <div><span className="text-gray-500 block">Technician</span><span className="font-bold">{selectedApt.technician || 'Unassigned'}</span></div>
+                <div className="col-span-2"><span className="text-gray-500 block">Notes</span><div className="bg-gray-50 p-2 rounded border italic mt-1">{selectedApt.notes || 'None'}</div></div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2289,6 +2765,9 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
   const [serviceTypeFilter, setServiceTypeFilter] = useState('all')
   const [technicianFilter, setTechnicianFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('')
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false)
+  const [selectedReceiptItem, setSelectedReceiptItem] = useState<any>(null)
+  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false)
 
   const allItems = [...installations, ...repairs]
 
@@ -2312,7 +2791,6 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
     ? Math.round((completedItems.length / filteredItems.length) * 100)
     : 0
 
-  // Most frequent issue
   const issueCounts: Record<string, number> = {}
   filteredItems.forEach((item: any) => {
     const key = item.service_type || (item.title?.includes('Repair') ? 'Repair' : 'Installation')
@@ -2320,10 +2798,10 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
   })
   const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1])
 
-  // Unique technicians for filter dropdown
   const uniqueTechnicians = [...new Set(allItems.map((i: any) => i.technician).filter(Boolean))]
 
   const handleExportCSV = () => {
+    const dateRange = dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : new Date().toISOString().split('T')[0]
     const headers = ['Title', 'Client', 'Date', 'Time', 'Technician', 'Cost', 'Status', 'Location']
     const csvContent = [
       headers.join(','),
@@ -2341,9 +2819,180 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `report_${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `report_${dateRange}.csv`
     link.click()
-    toast.success('CSV exported successfully')
+    toast.success(`CSV exported successfully (${filteredItems.length} records)`)
+  }
+
+  const handleExportPDF = async () => {
+    const { default: jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    
+    const doc = new jsPDF()
+    const dateRange = dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Dates'
+    
+    doc.setFontSize(18)
+    doc.text('Service Report', 14, 22)
+    doc.setFontSize(10)
+    doc.text(`Date Range: ${dateRange}`, 14, 30)
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 36)
+    doc.text(`Total Records: ${filteredItems.length}`, 14, 42)
+    doc.text(`Total Revenue: ₱${totalRevenue.toLocaleString()}`, 14, 48)
+    
+    const tableData = filteredItems.map((item: any) => [
+      item.title || '',
+      item.client_name || '',
+      item.date || '',
+      item.technician || 'N/A',
+      item.cost || '₱0',
+      item.status || ''
+    ])
+    
+    autoTable(doc, {
+      head: [['Service', 'Client', 'Date', 'Technician', 'Cost', 'Status']],
+      body: tableData,
+      startY: 55,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 85, 150] }
+    })
+    
+    const pdfBlob = doc.output('blob')
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(pdfBlob)
+    link.download = `report_${dateFrom || dateTo || new Date().toISOString().split('T')[0]}.pdf`
+    link.click()
+    toast.success(`PDF exported successfully (${filteredItems.length} records)`)
+  }
+
+  const generateOfficialReceipt = (item: any) => {
+    const receiptWindow = window.open('', '_blank', 'width=600,height=800')
+    if (!receiptWindow) return
+    
+    const receiptNumber = `OR-${Date.now().toString().slice(-8)}`
+    const cost = item.cost ? parseFloat(item.cost.replace(/[^0-9.]/g, '')) : 0
+    const vat = cost * 0.12
+    const total = cost
+    
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Official Receipt - ${receiptNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Courier New', monospace; padding: 40px; max-width: 600px; margin: 0 auto; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+          .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+          .company-details { font-size: 12px; color: #666; }
+          .receipt-title { font-size: 18px; font-weight: bold; margin: 20px 0 10px; text-align: center; }
+          .receipt-number { text-align: center; font-size: 14px; margin-bottom: 20px; }
+          .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+          .info-label { font-weight: bold; }
+          .items-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .items-table th, .items-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+          .items-table th { background: #f5f5f5; }
+          .totals { margin-top: 20px; text-align: right; }
+          .total-row { font-size: 16px; margin: 5px 0; }
+          .grand-total { font-size: 20px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
+          .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #666; }
+          .signature { margin-top: 40px; display: flex; justify-content: space-between; }
+          .sig-line { text-align: center; width: 200px; }
+          .sig-line .line { border-top: 1px solid #000; margin-top: 40px; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">AIRCON SERVICES</div>
+          <div class="company-details">
+            123 Service Street, Manila City<br>
+            Phone: (02) 1234-5678 | Email: info@airconservices.com
+          </div>
+        </div>
+        
+        <div class="receipt-title">OFFICIAL RECEIPT</div>
+        <div class="receipt-number">Receipt No: ${receiptNumber}</div>
+        
+        <div class="info-row">
+          <span class="info-label">Date:</span>
+          <span>${new Date().toLocaleDateString()}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Client:</span>
+          <span>${item.client_name || 'N/A'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Service:</span>
+          <span>${item.title || item.service_type || 'N/A'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Address:</span>
+          <span>${item.location || item.address || 'N/A'}</span>
+        </div>
+        
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${item.title || item.service_type || 'Service'} - ${item.technician || 'Technician'}</td>
+              <td>1</td>
+              <td>₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div class="totals">
+          <div class="total-row">Subtotal: ₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+          <div class="total-row">VAT (12%): ₱${vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+          <div class="total-row grand-total">TOTAL: ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+        </div>
+        
+        <div class="signature">
+          <div class="sig-line">
+            <div>Received By</div>
+            <div class="line"></div>
+          </div>
+          <div class="sig-line">
+            <div>Authorized Signature</div>
+            <div class="line"></div>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>Thank you for your business!</p>
+          <p>This serve as your official receipt.</p>
+          <p>Please keep this for your records.</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+          <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">Print Receipt</button>
+        </div>
+      </body>
+      </html>
+    `
+    
+    receiptWindow.document.write(receiptHTML)
+    receiptWindow.document.close()
+    toast.success('Official receipt generated')
+  }
+
+  const handleGenerateReceipt = (item: any) => {
+    setSelectedReceiptItem(item)
+    setShowReceiptDialog(true)
+  }
+
+  const confirmGenerateReceipt = () => {
+    if (selectedReceiptItem) {
+      generateOfficialReceipt(selectedReceiptItem)
+      setShowReceiptDialog(false)
+      setSelectedReceiptItem(null)
+    }
   }
 
   return (
@@ -2352,7 +3001,7 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
-            <h1 className="text-xl font-bold text-[#005596]">Reports & Analytics</h1>
+            <h1 className="text-xl font-bold text-[#005596]">Reports</h1>
             <p className="text-sm text-gray-500">Generate and export business reports</p>
           </div>
         </div>
@@ -2500,14 +3149,16 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
           <CardContent>
             <div className="flex gap-3 flex-wrap">
               <Button variant="outline" onClick={handleExportCSV} className="gap-2">
-                <Download className="h-4 w-4" />Export as Excel/CSV
+                <Download className="h-4 w-4" />Export as Excel/CSV ({filteredItems.length} records)
               </Button>
-              <Button variant="outline" className="gap-2">
-                <FileText className="h-4 w-4" />Export as PDF
+              <Button variant="outline" onClick={handleExportPDF} className="gap-2">
+                <FileText className="h-4 w-4" />Export as PDF ({filteredItems.length} records)
               </Button>
-              <Button variant="outline" className="gap-2 border-green-200 text-green-700 hover:bg-green-50">
-                <FileText className="h-4 w-4" />Generate Official Receipt
-              </Button>
+              {filteredItems.length === 1 && (
+                <Button variant="outline" onClick={() => generateOfficialReceipt(filteredItems[0])} className="gap-2 border-green-200 text-green-700 hover:bg-green-50">
+                  <FileText className="h-4 w-4" />Generate Official Receipt
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -2520,24 +3171,50 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
               filteredItems
                 .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .map((item: any) => (
-                <div key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg">
-                  <div className="space-y-1">
-                    <p className="font-bold text-[#005596] capitalize">{item.title}</p>
-                    <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'} • {item.technician || 'Unassigned'}</p>
-                  </div>
-                  <div className="flex items-center gap-8">
-                    <div className="text-right">
-                      <p className="font-bold">{item.cost || '₱0'}</p>
-                      <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-blue-500'}`}>{item.status}</p>
+                  <div key={item.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-lg">
+                    <div className="space-y-1">
+                      <p className="font-bold text-[#005596] capitalize">{item.title}</p>
+                      <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'} • {item.technician || 'Unassigned'}</p>
                     </div>
-                    <Button variant="outline" size="sm" className="h-8"><FileText className="h-3 w-3 mr-2" />Receipt</Button>
+                    <div className="flex items-center gap-8">
+                      <div className="text-right">
+                        <p className="font-bold">{item.cost || '₱0'}</p>
+                        <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-blue-500'}`}>{item.status}</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="h-8" onClick={() => handleGenerateReceipt(item)}><FileText className="h-3 w-3 mr-2" />Receipt</Button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </CardContent>
         </Card>
       </main>
+
+      {/* Receipt Generation Dialog */}
+      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Official Receipt</DialogTitle>
+          </DialogHeader>
+          {selectedReceiptItem && (
+            <div className="py-4 space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <p className="text-sm"><span className="font-medium">Client:</span> {selectedReceiptItem.client_name}</p>
+                <p className="text-sm"><span className="font-medium">Service:</span> {selectedReceiptItem.title}</p>
+                <p className="text-sm"><span className="font-medium">Date:</span> {selectedReceiptItem.date}</p>
+                <p className="text-sm"><span className="font-medium">Cost:</span> {selectedReceiptItem.cost || '₱0'}</p>
+              </div>
+              <p className="text-sm text-gray-600">This will generate an official receipt that can be printed.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowReceiptDialog(false)}>Cancel</Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={confirmGenerateReceipt}>
+              Generate Receipt
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2575,7 +3252,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const phone = formData.get('companyPhone') as string
-    
+
     if (phone && !validatePHPhone(phone)) {
       toast.error(PHONE_VALIDATION_ERROR)
       return
@@ -2777,7 +3454,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       defaultValue="Hi {client_name}, this is a reminder that your {service_type} is scheduled for {date} at {time}. Please contact us at {company_phone} for any concerns."
                       className="font-mono text-sm"
                     />
-                    <p className="text-xs text-gray-400">Variables: {'{'+'client_name}'}, {'{'+'service_type}'}, {'{'+'date}'}, {'{'+'time}'}, {'{'+'company_phone}'}</p>
+                    <p className="text-xs text-gray-400">Variables: {'{' + 'client_name}'}, {'{' + 'service_type}'}, {'{' + 'date}'}, {'{' + 'time}'}, {'{' + 'company_phone}'}</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Technician Assignment Notification</Label>
@@ -2786,7 +3463,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       defaultValue="Hi {technician_name}, you have been assigned to a {service_type} job for {client_name} on {date} at {time}. Location: {address}."
                       className="font-mono text-sm"
                     />
-                    <p className="text-xs text-gray-400">Variables: {'{'+'technician_name}'}, {'{'+'service_type}'}, {'{'+'client_name}'}, {'{'+'date}'}, {'{'+'time}'}, {'{'+'address}'}</p>
+                    <p className="text-xs text-gray-400">Variables: {'{' + 'technician_name}'}, {'{' + 'service_type}'}, {'{' + 'client_name}'}, {'{' + 'date}'}, {'{' + 'time}'}, {'{' + 'address}'}</p>
                   </div>
                   <div className="flex justify-end">
                     <Button className="bg-[#005596]">Save Templates</Button>
@@ -2814,9 +3491,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                         <p className="text-sm text-gray-500">Receive notifications via email</p>
                       </div>
                     </div>
-                    <Switch 
-                      checked={notifSettings.email_notifications} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, email_notifications: val})}
+                    <Switch
+                      checked={notifSettings.email_notifications}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, email_notifications: val })}
                     />
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -2829,9 +3506,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                         <p className="text-sm text-gray-500">Receive notifications via SMS</p>
                       </div>
                     </div>
-                    <Switch 
-                      checked={notifSettings.sms_notifications} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, sms_notifications: val})}
+                    <Switch
+                      checked={notifSettings.sms_notifications}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, sms_notifications: val })}
                     />
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -2844,9 +3521,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                         <p className="text-sm text-gray-500">Receive in-app push notifications</p>
                       </div>
                     </div>
-                    <Switch 
-                      checked={notifSettings.push_notifications} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, push_notifications: val})}
+                    <Switch
+                      checked={notifSettings.push_notifications}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, push_notifications: val })}
                     />
                   </div>
                 </CardContent>
@@ -2863,9 +3540,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">New Booking Alerts</p>
                       <p className="text-sm text-gray-500">Get notified when a new booking is created</p>
                     </div>
-                    <Switch 
-                      checked={notifSettings.new_booking_alert} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, new_booking_alert: val})}
+                    <Switch
+                      checked={notifSettings.new_booking_alert}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, new_booking_alert: val })}
                     />
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -2873,9 +3550,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">Booking Update Alerts</p>
                       <p className="text-sm text-gray-500">Get notified when bookings are updated or cancelled</p>
                     </div>
-                    <Switch 
-                      checked={notifSettings.booking_update_alert} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, booking_update_alert: val})}
+                    <Switch
+                      checked={notifSettings.booking_update_alert}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, booking_update_alert: val })}
                     />
                   </div>
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
@@ -2883,9 +3560,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">Payment Alerts</p>
                       <p className="text-sm text-gray-500">Get notified on payment status changes</p>
                     </div>
-                    <Switch 
-                      checked={notifSettings.payment_alert} 
-                      onCheckedChange={(val) => setNotifSettings({...notifSettings, payment_alert: val})}
+                    <Switch
+                      checked={notifSettings.payment_alert}
+                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, payment_alert: val })}
                     />
                   </div>
                 </CardContent>
@@ -2912,18 +3589,18 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">Enable Appointment Reminders</p>
                       <p className="text-sm text-gray-500">Send reminders before scheduled appointments</p>
                     </div>
-                    <Switch 
-                      checked={reminderSettings.reminder_enabled} 
-                      onCheckedChange={(val) => setReminderSettings({...reminderSettings, reminder_enabled: val})}
+                    <Switch
+                      checked={reminderSettings.reminder_enabled}
+                      onCheckedChange={(val) => setReminderSettings({ ...reminderSettings, reminder_enabled: val })}
                     />
                   </div>
                   {reminderSettings.reminder_enabled && (
                     <div className="p-4 border rounded-lg space-y-4">
                       <div className="space-y-2">
                         <Label>Send Reminder Before (hours)</Label>
-                        <Select 
-                          value={reminderSettings.reminder_hours_before.toString()} 
-                          onValueChange={(val) => setReminderSettings({...reminderSettings, reminder_hours_before: parseInt(val)})}
+                        <Select
+                          value={reminderSettings.reminder_hours_before.toString()}
+                          onValueChange={(val) => setReminderSettings({ ...reminderSettings, reminder_hours_before: parseInt(val) })}
                         >
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -2952,18 +3629,18 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">Enable Follow-up Reminders</p>
                       <p className="text-sm text-gray-500">Send follow-up messages after completed services</p>
                     </div>
-                    <Switch 
-                      checked={reminderSettings.follow_up_enabled} 
-                      onCheckedChange={(val) => setReminderSettings({...reminderSettings, follow_up_enabled: val})}
+                    <Switch
+                      checked={reminderSettings.follow_up_enabled}
+                      onCheckedChange={(val) => setReminderSettings({ ...reminderSettings, follow_up_enabled: val })}
                     />
                   </div>
                   {reminderSettings.follow_up_enabled && (
                     <div className="p-4 border rounded-lg space-y-4">
                       <div className="space-y-2">
                         <Label>Send Follow-up After (days)</Label>
-                        <Select 
-                          value={reminderSettings.follow_up_days_after.toString()} 
-                          onValueChange={(val) => setReminderSettings({...reminderSettings, follow_up_days_after: parseInt(val)})}
+                        <Select
+                          value={reminderSettings.follow_up_days_after.toString()}
+                          onValueChange={(val) => setReminderSettings({ ...reminderSettings, follow_up_days_after: parseInt(val) })}
                         >
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -2991,18 +3668,18 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       <p className="font-medium text-[#005596]">Enable Maintenance Reminders</p>
                       <p className="text-sm text-gray-500">Send periodic maintenance reminders to clients</p>
                     </div>
-                    <Switch 
-                      checked={reminderSettings.maintenance_reminder_enabled} 
-                      onCheckedChange={(val) => setReminderSettings({...reminderSettings, maintenance_reminder_enabled: val})}
+                    <Switch
+                      checked={reminderSettings.maintenance_reminder_enabled}
+                      onCheckedChange={(val) => setReminderSettings({ ...reminderSettings, maintenance_reminder_enabled: val })}
                     />
                   </div>
                   {reminderSettings.maintenance_reminder_enabled && (
                     <div className="p-4 border rounded-lg space-y-4">
                       <div className="space-y-2">
                         <Label>Remind Every (months)</Label>
-                        <Select 
-                          value={reminderSettings.maintenance_reminder_months.toString()} 
-                          onValueChange={(val) => setReminderSettings({...reminderSettings, maintenance_reminder_months: parseInt(val)})}
+                        <Select
+                          value={reminderSettings.maintenance_reminder_months.toString()}
+                          onValueChange={(val) => setReminderSettings({ ...reminderSettings, maintenance_reminder_months: parseInt(val) })}
                         >
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -3035,28 +3712,28 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Current Password</Label>
-                    <Input 
-                      type="password" 
+                    <Input
+                      type="password"
                       value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
                       placeholder="Enter current password"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>New Password</Label>
-                    <Input 
-                      type="password" 
+                    <Input
+                      type="password"
                       value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                       placeholder="Enter new password"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Confirm New Password</Label>
-                    <Input 
-                      type="password" 
+                    <Input
+                      type="password"
                       value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                       placeholder="Confirm new password"
                     />
                   </div>
@@ -3084,18 +3761,18 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                         <p className="text-sm text-gray-500">Add an extra layer of security to your account</p>
                       </div>
                     </div>
-                    <Switch 
-                      checked={securitySettings.two_factor_enabled} 
-                      onCheckedChange={(val) => setSecuritySettings({...securitySettings, two_factor_enabled: val})}
+                    <Switch
+                      checked={securitySettings.two_factor_enabled}
+                      onCheckedChange={(val) => setSecuritySettings({ ...securitySettings, two_factor_enabled: val })}
                     />
                   </div>
 
                   <div className="p-4 border rounded-lg space-y-4">
                     <div className="space-y-2">
                       <Label>Session Timeout (minutes)</Label>
-                      <Select 
-                        value={securitySettings.session_timeout_minutes.toString()} 
-                        onValueChange={(val) => setSecuritySettings({...securitySettings, session_timeout_minutes: parseInt(val)})}
+                      <Select
+                        value={securitySettings.session_timeout_minutes.toString()}
+                        onValueChange={(val) => setSecuritySettings({ ...securitySettings, session_timeout_minutes: parseInt(val) })}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -3113,9 +3790,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                   <div className="p-4 border rounded-lg space-y-4">
                     <div className="space-y-2">
                       <Label>Require Password Change Every (days)</Label>
-                      <Select 
-                        value={securitySettings.require_password_change_days.toString()} 
-                        onValueChange={(val) => setSecuritySettings({...securitySettings, require_password_change_days: parseInt(val)})}
+                      <Select
+                        value={securitySettings.require_password_change_days.toString()}
+                        onValueChange={(val) => setSecuritySettings({ ...securitySettings, require_password_change_days: parseInt(val) })}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -3184,20 +3861,20 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   const handleApproveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!selectedRequestForApprove) return
-    
+
     setIsLoading(true)
     try {
       // Get form data
       const form = e.currentTarget
       const formData = new FormData(form)
-      
+
       // Ensure required fields
       if (!approveServiceCategory) {
         toast.error('Please select a service category')
         setIsLoading(false)
         return
       }
-      
+
       if (!approveTechnician) {
         toast.error('Please select a technician')
         setIsLoading(false)
@@ -3212,11 +3889,11 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
       const totalCost = (form.querySelector('input[name="totalCost"]') as HTMLInputElement)?.value || '0'
       const clientName = selectedRequestForApprove.client_name
       const address = selectedRequestForApprove.address
-      
+
       // Create the appropriate job based on service category
       let createFunction: any
       let setState: any
-      
+
       if (approveServiceCategory === 'Installation') {
         createFunction = createInstallation
         setState = setInstallations
@@ -3227,7 +3904,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
         createFunction = createMaintenance
         setState = setMaintenance
       }
-      
+
       if (!createFunction) {
         toast.error('Invalid service category')
         setIsLoading(false)
@@ -3245,24 +3922,24 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
       jobFormData.append('cost', totalCost)
       jobFormData.append('notes', selectedRequestForApprove.message || '')
       jobFormData.append('type', 'Standard')
-      
+
       const jobResult = await createFunction(jobFormData)
-      
+
       if (jobResult.error) {
         toast.error(`Failed to create job: ${jobResult.error}`)
         setIsLoading(false)
         return
       }
-      
+
       // Update request status to Approved
       await updateRequestStatus(selectedRequestForApprove.id, 'Approved')
-      
+
       // Show success and navigate
       toast.success(`Request approved and ${approveServiceCategory} job created!`)
-      
+
       // Refresh data
       await fetchRequests()
-      
+
       // Fetch updated jobs list and navigate to the service view
       if (approveServiceCategory === 'Installation') {
         const updatedInstallations = await getInstallations()
@@ -3277,7 +3954,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
         setMaintenance(updatedMaintenance)
         setView('maintenance')
       }
-      
+
       setShowApproveDialog(false)
       setSelectedRequestForApprove(null)
     } catch (error) {
@@ -3315,8 +3992,8 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                       <div className="flex items-center gap-3">
                         <Badge className={
                           request.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                          request.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-yellow-100 text-yellow-700'
+                            request.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                              'bg-yellow-100 text-yellow-700'
                         }>
                           {request.status}
                         </Badge>
@@ -3591,25 +4268,92 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   )
 }
 
-function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onViewDetails }: any) {
+function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onViewDetails, clientUnits: propClientUnits }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [type, setType] = useState('Real-Time')
+  const [maintenanceData, setMaintenanceData] = useState<any[]>(maintenance)
+  const [isLoadingItems, setIsLoadingItems] = useState(false)
+
+  // New maintenance form state
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [selectedClientUnits, setSelectedClientUnits] = useState<any[]>([])
+  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([])
+  const [unitServiceTypes, setUnitServiceTypes] = useState<Record<string, string>>({})
+
   const today = new Date().toISOString().split('T')[0]
+
+  useEffect(() => {
+    loadMaintenanceWithItems()
+  }, [])
+
+  const loadMaintenanceWithItems = async () => {
+    setIsLoadingItems(true)
+    const data = await getMaintenanceWithItems()
+    setMaintenanceData(data)
+    setIsLoadingItems(false)
+  }
+
+  const handleClientChange = async (clientId: string) => {
+    setSelectedClientId(clientId)
+    setSelectedUnitIds([])
+    setUnitServiceTypes({})
+
+    if (clientId) {
+      const units = await getClientUnits(clientId)
+      setSelectedClientUnits(units || [])
+    } else {
+      setSelectedClientUnits([])
+    }
+  }
+
+  const handleUnitToggle = (unitId: string) => {
+    setSelectedUnitIds(prev =>
+      prev.includes(unitId)
+        ? prev.filter(id => id !== unitId)
+        : [...prev, unitId]
+    )
+  }
+
+  const handleServiceTypeChange = (unitId: string, serviceType: string) => {
+    setUnitServiceTypes(prev => ({
+      ...prev,
+      [unitId]: serviceType
+    }))
+  }
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
+
     const formData = new FormData(e.currentTarget)
     formData.append('type', type)
-    const result = await createMaintenance(formData)
+
+    // Pass unit IDs and service types as JSON strings
+    formData.append('unitIdsJson', JSON.stringify(selectedUnitIds))
+    formData.append('serviceTypesJson', JSON.stringify(selectedUnitIds.map(id => unitServiceTypes[id] || 'Cleaning')))
+
+    const result = await createMaintenanceWithUnits(formData)
     if (result.error) toast.error(result.error)
     else {
-      toast.success('Maintenance service added')
-      fetchMaintenance()
+      toast.success('Maintenance service added with units')
+      loadMaintenanceWithItems()
       setShowAdd(false)
+      setSelectedClientId('')
+      setSelectedUnitIds([])
+      setUnitServiceTypes({})
+      setSelectedClientUnits([])
     }
     setIsLoading(false)
+  }
+
+  const handleItemStatusChange = async (itemId: string, status: string) => {
+    const result = await updateMaintenanceItemStatus(itemId, status)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success(`Unit status updated to ${status}`)
+      loadMaintenanceWithItems()
+    }
   }
 
   const handleComplete = async (id: string) => {
@@ -3617,7 +4361,7 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
     if (result.error) toast.error(result.error)
     else {
       toast.success('Maintenance marked as completed')
-      fetchMaintenance()
+      loadMaintenanceWithItems()
     }
   }
 
@@ -3647,21 +4391,28 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
           </div>
         </Card>
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Maintenance" value={maintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
-          <MiniStatCard title="In Progress" value={maintenance.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value={maintenance.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
-          <MiniStatCard title="Completed" value={maintenance.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+          <MiniStatCard title="Total Maintenance" value={maintenanceData.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="In Progress" value={maintenanceData.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value={maintenanceData.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Completed" value={maintenanceData.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
         </div>
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596]">Maintenance Services ({maintenance.length})</h2>
-          {maintenance.map((item: any) => (
+          <h2 className="font-bold text-[#005596]">Maintenance Services ({maintenanceData.length})</h2>
+          {isLoadingItems ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-[#005596]" />
+            </div>
+          ) : maintenanceData.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-[#005596]">{item.title}</h3>
-                      <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
+                      <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : item.status === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}>
+                        {item.status}
+                      </Badge>
+                      {item.is_multi_unit && <Badge variant="outline" className="text-[10px]">Multi-Unit</Badge>}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-500">
                       <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
@@ -3671,52 +4422,157 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
                     <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{item.progress}%</span></div>
-                  <Progress value={item.progress} className="h-2" />
-                </div>
+
+                {/* Multi-Unit Items Display */}
+                {item.items && item.items.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Unit Services</p>
+                    <div className="space-y-3">
+                      {item.items.map((unitItem: any) => (
+                        <div key={unitItem.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={unitItem.status === 'Done'}
+                                onCheckedChange={(checked) => handleItemStatusChange(unitItem.id, checked ? 'Done' : 'Pending')}
+                              />
+                              <div>
+                                <p className="font-medium text-sm">{unitItem.client_units?.unit_name || `Unit ${unitItem.unit_id}`}</p>
+                                <p className="text-xs text-gray-500">{unitItem.client_units?.brand} {unitItem.client_units?.unit_type} - {unitItem.client_units?.horsepower}HP</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Select
+                              value={unitItem.service_type}
+                              onValueChange={async (val) => {
+                                const { updateMaintenanceItemServiceType } = await import('@/app/actions/admin')
+                                await updateMaintenanceItemServiceType(unitItem.id, val)
+                                loadMaintenanceWithItems()
+                              }}
+                            >
+                              <SelectTrigger className="w-[140px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Cleaning">Cleaning</SelectItem>
+                                <SelectItem value="Check-up">Check-up</SelectItem>
+                                <SelectItem value="Filter Replacement">Filter Replacement</SelectItem>
+                                <SelectItem value="Inspection">Inspection</SelectItem>
+                                <SelectItem value="Repair">Repair</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={unitItem.status}
+                              onValueChange={(val) => handleItemStatusChange(unitItem.id, val)}
+                            >
+                              <SelectTrigger className="w-[120px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Pending">Pending</SelectItem>
+                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                <SelectItem value="Done">Done</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {unitItem.next_cleaning_date && (
+                              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                                Next: {new Date(unitItem.next_cleaning_date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Legacy single-unit maintenance */}
+                {!item.is_multi_unit && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
+<Progress value={Math.round(calculateDynamicProgress(item))} status={item.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
-          {maintenance.length === 0 && <div className="text-center py-12 text-gray-400">No maintenance services found</div>}
+          {maintenanceData.length === 0 && !isLoadingItems && <div className="text-center py-12 text-gray-400">No maintenance services found</div>}
         </div>
       </main>
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Maintenance Service (from existing client)</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Schedule Multi-Unit Maintenance</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="py-4 space-y-6">
+            {/* Client Selection */}
             <div className="space-y-2">
-              <Label>Service Type *</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  type="button"
-                  onClick={() => setType('Real-Time')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Real-Time' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <Clock className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Real-Time Maintenance</div>
-                  <div className="text-xs text-gray-500">Start immediately</div>
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setType('Schedule')}
-                  className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
-                  <div className="font-bold">Schedule Maintenance</div>
-                  <div className="text-xs text-gray-500">Pick date & time</div>
-                </button>
+              <Label>Select Client *</Label>
+              <Select value={selectedClientId} onValueChange={handleClientChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.filter((c: any) => !c.is_archived).map((client: any) => (
+                    <SelectItem key={client.id} value={client.id}>{client.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Unit Selection - Multi-Select Checklist */}
+            {selectedClientId && (
+              <div className="space-y-2">
+                <Label>Select Units *</Label>
+                {selectedClientUnits.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                    No registered units found for this client. Please register units first in the Installations section.
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg max-h-[200px] overflow-y-auto">
+                    {selectedClientUnits.map((unit: any) => (
+                      <div key={unit.id} className="flex items-center justify-between p-3 border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id={`unit-${unit.id}`}
+                            checked={selectedUnitIds.includes(unit.id)}
+                            onCheckedChange={() => handleUnitToggle(unit.id)}
+                          />
+                          <label htmlFor={`unit-${unit.id}`} className="cursor-pointer">
+                            <p className="font-medium text-sm">{unit.unit_name}</p>
+                            <p className="text-xs text-gray-500">{unit.brand} {unit.unit_type} - {unit.horsepower}HP</p>
+                          </label>
+                        </div>
+                        {selectedUnitIds.includes(unit.id) && (
+                          <Select
+                            value={unitServiceTypes[unit.id] || 'Cleaning'}
+                            onValueChange={(val) => handleServiceTypeChange(unit.id, val)}
+                          >
+                            <SelectTrigger className="w-[140px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Cleaning">Cleaning</SelectItem>
+                              <SelectItem value="Check-up">Check-up</SelectItem>
+                              <SelectItem value="Filter Replacement">Filter Replacement</SelectItem>
+                              <SelectItem value="Inspection">Inspection</SelectItem>
+                              <SelectItem value="Repair">Repair</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedClientUnits.length > 0 && (
+                  <p className="text-xs text-gray-500">{selectedUnitIds.length} unit(s) selected</p>
+                )}
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Service Type</Label>
-              <Input name="serviceType" placeholder="e.g., Cleaning, Filter Replacement" required />
-            </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Client Name</Label>
@@ -3743,8 +4599,16 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
                 <Input name="time" type="time" required />
               </div>
               <div className="space-y-2">
-                <Label>Cost</Label>
-                <Input name="cost" type="number" placeholder="0.00" required />
+                <Label>Schedule Type</Label>
+                <Select value={type} onValueChange={setType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Real-Time">Real-Time</SelectItem>
+                    <SelectItem value="Schedule">Schedule</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
@@ -3753,9 +4617,13 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
             </div>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#005596]" disabled={isLoading}>
+              <Button
+                type="submit"
+                className="bg-[#005596]"
+                disabled={isLoading || selectedUnitIds.length === 0}
+              >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Add Maintenance
+                Add Maintenance ({selectedUnitIds.length} units)
               </Button>
             </div>
           </form>
@@ -3800,7 +4668,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
       toast.success('Technician added successfully')
       fetchTechnicians()
       setShowAddDialog(false)
-      ;(e.target as HTMLFormElement).reset()
+        ; (e.target as HTMLFormElement).reset()
     }
     setIsLoading(false)
   }
@@ -3844,14 +4712,14 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
   }
 
   const filteredTechnicians = technicians.filter((tech: any) => {
-    const matchesSearch = 
+    const matchesSearch =
       tech.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tech.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tech.phone?.includes(searchQuery) ||
       tech.specialization?.toLowerCase().includes(searchQuery.toLowerCase())
-    
+
     const matchesStatus = statusFilter === 'all' || tech.status === statusFilter
-    
+
     return matchesSearch && matchesStatus
   })
 
@@ -3921,9 +4789,9 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
         <div className="flex gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input 
-              className="pl-10" 
-              placeholder="Search by name, email, phone, or specialization..." 
+            <Input
+              className="pl-10"
+              placeholder="Search by name, email, phone, or specialization..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -3966,12 +4834,12 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-[#005596]">{tech.full_name}</span>
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className={
                             tech.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200 text-[10px]' :
-                            tech.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200 text-[10px]' :
-                            'bg-red-50 text-red-700 border-red-200 text-[10px]'
+                              tech.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200 text-[10px]' :
+                                'bg-red-50 text-red-700 border-red-200 text-[10px]'
                           }
                         >
                           {tech.status}
@@ -3995,8 +4863,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setSelectedTechnician(tech)
@@ -4005,8 +4873,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setSelectedTechnician(tech)
@@ -4015,8 +4883,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                     >
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Select 
-                      value={tech.status} 
+                    <Select
+                      value={tech.status}
                       onValueChange={(val) => handleStatusChange(tech.id, val)}
                     >
                       <SelectTrigger className="w-[120px] h-9">
@@ -4028,8 +4896,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                         <SelectItem value="Inactive">Inactive</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       className="text-red-600 border-red-200 hover:bg-red-50"
                       onClick={() => handleDelete(tech.id)}
@@ -4318,8 +5186,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                       variant="outline"
                       className={
                         selectedTechnician.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
-                        selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                        'bg-red-50 text-red-700 border-red-200'
+                          selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            'bg-red-50 text-red-700 border-red-200'
                       }
                     >
                       {selectedTechnician.status}
@@ -4395,8 +5263,8 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                       variant="outline"
                       className={
                         selectedTechnician.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
-                        selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                        'bg-red-50 text-red-700 border-red-200'
+                          selectedTechnician.status === 'On Leave' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            'bg-red-50 text-red-700 border-red-200'
                       }
                     >
                       {selectedTechnician.status || 'Active'}

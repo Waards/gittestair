@@ -2,38 +2,33 @@
 
 import { useState } from 'react'
 import {
-  Users,
-  Wrench,
-  PenTool,
-  CalendarDays,
-  BarChart3,
-  FileText,
-  TrendingUp,
-  Settings as SettingsIcon,
-  HardHat,
-  Bell,
-  LogOut,
   Home,
+  Settings as SettingsIcon,
+  Bell,
+  Wrench,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
+type View = 'dashboard' | 'settings'
 
-interface AdminSidebarProps {
+interface ClientSidebarProps {
   view: View
   onViewChange: (view: View) => void
-  onSettings: () => void
-  onReminders: () => void
+  onRequestService: () => void
+  onNotifications: () => void
   onSignOut: () => void
+  unreadNotifications: number
 }
 
-export function AdminSidebar({
+export function ClientSidebar({
   view,
   onViewChange,
-  onSettings,
-  onReminders,
+  onRequestService,
+  onNotifications,
   onSignOut,
-}: AdminSidebarProps) {
+  unreadNotifications
+}: ClientSidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const navigation: {
@@ -41,16 +36,8 @@ export function AdminSidebar({
     icon: React.ReactNode
     view: View
   }[] = [
-    { label: 'Dashboard', icon: <Home className="h-5 w-5" />, view: 'dashboard' },
-    { label: 'Clients', icon: <Users className="h-5 w-5" />, view: 'clients' },
-    { label: 'Installations', icon: <Wrench className="h-5 w-5" />, view: 'installations' },
-    { label: 'Repairs', icon: <PenTool className="h-5 w-5" />, view: 'repairs' },
-    { label: 'Maintenance', icon: <Wrench className="h-5 w-5" />, view: 'maintenance' },
-    { label: 'Schedule', icon: <CalendarDays className="h-5 w-5" />, view: 'schedule' },
-    { label: 'Reports', icon: <BarChart3 className="h-5 w-5" />, view: 'reports' },
-    { label: 'Requests', icon: <FileText className="h-5 w-5" />, view: 'requests' },
-    { label: 'Leads', icon: <TrendingUp className="h-5 w-5" />, view: 'leads' },
-    { label: 'Technicians', icon: <HardHat className="h-5 w-5" />, view: 'technicians' },
+    { label: 'Overview', icon: <Home className="h-5 w-5" />, view: 'dashboard' },
+    { label: 'Settings', icon: <SettingsIcon className="h-5 w-5" />, view: 'settings' },
   ]
 
   return (
@@ -70,7 +57,7 @@ export function AdminSidebar({
         {isExpanded && (
           <div className="min-w-0 flex-1">
             <h2 className="text-white font-bold text-sm truncate">Azelea</h2>
-            <p className="text-xs text-blue-100 truncate">Admin Panel</p>
+            <p className="text-xs text-blue-100 truncate">Client Portal</p>
           </div>
         )}
       </div>
@@ -104,51 +91,57 @@ export function AdminSidebar({
             )}
           </button>
         ))}
+
+        <hr className="border-blue-400 border-opacity-20 mx-2 my-2" />
+
+        <button
+          onClick={onRequestService}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium group relative text-blue-100 hover:bg-white hover:bg-opacity-10"
+          title="Request Service"
+        >
+          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5 text-amber-300">
+            <Wrench className="h-5 w-5" />
+          </span>
+          {isExpanded && (
+            <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">
+              Request Service
+            </span>
+          )}
+          {!isExpanded && (
+            <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+              Request Service
+            </div>
+          )}
+        </button>
+
       </nav>
 
       {/* Bottom Actions */}
       <div className="border-t border-blue-400 border-opacity-20 p-2 space-y-1 flex-shrink-0">
         <button
-          onClick={onReminders}
+          onClick={onNotifications}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium group relative text-blue-100 hover:bg-white hover:bg-opacity-10"
-          title="Reminders"
+          title="Notifications"
         >
-          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5 relative">
             <Bell className="h-5 w-5" />
+            {unreadNotifications > 0 && (
+              <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-[#003d70]"></span>
+            )}
           </span>
           {isExpanded && (
-            <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">
-              Reminders
+            <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis flex items-center justify-between">
+              Notifications
+              {unreadNotifications > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {unreadNotifications}
+                </span>
+              )}
             </span>
           )}
           {!isExpanded && (
             <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-              Reminders
-            </div>
-          )}
-        </button>
-
-        <button
-          onClick={onSettings}
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium group relative',
-            view === 'settings'
-              ? 'bg-white bg-opacity-20 text-white shadow-md'
-              : 'text-blue-100 hover:bg-white hover:bg-opacity-10'
-          )}
-          title="Settings"
-        >
-          <span className="flex-shrink-0 flex items-center justify-center w-5 h-5">
-            <SettingsIcon className="h-5 w-5" />
-          </span>
-          {isExpanded && (
-            <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">
-              Settings
-            </span>
-          )}
-          {!isExpanded && (
-            <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-              Settings
+              Notifications
             </div>
           )}
         </button>
