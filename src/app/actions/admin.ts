@@ -888,29 +888,41 @@ export async function createMaintenanceWithUnits(formData: FormData) {
 export async function getMaintenanceWithItems() {
   const supabase = await createAdminClient()
   
-  // Get all maintenance records
-  const { data: maintenance, error } = await supabase
-    .from('maintenance')
-    .select('*')
-    .order('created_at', { ascending: false })
-  
-  if (error) {
-    console.error('getMaintenanceWithItems error:', error)
+  try {
+    // Get all maintenance records
+    const { data: maintenance, error } = await supabase
+      .from('maintenance')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (error) {
+      console.error('getMaintenanceWithItems error:', error)
+      return []
+    }
+    
+    // Get all maintenance items (if table exists)
+    let items: any[] = []
+    try {
+      const { data: itemsData } = await supabase
+        .from('maintenance_items')
+        .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
+      items = itemsData || []
+    } catch (e) {
+      // Table might not exist yet
+      console.log('maintenance_items table not ready yet')
+    }
+    
+    // Attach items to maintenance records
+    const maintenanceWithItems = (maintenance || []).map(m => ({
+      ...m,
+      items: items.filter(item => item.maintenance_id === m.id)
+    }))
+    
+    return maintenanceWithItems
+  } catch (e) {
+    console.error('getMaintenanceWithItems fatal error:', e)
     return []
   }
-  
-  // Get all maintenance items
-  const { data: items } = await supabase
-    .from('maintenance_items')
-    .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
-  
-  // Attach items to maintenance records
-  const maintenanceWithItems = (maintenance || []).map(m => ({
-    ...m,
-    items: (items || []).filter(item => item.maintenance_id === m.id)
-  }))
-  
-  return maintenanceWithItems
 }
 
 export async function updateMaintenanceItemStatus(itemId: string, status: string) {
