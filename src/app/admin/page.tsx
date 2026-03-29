@@ -4288,10 +4288,15 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
   }, [])
 
   const loadMaintenanceWithItems = async () => {
-    setIsLoadingItems(true)
-    const data = await getMaintenanceWithItems()
-    setMaintenanceData(data)
-    setIsLoadingItems(false)
+    try {
+      setIsLoadingItems(true)
+      const data = await getMaintenanceWithItems()
+      setMaintenanceData(data)
+    } catch (e) {
+      console.error('loadMaintenanceWithItems error:', e)
+    } finally {
+      setIsLoadingItems(false)
+    }
   }
 
   const handleClientChange = async (clientId: string) => {
