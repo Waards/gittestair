@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { sanitizedString } from '@/lib/security'
 
 const validatePHPhone = (phone: string): boolean => {
   const phRegex = /^09\d{9}$/;
@@ -406,19 +407,8 @@ export async function createAppointment(formData: FormData) {
 export async function createInstallation(formData: FormData) {
   const supabase = await createAdminClient()
   const type = formData.get('type') as string
-  const data = {
-    title: formData.get('serviceType') as string,
-    client_name: formData.get('clientName') as string,
-    location: formData.get('address') as string,
-    technician: formData.get('technician') as string,
-    date: formData.get('date') as string,
-    time: formData.get('time') as string,
-    cost: formData.get('cost') as string,
-    notes: formData.get('notes') as string,
-    type: type,
-    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
-    progress: type === 'Real-Time' ? 10 : 0
-  }
+
+  const data = sanitizeJobFormData(formData, type)
 
   const { error } = await supabase
     .from('installations')
@@ -432,19 +422,8 @@ export async function createInstallation(formData: FormData) {
 export async function createRepair(formData: FormData) {
   const supabase = await createAdminClient()
   const type = formData.get('type') as string
-  const data = {
-    title: formData.get('serviceType') as string,
-    client_name: formData.get('clientName') as string,
-    location: formData.get('address') as string,
-    technician: formData.get('technician') as string,
-    date: formData.get('date') as string,
-    time: formData.get('time') as string,
-    cost: formData.get('cost') as string,
-    notes: formData.get('notes') as string,
-    type: type,
-    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
-    progress: type === 'Real-Time' ? 10 : 0
-  }
+
+  const data = sanitizeJobFormData(formData, type)
 
   const { error } = await supabase
     .from('repairs')
@@ -453,6 +432,23 @@ export async function createRepair(formData: FormData) {
   if (error) return { error: error.message }
   revalidatePath('/admin')
   return { success: true }
+}
+
+function sanitizeJobFormData(formData: FormData, type: string): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    title: sanitizedString(formData.get('serviceType') as string || ''),
+    client_name: sanitizedString(formData.get('clientName') as string || ''),
+    location: sanitizedString(formData.get('address') as string || ''),
+    technician: sanitizedString(formData.get('technician') as string || ''),
+    date: formData.get('date') as string || '',
+    time: formData.get('time') as string || '',
+    cost: formData.get('cost') as string || '',
+    notes: sanitizedString(formData.get('notes') as string || ''),
+    type: type || 'Standard',
+    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
+    progress: type === 'Real-Time' ? 10 : 0
+  }
+  return data
 }
 
 export async function markInstallationComplete(id: string) {
@@ -683,6 +679,249 @@ export async function updateRequestStatus(id: string, status: string) {
   if (error) return { error: error.message }
   revalidatePath('/admin')
   return { success: true }
+}
+
+export async function acceptRequestAsInstallation(requestId: string, data: {
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: request, error: fetchError } = await supabase
+    .from('client_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (fetchError || !request) {
+    return { error: 'Request not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('installations')
+    .insert({
+      title: request.request_type,
+      client_name: request.client_name,
+      location: request.preferred_date + ' ' + request.preferred_time,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || request.message,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('client_requests')
+    .update({ status: 'Approved' })
+    .eq('id', requestId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Request Accepted',
+      message: `${request.client_name}'s request has been accepted. Installation job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function acceptRequestAsRepair(requestId: string, data: {
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: request, error: fetchError } = await supabase
+    .from('client_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (fetchError || !request) {
+    return { error: 'Request not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('repairs')
+    .insert({
+      title: request.request_type,
+      client_name: request.client_name,
+      location: request.preferred_date + ' ' + request.preferred_time,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || request.message,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('client_requests')
+    .update({ status: 'Approved' })
+    .eq('id', requestId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Request Accepted',
+      message: `${request.client_name}'s request has been accepted. Repair job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function acceptRequestAsMaintenance(requestId: string, data: {
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: request, error: fetchError } = await supabase
+    .from('client_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (fetchError || !request) {
+    return { error: 'Request not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('maintenance')
+    .insert({
+      title: request.request_type,
+      client_name: request.client_name,
+      location: request.preferred_date + ' ' + request.preferred_time,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || request.message,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('client_requests')
+    .update({ status: 'Approved' })
+    .eq('id', requestId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Request Accepted',
+      message: `${request.client_name}'s request has been accepted. Maintenance job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function rejectRequest(requestId: string, reason?: string) {
+  const supabase = await createAdminClient()
+  
+  const { data: request, error: fetchError } = await supabase
+    .from('client_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (fetchError || !request) {
+    return { error: 'Request not found' }
+  }
+
+  const { error } = await supabase
+    .from('client_requests')
+    .update({ status: 'Rejected', message: reason ? `Rejected: ${reason}` : request.message })
+    .eq('id', requestId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Request Rejected',
+      message: `${request.client_name}'s request has been rejected.${reason ? ` Reason: ${reason}` : ''}`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function getAllPendingRequests() {
+  const supabase = await createAdminClient()
+  
+  const { data: leads, error: leadsError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('status', 'Pending')
+    .order('created_at', { ascending: false })
+
+  const { data: requests, error: requestsError } = await supabase
+    .from('client_requests')
+    .select('*')
+    .eq('status', 'Pending')
+    .order('created_at', { ascending: false })
+
+  const pendingLeads = (leads || []).map(lead => ({
+    ...lead,
+    source: 'lead',
+    displayDate: lead.preferred_date,
+    displayTime: lead.preferred_time
+  }))
+
+  const pendingRequests = (requests || []).map(req => ({
+    ...req,
+    source: 'request',
+    displayDate: req.preferred_date,
+    displayTime: req.preferred_time
+  }))
+
+  return [...pendingLeads, ...pendingRequests].sort((a, b) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
 }
 
 export async function archiveClient(id: string) {

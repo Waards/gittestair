@@ -51,9 +51,14 @@ import {
   deleteMaintenanceItem,
   updateInstallationProgress,
   updateRepairProgress,
-  updateMaintenanceProgress
+  updateMaintenanceProgress,
+  getAllPendingRequests,
+  acceptRequestAsInstallation,
+  acceptRequestAsRepair,
+  acceptRequestAsMaintenance,
+  rejectRequest
 } from '@/app/actions/admin'
-import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead } from '@/app/actions/leads'
+import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead, acceptLead, acceptLeadAsRepair, acceptLeadAsMaintenance, rejectLead } from '@/app/actions/leads'
 import {
   startOfMonth,
   endOfMonth,
@@ -260,6 +265,7 @@ export default function AdminDashboard() {
       if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'requests' && requests.length === 0) {
       getClientRequests().then(setRequests)
+      getAllPendingRequests().then(setRequests)
     } else if (view === 'leads' && leads.length === 0) {
       getLeads().then(setLeads)
     } else if (view === 'technicians' && technicians.length === 0) {
@@ -509,6 +515,7 @@ export default function AdminDashboard() {
                 <StatCard title="Total Clients" value={clients.length.toString()} icon={<Users className="text-blue-600" />} />
                 <StatCard title="Total Bookings" value={(installations.length + repairs.length + maintenance.length).toString()} icon={<Calendar className="text-blue-600" />} />
                 <StatCard title="Total Leads" value={leads.length.toString()} icon={<TrendingUp className="text-purple-600" />} />
+                <StatCard title="Pending Requests" value={requests.filter((r: any) => r.status === 'Pending').length.toString()} icon={<Clock className="text-yellow-600" />} />
                 <StatCard title="Installations" value={installations.length.toString()} icon={<Wrench className="text-green-600" />} />
                 <StatCard
                   title="Pending Installations"
@@ -661,6 +668,7 @@ export default function AdminDashboard() {
           <ReportsView
             installations={installations}
             repairs={repairs}
+            maintenance={maintenance}
             clients={clients}
             onBack={() => setView('dashboard')}
           />
@@ -1272,6 +1280,36 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
 
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [clientTypeFilter, setClientTypeFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  // Filter leads
+  const filteredLeads = leads.filter((lead: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery ||
+      lead.full_name?.toLowerCase().includes(searchLower) ||
+      lead.phone_number?.toLowerCase().includes(searchLower) ||
+      lead.email?.toLowerCase().includes(searchLower) ||
+      lead.service_address?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
+    const matchesClientType = clientTypeFilter === 'all' || lead.client_type === clientTypeFilter
+    
+    const leadDate = lead.created_at ? lead.created_at.split('T')[0] : ''
+    const matchesDateFrom = !dateFrom || leadDate >= dateFrom
+    const matchesDateTo = !dateTo || leadDate <= dateTo
+    
+    return matchesSearch && matchesStatus && matchesClientType && matchesDateFrom && matchesDateTo
+  })
+
+  const pendingLeads = leads.filter((l: any) => l.status === 'Pending').length
+  const contactedLeads = leads.filter((l: any) => l.status === 'Contacted').length
+  const convertedLeads = leads.filter((l: any) => l.status === 'Converted' || l.status === 'Accepted').length
+
   const handleStatusUpdate = async (id: string, status: string) => {
     setIsLoading(true)
     const result = await updateLeadStatus(id, status)
@@ -1320,14 +1358,102 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
         </div>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <MiniStatCard title="Total Leads" value={filteredLeads.length.toString()} icon={<TrendingUp className="text-blue-600" />} />
+          <MiniStatCard title="Pending" value={filteredLeads.filter((l: any) => l.status === 'Pending').length.toString()} icon={<Clock className="text-yellow-600" />} />
+          <MiniStatCard title="Contacted" value={filteredLeads.filter((l: any) => l.status === 'Contacted').length.toString()} icon={<Phone className="text-blue-600" />} />
+          <MiniStatCard title="Converted" value={filteredLeads.filter((l: any) => l.status === 'Converted' || l.status === 'Accepted').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+        </div>
+
+        {/* Filters */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter Leads
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  className="pl-10"
+                  placeholder="Search by name, phone, email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                />
+                <span className="text-gray-400">-</span>
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Contacted">Contacted</SelectItem>
+                  <SelectItem value="Converted">Converted</SelectItem>
+                  <SelectItem value="Accepted">Accepted</SelectItem>
+                  <SelectItem value="Rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={clientTypeFilter} onValueChange={setClientTypeFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Residential">Residential</SelectItem>
+                  <SelectItem value="Corporate">Corporate</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter('all')
+                  setClientTypeFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Showing <span className="font-bold text-[#005596]">{filteredLeads.length}</span> of <span className="font-bold">{leads.length}</span> leads
+            </p>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 gap-4">
-          {leads.length === 0 ? (
+          {filteredLeads.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
               <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No leads found</p>
             </div>
           ) : (
-            leads.map((lead: any) => (
+            filteredLeads.map((lead: any) => (
               <Card key={lead.id} className="border-none shadow-sm">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
@@ -1607,6 +1733,8 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [selectedClient, setSelectedClient] = useState<any>(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -1686,13 +1814,23 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
   }
 
   const filteredClients = clients.filter((client: any) => {
-    const matchesSearch = client.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.phone?.includes(searchQuery)
-    const matchesType = typeFilter === 'all' || client.client_type === typeFilter
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery || 
+      client.full_name?.toLowerCase().includes(searchLower) ||
+      client.email?.toLowerCase().includes(searchLower) ||
+      client.phone?.toLowerCase().includes(searchLower) ||
+      client.address?.toLowerCase().includes(searchLower)
+    
+    const clientType = (client.client_type || 'Residential').toLowerCase()
+    const matchesType = typeFilter === 'all' || clientType === typeFilter.toLowerCase()
+    
+    const clientDate = client.created_at ? client.created_at.split('T')[0] : ''
+    const matchesDateFrom = !dateFrom || clientDate >= dateFrom
+    const matchesDateTo = !dateTo || clientDate <= dateTo
+    
     const matchesArchived = showArchived ? client.is_archived === true : client.is_archived !== true
 
-    return matchesSearch && matchesType && matchesArchived
+    return matchesSearch && matchesType && matchesDateFrom && matchesDateTo && matchesArchived
   })
 
   const clientTotalPages = Math.ceil(total / itemsPerPage)
@@ -1741,7 +1879,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
           </Button>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
@@ -1752,6 +1890,23 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
                 setSearchQuery(e.target.value)
                 setPage(1)
               }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              className="w-[140px]"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
+              placeholder="From"
+            />
+            <span className="text-gray-400">-</span>
+            <Input
+              type="date"
+              className="w-[140px]"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
+              placeholder="To"
             />
           </div>
           <Select value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setPage(1) }}>
@@ -1767,12 +1922,32 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
           </Select>
         </div>
 
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Showing <span className="font-bold text-[#005596]">{filteredClients.length}</span> of <span className="font-bold">{total}</span> clients
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-gray-500"
+            onClick={() => {
+              setSearchQuery('')
+              setTypeFilter('all')
+              setDateFrom('')
+              setDateTo('')
+              setPage(1)
+            }}
+          >
+            Clear Filters
+          </Button>
+        </div>
+
         <div className="grid grid-cols-3 gap-6">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Total Clients</p>
-                <p className="text-3xl font-bold text-[#005596]">{activeClientsCount}</p>
+                <p className="text-3xl font-bold text-[#005596]">{filteredClients.length}</p>
               </div>
               <Users className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -1781,7 +1956,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Residential</p>
-                <p className="text-3xl font-bold text-[#005596]">{residentialCount}</p>
+                <p className="text-3xl font-bold text-[#005596]">{filteredClients.filter((c: any) => (c.client_type || 'Residential') === 'Residential').length}</p>
               </div>
               <Home className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -1790,7 +1965,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Corporate</p>
-                <p className="text-3xl font-bold text-[#005596]">{corporateCount}</p>
+                <p className="text-3xl font-bold text-[#005596]">{filteredClients.filter((c: any) => c.client_type === 'Corporate').length}</p>
               </div>
               <Building2 className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -1800,7 +1975,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              {showArchived ? 'Archived Clients' : 'Clients'} ({total})
+              {showArchived ? 'Archived Clients' : 'Clients'} ({filteredClients.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -2076,12 +2251,64 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   const [type, setType] = useState('Real-Time')
   const [technology, setTechnology] = useState('Inverter')
   const [selectedUnit, setSelectedUnit] = useState<any>(null)
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [technicianFilter, setTechnicianFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  
+  // Unit filters
+  const [unitSearchQuery, setUnitSearchQuery] = useState('')
+  const [unitBrandFilter, setUnitBrandFilter] = useState('all')
+  
   const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
 
   const BRANDS = ['LG', 'Samsung', 'Carrier', 'Daikin', 'Midea', 'Aux', 'Panasonic', 'Kolin', 'Sharp', 'Fujidenzo', 'Generic']
   const HP_OPTIONS = ['0.5', '1.0', '1.5', '2.0', '2.5', '3.0']
+
+  const techSet = new Set<string>()
+  installations.forEach((i: any) => { if (i.technician) techSet.add(i.technician) })
+  const uniqueTechnicians = Array.from(techSet)
+
+  const brandSet = new Set<string>()
+  clientUnits.forEach((u: any) => { if (u.brand) brandSet.add(u.brand as string) })
+  const uniqueBrands = Array.from(brandSet)
+
+  // Filter installations
+  const filteredInstallations = installations.filter((item: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery || 
+      item.title?.toLowerCase().includes(searchLower) ||
+      item.client_name?.toLowerCase().includes(searchLower) ||
+      item.location?.toLowerCase().includes(searchLower) ||
+      item.technician?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter
+    const matchesTech = technicianFilter === 'all' || item.technician === technicianFilter
+    
+    const itemDate = item.date || ''
+    const matchesDateFrom = !dateFrom || itemDate >= dateFrom
+    const matchesDateTo = !dateTo || itemDate <= dateTo
+    
+    return matchesSearch && matchesStatus && matchesTech && matchesDateFrom && matchesDateTo
+  })
+
+  // Filter client units
+  const filteredUnits = clientUnits.filter((unit: any) => {
+    const searchLower = unitSearchQuery.toLowerCase()
+    const matchesSearch = !unitSearchQuery ||
+      unit.unit_name?.toLowerCase().includes(searchLower) ||
+      unit.brand?.toLowerCase().includes(searchLower) ||
+      unit.profiles?.full_name?.toLowerCase().includes(searchLower)
+    
+    const matchesBrand = unitBrandFilter === 'all' || unit.brand === unitBrandFilter
+    
+    return matchesSearch && matchesBrand
+  })
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -2156,18 +2383,97 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
       <main className="container mx-auto py-8 px-6 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Jobs" value={installations.length.toString()} icon={<Wrench className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value={installations.filter((i: any) => i.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
-          <MiniStatCard title="In Progress" value={installations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Registered Units" value={clientUnits.length.toString()} icon={<ClipboardList className="text-emerald-600" />} />
+          <MiniStatCard title="Total Jobs" value={filteredInstallations.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value={filteredInstallations.filter((i: any) => i.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="In Progress" value={filteredInstallations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Registered Units" value={filteredUnits.length.toString()} icon={<ClipboardList className="text-emerald-600" />} />
         </div>
+
+        {/* Installation Jobs Filters */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter Installation Jobs
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  className="pl-10"
+                  placeholder="Search jobs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                />
+                <span className="text-gray-400">-</span>
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="Scheduled">Scheduled</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Technicians" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {uniqueTechnicians.map((t: string) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter('all')
+                  setTechnicianFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Showing <span className="font-bold text-[#005596]">{filteredInstallations.length}</span> of <span className="font-bold">{installations.length}</span> jobs
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Installation Jobs */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><Wrench className="h-5 w-5" /> Installation Jobs ({installations.length})</h2>
+            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><Wrench className="h-5 w-5" /> Installation Jobs ({filteredInstallations.length})</h2>
           </div>
-          {installations.map((item: any) => (
+          {filteredInstallations.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -2203,25 +2509,67 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
               </CardContent>
             </Card>
           ))}
-          {installations.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No installation jobs found</div>}
+          {filteredInstallations.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No installation jobs found</div>}
         </div>
 
         {/* Asset Registry Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Asset Registry ({clientUnits.length})</h2>
+            <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Asset Registry ({filteredUnits.length})</h2>
           </div>
 
-          {clientUnits.length === 0 ? (
+          {/* Unit Filters */}
+          <Card className="border-none shadow-sm">
+            <CardContent className="py-4">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-10"
+                    placeholder="Search units..."
+                    value={unitSearchQuery}
+                    onChange={(e) => setUnitSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Select value={unitBrandFilter} onValueChange={setUnitBrandFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="All Brands" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Brands</SelectItem>
+                    {uniqueBrands.map((b: string) => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-500"
+                  onClick={() => {
+                    setUnitSearchQuery('')
+                    setUnitBrandFilter('all')
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+              <p className="text-sm text-gray-500 mt-3">
+                Showing <span className="font-bold text-[#005596]">{filteredUnits.length}</span> of <span className="font-bold">{clientUnits.length}</span> units
+              </p>
+            </CardContent>
+          </Card>
+
+          {filteredUnits.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-xl border border-dashed border-[#005596]/20">
               <ClipboardList className="h-12 w-12 mx-auto mb-3 text-gray-200" />
-              <p className="font-semibold text-gray-500">No units registered yet</p>
+              <p className="font-semibold text-gray-500">No units found</p>
               <p className="text-sm text-gray-400 mb-4">Click "Register New Unit" to give an aircon its Digital Identity</p>
               <Button className="bg-[#005596]" onClick={() => setShowRegisterUnit(true)}><Plus className="h-4 w-4 mr-2" />Register First Unit</Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {clientUnits.map((unit: any) => (
+              {filteredUnits.map((unit: any) => (
                 <Card key={unit.id} className="border border-[#005596]/10 shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
@@ -2469,9 +2817,57 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
   const [newPartName, setNewPartName] = useState('')
   const [newPartQty, setNewPartQty] = useState(1)
   const [newPartPrice, setNewPartPrice] = useState(0)
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [technicianFilter, setTechnicianFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  
+  // Repair jobs filters
+  const [jobSearchQuery, setJobSearchQuery] = useState('')
+  const [jobStatusFilter, setJobStatusFilter] = useState('all')
+  
   const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
+
+  // Get unique technicians
+  const techSet = new Set<string>()
+  repairs.forEach((r: any) => { if (r.technician) techSet.add(r.technician as string) })
+  const uniqueTechnicians = Array.from(techSet)
+
+  // Filter repairs
+  const filteredRepairs = repairs.filter((item: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery || 
+      item.title?.toLowerCase().includes(searchLower) ||
+      item.client_name?.toLowerCase().includes(searchLower) ||
+      item.location?.toLowerCase().includes(searchLower) ||
+      item.technician?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter
+    const matchesTech = technicianFilter === 'all' || item.technician === technicianFilter
+    
+    const itemDate = item.date || ''
+    const matchesDateFrom = !dateFrom || itemDate >= dateFrom
+    const matchesDateTo = !dateTo || itemDate <= dateTo
+    
+    return matchesSearch && matchesStatus && matchesTech && matchesDateFrom && matchesDateTo
+  })
+
+  // Filter repair jobs
+  const filteredJobs = repairJobs.filter((job: any) => {
+    const searchLower = jobSearchQuery.toLowerCase()
+    const matchesSearch = !jobSearchQuery ||
+      job.symptom?.toLowerCase().includes(searchLower) ||
+      job.error_code?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = jobStatusFilter === 'all' || job.status === jobStatusFilter
+    
+    return matchesSearch && matchesStatus
+  })
 
   // Units for the currently selected client
   const filteredUnits = clientUnits.filter((u: any) => u.client_id === selectedClientId)
@@ -2550,16 +2946,95 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
       <main className="container mx-auto py-8 px-6 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Jobs" value={repairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
-          <MiniStatCard title="In Progress" value={repairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value={repairs.filter((r: any) => r.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
-          <MiniStatCard title="Diagnosis Logs" value={repairJobs.length.toString()} icon={<ClipboardList className="text-rose-600" />} />
+          <MiniStatCard title="Total Jobs" value={filteredRepairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
+          <MiniStatCard title="In Progress" value={filteredRepairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value={filteredRepairs.filter((r: any) => r.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Diagnosis Logs" value={filteredJobs.length.toString()} icon={<ClipboardList className="text-rose-600" />} />
         </div>
+
+        {/* Repair Service Jobs Filters */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter Repair Jobs
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  className="pl-10"
+                  placeholder="Search repairs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                />
+                <span className="text-gray-400">-</span>
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="Scheduled">Scheduled</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Technicians" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {uniqueTechnicians.map((t: string) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter('all')
+                  setTechnicianFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Showing <span className="font-bold text-[#005596]">{filteredRepairs.length}</span> of <span className="font-bold">{repairs.length}</span> jobs
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Repair Service Jobs */}
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><PenTool className="h-5 w-5" /> Repair Jobs ({repairs.length})</h2>
-          {repairs.map((item: any) => (
+          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><PenTool className="h-5 w-5" /> Repair Jobs ({filteredRepairs.length})</h2>
+          {filteredRepairs.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -2587,22 +3062,66 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
               </CardContent>
             </Card>
           ))}
-          {repairs.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No repair jobs found</div>}
+          {filteredRepairs.length === 0 && <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">No repair jobs found</div>}
         </div>
 
         {/* Repair Diagnosis Logs */}
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Repair Diagnosis Logs ({repairJobs.length})</h2>
-          {repairJobs.length === 0 ? (
+          <h2 className="font-bold text-[#005596] text-lg flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Repair Diagnosis Logs ({filteredJobs.length})</h2>
+
+          {/* Job Filters */}
+          <Card className="border-none shadow-sm">
+            <CardContent className="py-4">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-10"
+                    placeholder="Search by error code or symptom..."
+                    value={jobSearchQuery}
+                    onChange={(e) => setJobSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Select value={jobStatusFilter} onValueChange={setJobStatusFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="Open">Open</SelectItem>
+                    <SelectItem value="In Progress">In Progress</SelectItem>
+                    <SelectItem value="Resolved">Resolved</SelectItem>
+                    <SelectItem value="Closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-500"
+                  onClick={() => {
+                    setJobSearchQuery('')
+                    setJobStatusFilter('all')
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+              <p className="text-sm text-gray-500 mt-3">
+                Showing <span className="font-bold text-[#005596]">{filteredJobs.length}</span> of <span className="font-bold">{repairJobs.length}</span> logs
+              </p>
+            </CardContent>
+          </Card>
+
+          {filteredJobs.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-xl border border-dashed border-rose-200">
               <AlertTriangle className="h-10 w-10 mx-auto mb-3 text-rose-200" />
-              <p className="font-semibold text-gray-500">No diagnosis logs yet</p>
+              <p className="font-semibold text-gray-500">No diagnosis logs found</p>
               <p className="text-sm text-gray-400 mb-4">Log unit-specific fault information with error codes and parts replaced</p>
               <Button variant="outline" className="border-rose-400 text-rose-600" onClick={() => setShowLogRepair(true)}><Plus className="h-4 w-4 mr-2" />Log First Diagnosis</Button>
             </div>
           ) : (
             <div className="space-y-4">
-              {repairJobs.map((job: any) => {
+              {filteredJobs.map((job: any) => {
                 const totalCost = (job.parts_replaced || []).reduce((sum: number, p: any) => sum + ((p.qty || 1) * (p.price || 0)), 0)
                 return (
                   <Card key={job.id} className="border border-rose-100 shadow-sm">
@@ -2856,7 +3375,32 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleTime, setRescheduleTime] = useState('')
 
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [serviceFilter, setServiceFilter] = useState('all')
+
   const today = new Date().toISOString().split('T')[0]
+
+  // Filter appointments
+  const filteredAppointments = appointments.filter((apt: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery ||
+      apt.client_name?.toLowerCase().includes(searchLower) ||
+      apt.service_type?.toLowerCase().includes(searchLower) ||
+      apt.phone?.toLowerCase().includes(searchLower) ||
+      apt.address?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || apt.status === statusFilter
+    const matchesService = serviceFilter === 'all' || apt.service_type === serviceFilter
+    
+    return matchesSearch && matchesStatus && matchesService
+  })
+
+  // Get unique service types
+  const serviceTypesSet = new Set<string>()
+  appointments.forEach((a: any) => { if (a.service_type) serviceTypesSet.add(a.service_type as string) })
+  const serviceTypes = Array.from(serviceTypesSet)
 
   const handleUpdateStatus = async () => {
     if (!selectedApt) return
@@ -2895,7 +3439,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   })
 
   const getDayAppointments = (day: Date) => {
-    return appointments.filter((apt: any) => isSameDay(parseISO(apt.date), day))
+    return filteredAppointments.filter((apt: any) => isSameDay(parseISO(apt.date), day))
   }
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2919,7 +3463,7 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
     setIsLoading(false)
   }
 
-  const todayAppointments = appointments.filter((apt: any) =>
+  const todayAppointments = filteredAppointments.filter((apt: any) =>
     isSameDay(parseISO(apt.date), new Date())
   )
 
@@ -2939,6 +3483,61 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
       </header>
       <main className="container mx-auto py-8 px-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
+          {/* Filters */}
+          <Card className="border-none shadow-sm">
+            <CardContent className="py-4">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-10"
+                    placeholder="Search appointments..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Confirmed">Confirmed</SelectItem>
+                    <SelectItem value="Completed">Completed</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={serviceFilter} onValueChange={setServiceFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="All Services" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Services</SelectItem>
+                    {serviceTypes.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-500"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setStatusFilter('all')
+                    setServiceFilter('all')
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+              <p className="text-sm text-gray-500 mt-3">
+                Showing <span className="font-bold text-[#005596]">{filteredAppointments.length}</span> of <span className="font-bold">{appointments.length}</span> appointments
+              </p>
+            </CardContent>
+          </Card>
+
           <Card className="border-none shadow-sm p-6">
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-lg font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
@@ -3254,9 +3853,10 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
   )
 }
 
-function ReportsView({ installations, repairs, clients, onBack }: any) {
+function ReportsView({ installations, repairs, maintenance, clients, onBack }: any) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [datePreset, setDatePreset] = useState('all')
   const [serviceTypeFilter, setServiceTypeFilter] = useState('all')
   const [technicianFilter, setTechnicianFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('')
@@ -3264,9 +3864,69 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
   const [selectedReceiptItem, setSelectedReceiptItem] = useState<any>(null)
   const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false)
 
-  const allItems = [...installations, ...repairs]
+  // Additional filters
+  const [showInstallation, setShowInstallation] = useState(true)
+  const [showRepair, setShowRepair] = useState(true)
+  const [showMaintenance, setShowMaintenance] = useState(true)
+
+  useEffect(() => {
+    const today = new Date()
+    switch (datePreset) {
+      case 'today':
+        setDateFrom(today.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'yesterday': {
+        const yesterday = new Date(today)
+        yesterday.setDate(yesterday.getDate() - 1)
+        setDateFrom(yesterday.toISOString().split('T')[0])
+        setDateTo(yesterday.toISOString().split('T')[0])
+        break
+      }
+      case 'last7':
+        const last7 = new Date(today)
+        last7.setDate(last7.getDate() - 7)
+        setDateFrom(last7.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'last30':
+        const last30 = new Date(today)
+        last30.setDate(last30.getDate() - 30)
+        setDateFrom(last30.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      case 'thisMonth': {
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+        setDateFrom(firstDay.toISOString().split('T')[0])
+        setDateTo(today.toISOString().split('T')[0])
+        break
+      }
+      case 'lastMonth': {
+        const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
+        setDateFrom(firstDayLastMonth.toISOString().split('T')[0])
+        setDateTo(lastDayLastMonth.toISOString().split('T')[0])
+        break
+      }
+      case 'all':
+        setDateFrom('')
+        setDateTo('')
+        break
+    }
+  }, [datePreset])
+
+  const allItems = [
+    ...installations.map((i: any) => ({ ...i, serviceType: 'Installation' })),
+    ...repairs.map((r: any) => ({ ...r, serviceType: 'Repair' })),
+    ...maintenance.map((m: any) => ({ ...m, serviceType: m.title || 'Maintenance' }))
+  ]
 
   const filteredItems = allItems.filter((item: any) => {
+    // Filter by service category toggle
+    if (item.serviceType === 'Installation' && !showInstallation) return false
+    if (item.serviceType === 'Repair' && !showRepair) return false
+    if ((item.serviceType === 'Maintenance' || item.serviceType === 'Cleaning') && !showMaintenance) return false
+    
     const matchesDateFrom = !dateFrom || item.date >= dateFrom
     const matchesDateTo = !dateTo || item.date <= dateTo
     const matchesService = serviceTypeFilter === 'all' ||
@@ -3293,14 +3953,55 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
   })
   const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1])
 
-  const uniqueTechnicians = [...new Set(allItems.map((i: any) => i.technician).filter(Boolean))]
+  // Get unique technicians
+  const techSet = new Set<string>()
+  allItems.forEach((i: any) => { if (i.technician) techSet.add(i.technician as string) })
+  const uniqueTechnicians = Array.from(techSet)
+
+  const technicianStats = uniqueTechnicians.map((tech: string) => {
+    const techItems = filteredItems.filter((i: any) => i.technician === tech)
+    const completed = techItems.filter((i: any) => i.status === 'Completed')
+    const totalRevenue = completed.reduce((acc: number, item: any) => 
+      acc + parseInt(item.cost?.replace(/[^0-9]/g, '') || '0'), 0)
+    return {
+      name: tech,
+      total: techItems.length,
+      completed: completed.length,
+      revenue: totalRevenue,
+      rate: techItems.length > 0 ? Math.round((completed.length / techItems.length) * 100) : 0
+    }
+  }).sort((a, b) => b.revenue - a.revenue)
+
+  const monthlyData: Record<string, { count: number; revenue: number }> = {}
+  filteredItems.forEach((item: any) => {
+    if (item.date) {
+      const monthKey = item.date.substring(0, 7)
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { count: 0, revenue: 0 }
+      }
+      monthlyData[monthKey].count++
+      if (item.status === 'Completed') {
+        monthlyData[monthKey].revenue += parseInt(item.cost?.replace(/[^0-9]/g, '') || '0')
+      }
+    }
+  })
+  const sortedMonths = Object.entries(monthlyData).sort((a, b) => a[0].localeCompare(b[0]))
+
+  const serviceTypeCounts = {
+    Installation: filteredItems.filter((i: any) => i.serviceType === 'Installation').length,
+    Repair: filteredItems.filter((i: any) => i.serviceType === 'Repair').length,
+    Maintenance: filteredItems.filter((i: any) => 
+      i.serviceType === 'Maintenance' || i.serviceType === 'Cleaning'
+    ).length,
+  }
 
   const handleExportCSV = () => {
     const dateRange = dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : new Date().toISOString().split('T')[0]
-    const headers = ['Title', 'Client', 'Date', 'Time', 'Technician', 'Cost', 'Status', 'Location']
+    const headers = ['Service Type', 'Title', 'Client', 'Date', 'Time', 'Technician', 'Cost', 'Status', 'Location']
     const csvContent = [
       headers.join(','),
       ...filteredItems.map((item: any) => [
+        `"${item.serviceType || ''}"`,
         `"${item.title || ''}"`,
         `"${item.client_name || ''}"`,
         `"${item.date || ''}"`,
@@ -3514,12 +4215,27 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
+                <Label className="text-xs">Date Range</Label>
+                <Select value={datePreset} onValueChange={setDatePreset}>
+                  <SelectTrigger><SelectValue placeholder="All Time" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="yesterday">Yesterday</SelectItem>
+                    <SelectItem value="last7">Last 7 Days</SelectItem>
+                    <SelectItem value="last30">Last 30 Days</SelectItem>
+                    <SelectItem value="thisMonth">This Month</SelectItem>
+                    <SelectItem value="lastMonth">Last Month</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
                 <Label className="text-xs">Date From</Label>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setDatePreset('custom') }} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Date To</Label>
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setDatePreset('custom') }} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Service Type</Label>
@@ -3534,20 +4250,53 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Technician</Label>
-                <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
-                  <SelectTrigger><SelectValue placeholder="All Technicians" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Technicians</SelectItem>
-                    {uniqueTechnicians.map((t: any) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+<div className="space-y-1">
+              <Label className="text-xs">Technician</Label>
+              <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                <SelectTrigger><SelectValue placeholder="All Technicians" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {uniqueTechnicians.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-1">
+          </div>
+
+          {/* Service Category Toggles */}
+          <div className="flex items-center gap-4 pt-2 border-t">
+            <span className="text-xs text-gray-500 font-medium">Show:</span>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={showInstallation} 
+                onChange={(e) => setShowInstallation(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm">Installation ({installations.length})</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={showRepair} 
+                onChange={(e) => setShowRepair(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm">Repair ({repairs.length})</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={showMaintenance} 
+                onChange={(e) => setShowMaintenance(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm">Maintenance ({maintenance.length})</span>
+            </label>
+          </div>
+
+          <div className="space-y-1">
               <Label className="text-xs">Location / Area Filter</Label>
               <Input
                 placeholder="Filter by location or area..."
@@ -3575,7 +4324,7 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
         </Card>
 
         {/* Visual Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="border-none shadow-sm border-l-4 border-l-green-500">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -3603,6 +4352,27 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
                 </div>
                 <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
                   <CheckCircle className="h-6 w-6 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-none shadow-sm border-l-4 border-l-orange-500">
+            <CardContent className="p-6">
+              <div>
+                <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-3">Services Breakdown</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Installation</span>
+                    <span className="font-bold text-orange-700">{serviceTypeCounts.Installation}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Repair</span>
+                    <span className="font-bold text-orange-700">{serviceTypeCounts.Repair}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Maintenance</span>
+                    <span className="font-bold text-orange-700">{serviceTypeCounts.Maintenance}</span>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -3635,6 +4405,65 @@ function ReportsView({ installations, repairs, clients, onBack }: any) {
             </CardContent>
           </Card>
         </div>
+
+        {/* Monthly Trends */}
+        {sortedMonths.length > 0 && (
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Monthly Trends</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                {sortedMonths.slice(-6).map(([month, data]) => (
+                  <div key={month} className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500 font-medium">{month}</p>
+                    <p className="text-lg font-bold text-[#005596]">{data.count}</p>
+                    <p className="text-xs text-green-600">₱{data.revenue.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Technician Performance */}
+        {technicianStats.length > 0 && (
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Technician Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 font-medium text-gray-500">Technician</th>
+                      <th className="text-right py-2 font-medium text-gray-500">Total Jobs</th>
+                      <th className="text-right py-2 font-medium text-gray-500">Completed</th>
+                      <th className="text-right py-2 font-medium text-gray-500">Rate</th>
+                      <th className="text-right py-2 font-medium text-gray-500">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {technicianStats.slice(0, 5).map((tech: any) => (
+                      <tr key={tech.name} className="border-b">
+                        <td className="py-2 font-medium">{tech.name}</td>
+                        <td className="text-right">{tech.total}</td>
+                        <td className="text-right">{tech.completed}</td>
+                        <td className="text-right">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${tech.rate >= 80 ? 'bg-green-100 text-green-700' : tech.rate >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {tech.rate}%
+                          </span>
+                        </td>
+                        <td className="text-right font-medium text-green-600">₱{tech.revenue.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Data Export */}
         <Card className="border-none shadow-sm">
@@ -4341,6 +5170,44 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   const [approvePriority, setApprovePriority] = useState('Normal')
   const [approveServiceStatus, setApproveServiceStatus] = useState('Scheduled')
   const [approveBookingSource, setApproveBookingSource] = useState('Website')
+  const [showRejectDialog, setShowRejectDialog] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  // Filter requests
+  const filteredRequests = requests.filter((request: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery ||
+      request.full_name?.toLowerCase().includes(searchLower) ||
+      request.client_name?.toLowerCase().includes(searchLower) ||
+      request.phone_number?.toLowerCase().includes(searchLower) ||
+      request.phone?.toLowerCase().includes(searchLower) ||
+      request.email?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'pending' && (request.status === 'Pending' || request.status === 'Pending')) ||
+      (statusFilter === 'accepted' && (request.status === 'Accepted' || request.status === 'Approved')) ||
+      (statusFilter === 'rejected' && request.status === 'Rejected')
+    
+    const matchesSource = sourceFilter === 'all' || request.source === sourceFilter
+    
+    const requestDate = request.created_at ? request.created_at.split('T')[0] : ''
+    const matchesDateFrom = !dateFrom || requestDate >= dateFrom
+    const matchesDateTo = !dateTo || requestDate <= dateTo
+    
+    return matchesSearch && matchesStatus && matchesSource && matchesDateFrom && matchesDateTo
+  })
+
+  const pendingCount = requests.filter((r: any) => r.status === 'Pending').length
+  const acceptedCount = requests.filter((r: any) => r.status === 'Accepted' || r.status === 'Approved').length
+  const rejectedCount = requests.filter((r: any) => r.status === 'Rejected').length
 
   const handleStatusUpdate = async (id: string, status: string) => {
     setIsLoading(true)
@@ -4353,110 +5220,145 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
     setIsLoading(false)
   }
 
+  const handleRejectClick = (id: string) => {
+    setRejectingId(id)
+    setRejectReason('')
+    setShowRejectDialog(true)
+  }
+
+  const handleRejectConfirm = async () => {
+    if (!rejectingId) return
+    setIsLoading(true)
+    
+    const request = requests.find((r: any) => r.id === rejectingId)
+    if (!request) {
+      toast.error('Request not found')
+      setIsLoading(false)
+      return
+    }
+
+    let result
+    if (request.source === 'lead') {
+      result = await rejectLead(rejectingId, rejectReason)
+    } else {
+      result = await rejectRequest(rejectingId, rejectReason)
+    }
+
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Request rejected')
+      fetchRequests()
+    }
+    setIsLoading(false)
+    setShowRejectDialog(false)
+    setRejectingId(null)
+  }
+
   const handleApproveSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!selectedRequestForApprove) return
 
     setIsLoading(true)
     try {
-      // Get form data
       const form = e.currentTarget
-      const formData = new FormData(form)
-
-      // Ensure required fields
-      if (!approveServiceCategory) {
-        toast.error('Please select a service category')
-        setIsLoading(false)
-        return
-      }
-
-      if (!approveTechnician) {
-        toast.error('Please select a technician')
-        setIsLoading(false)
-        return
-      }
-
-      // Get field values from form
-      const appointmentDate = (form.querySelector('input[name="appointmentDate"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_date
-      const appointmentTime = (form.querySelector('input[name="appointmentTime"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_time
+      const appointmentDate = (form.querySelector('input[name="appointmentDate"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_date || selectedRequestForApprove.displayDate
+      const appointmentTime = (form.querySelector('input[name="appointmentTime"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_time || selectedRequestForApprove.displayTime
       const serviceFee = (form.querySelector('input[name="serviceFee"]') as HTMLInputElement)?.value || '0'
       const partsCost = (form.querySelector('input[name="partsCost"]') as HTMLInputElement)?.value || '0'
       const totalCost = (form.querySelector('input[name="totalCost"]') as HTMLInputElement)?.value || '0'
-      const clientName = selectedRequestForApprove.client_name
-      const address = selectedRequestForApprove.address
+      const notes = (form.querySelector('input[name="notes"]') as HTMLInputElement)?.value || ''
 
-      // Create the appropriate job based on service category
-      let createFunction: any
-      let setState: any
-
-      if (approveServiceCategory === 'Installation') {
-        createFunction = createInstallation
-        setState = setInstallations
-      } else if (approveServiceCategory === 'Repair') {
-        createFunction = createRepair
-        setState = setRepairs
-      } else if (approveServiceCategory === 'Maintenance') {
-        createFunction = createMaintenance
-        setState = setMaintenance
+      const jobData = {
+        technician: approveTechnician,
+        date: appointmentDate,
+        time: appointmentTime,
+        cost: totalCost,
+        notes,
+        type: 'Standard'
       }
 
-      if (!createFunction) {
-        toast.error('Invalid service category')
+      let result
+      if (selectedRequestForApprove.source === 'lead') {
+        if (approveServiceCategory === 'Installation') {
+          result = await acceptLead(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
+        } else if (approveServiceCategory === 'Repair') {
+          result = await acceptLeadAsRepair(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
+        } else if (approveServiceCategory === 'Maintenance') {
+          result = await acceptLeadAsMaintenance(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
+        }
+      } else {
+        if (approveServiceCategory === 'Installation') {
+          result = await acceptRequestAsInstallation(selectedRequestForApprove.id, jobData)
+        } else if (approveServiceCategory === 'Repair') {
+          result = await acceptRequestAsRepair(selectedRequestForApprove.id, jobData)
+        } else if (approveServiceCategory === 'Maintenance') {
+          result = await acceptRequestAsMaintenance(selectedRequestForApprove.id, jobData)
+        }
+      }
+
+      if (result?.error) {
+        toast.error(result.error)
         setIsLoading(false)
         return
       }
 
-      // Create job
-      const jobFormData = new FormData()
-      jobFormData.append('serviceType', approveServiceCategory)
-      jobFormData.append('clientName', clientName)
-      jobFormData.append('address', address)
-      jobFormData.append('technician', approveTechnician)
-      jobFormData.append('date', appointmentDate)
-      jobFormData.append('time', appointmentTime)
-      jobFormData.append('cost', totalCost)
-      jobFormData.append('notes', selectedRequestForApprove.message || '')
-      jobFormData.append('type', 'Standard')
-
-      const jobResult = await createFunction(jobFormData)
-
-      if (jobResult.error) {
-        toast.error(`Failed to create job: ${jobResult.error}`)
-        setIsLoading(false)
-        return
-      }
-
-      // Update request status to Approved
-      await updateRequestStatus(selectedRequestForApprove.id, 'Approved')
-
-      // Show success and navigate
-      toast.success(`Request approved and ${approveServiceCategory} job created!`)
-
-      // Refresh data
-      await fetchRequests()
-
-      // Fetch updated jobs list and navigate to the service view
+      toast.success(`Request approved! ${approveServiceCategory} job created.`)
+      
       if (approveServiceCategory === 'Installation') {
-        const updatedInstallations = await getInstallations()
-        setInstallations(updatedInstallations)
+        const updated = await getInstallations()
+        setInstallations(updated.data || [])
         setView('installations')
       } else if (approveServiceCategory === 'Repair') {
-        const updatedRepairs = await getRepairs()
-        setRepairs(updatedRepairs)
+        const updated = await getRepairs()
+        setRepairs(updated.data || [])
         setView('repairs')
       } else if (approveServiceCategory === 'Maintenance') {
-        const updatedMaintenance = await getMaintenance()
-        setMaintenance(updatedMaintenance)
+        const updated = await getMaintenance()
+        setMaintenance(updated.data || [])
         setView('maintenance')
       }
 
       setShowApproveDialog(false)
       setSelectedRequestForApprove(null)
+      fetchRequests()
     } catch (error) {
       console.error('Approve error:', error)
       toast.error('Failed to approve request')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const openApproveDialog = (request: any) => {
+    setSelectedRequestForApprove(request)
+    setApproveServiceCategory(request.service_type || request.request_type || '')
+    setApproveTechnician('')
+    setApprovePriority('Normal')
+    setApproveServiceStatus('Scheduled')
+    setApproveBookingSource('Website')
+    setShowApproveDialog(true)
+  }
+
+  const getClientName = (request: any) => {
+    return request.full_name || request.client_name || 'Unknown'
+  }
+
+  const getServiceType = (request: any) => {
+    return request.service_type || request.request_type || 'Service'
+  }
+
+  const getContactInfo = (request: any) => {
+    return {
+      phone: request.phone_number || request.phone || '',
+      email: request.email || '',
+      address: request.service_address || request.address || ''
+    }
+  }
+
+  const getDateTime = (request: any) => {
+    return {
+      date: request.preferred_date || request.displayDate || '',
+      time: request.preferred_time || request.displayTime || ''
     }
   }
 
@@ -4472,59 +5374,150 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
         </div>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <MiniStatCard title="Total Requests" value={filteredRequests.length.toString()} icon={<FileText className="text-blue-600" />} />
+          <MiniStatCard title="Pending" value={filteredRequests.filter((r: any) => r.status === 'Pending').length.toString()} icon={<Clock className="text-yellow-600" />} />
+          <MiniStatCard title="Accepted" value={filteredRequests.filter((r: any) => r.status === 'Accepted' || r.status === 'Approved').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+          <MiniStatCard title="Rejected" value={filteredRequests.filter((r: any) => r.status === 'Rejected').length.toString()} icon={<X className="text-red-600" />} />
+        </div>
+
+        {/* Filters */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter Requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  className="pl-10"
+                  placeholder="Search by name, phone, email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                />
+                <span className="text-gray-400">-</span>
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="accepted">Accepted</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Sources" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="lead">Website Lead</SelectItem>
+                  <SelectItem value="request">Client Request</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter('all')
+                  setSourceFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Showing <span className="font-bold text-[#005596]">{filteredRequests.length}</span> of <span className="font-bold">{requests.length}</span> requests
+            </p>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 gap-4">
-          {requests.length === 0 ? (
+          {filteredRequests.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
               <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No client requests found</p>
             </div>
           ) : (
-            requests.map((request: any) => (
+            filteredRequests.map((request: any) => (
               <Card key={request.id} className="border-none shadow-sm">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
                         <Badge className={
-                          request.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                          request.status === 'Approved' || request.status === 'Accepted' ? 'bg-green-100 text-green-700' :
                             request.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                               'bg-yellow-100 text-yellow-700'
                         }>
                           {request.status}
                         </Badge>
-                        <h3 className="font-bold text-lg text-[#005596]">{request.request_type}</h3>
+                        <Badge variant="outline" className="text-xs">
+                          {request.source === 'lead' ? 'Website Lead' : 'Client Request'}
+                        </Badge>
+                        <h3 className="font-bold text-lg text-[#005596]">{getServiceType(request)}</h3>
                         <span className="text-sm text-gray-400">• {format(parseISO(request.created_at), 'MMM d, yyyy')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div className="space-y-1">
                           <p className="text-gray-500 font-medium">Client</p>
-                          <p className="text-[#005596] flex items-center gap-2"><UserCheck className="h-4 w-4" /> {request.client_name}</p>
+                          <p className="text-[#005596] flex items-center gap-2"><UserCheck className="h-4 w-4" /> {getClientName(request)}</p>
+                          {getContactInfo(request).phone && (
+                            <p className="text-[#005596] flex items-center gap-2"><Phone className="h-4 w-4" /> {getContactInfo(request).phone}</p>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <p className="text-gray-500 font-medium">Preferred Schedule</p>
                           <p className="text-[#005596] flex items-center gap-2">
-                            <Calendar className="h-4 w-4" /> {request.preferred_date} at {request.preferred_time}
+                            <Calendar className="h-4 w-4" /> {getDateTime(request).date} at {getDateTime(request).time}
                           </p>
                         </div>
                       </div>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <p className="text-sm text-gray-600 italic">"{request.message || 'No message provided'}"</p>
-                      </div>
+                      {request.additional_info && (
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <p className="text-sm text-gray-600 italic">"{request.additional_info}"</p>
+                        </div>
+                      )}
+                      {request.message && (
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <p className="text-sm text-gray-600 italic">"{request.message}"</p>
+                        </div>
+                      )}
                     </div>
-                    {request.status === 'Pending' && (
+                    {(request.status === 'Pending') && (
                       <div className="flex gap-2 ml-6">
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700"
-                          onClick={() => {
-                            setSelectedRequestForApprove(request)
-                            setApproveServiceCategory(request.request_type || '')
-                            setApproveTechnician('')
-                            setApprovePriority('Normal')
-                            setApproveServiceStatus('Scheduled')
-                            setApproveBookingSource('Website')
-                            setShowApproveDialog(true)
-                          }}
+                          onClick={() => openApproveDialog(request)}
                           disabled={isLoading}
                         >
                           Approve
@@ -4533,7 +5526,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                           size="sm"
                           variant="outline"
                           className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => handleStatusUpdate(request.id, 'Rejected')}
+                          onClick={() => handleRejectClick(request.id)}
                           disabled={isLoading}
                         >
                           Reject
@@ -4759,6 +5752,44 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Reject Confirmation Dialog */}
+      <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <X className="h-5 w-5" />
+              Reject Request
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reject this request? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Enter reason for rejection..."
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setShowRejectDialog(false)}>Cancel</Button>
+              <Button
+                type="button"
+                className="bg-red-600 hover:bg-red-700"
+                onClick={handleRejectConfirm}
+                disabled={isLoading}
+              >
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Confirm Reject
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -4775,9 +5806,42 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, f
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([])
   const [unitServiceTypes, setUnitServiceTypes] = useState<Record<string, string>>({})
 
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [technicianFilter, setTechnicianFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  
   const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
+
+  // Get unique technicians
+  const techSet = new Set<string>()
+  maintenance.forEach((m: any) => { if (m.technician) techSet.add(m.technician as string) })
+  const uniqueTechnicians = Array.from(techSet)
+
+  // Filter maintenance
+  const filteredMaintenance = maintenance.filter((item: any) => {
+    const searchLower = searchQuery.toLowerCase()
+    const matchesSearch = !searchQuery || 
+      item.title?.toLowerCase().includes(searchLower) ||
+      item.client_name?.toLowerCase().includes(searchLower) ||
+      item.location?.toLowerCase().includes(searchLower) ||
+      item.technician?.toLowerCase().includes(searchLower)
+    
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter
+    const matchesTech = technicianFilter === 'all' || item.technician === technicianFilter
+    const matchesType = typeFilter === 'all' || item.type === typeFilter
+    
+    const itemDate = item.date || ''
+    const matchesDateFrom = !dateFrom || itemDate >= dateFrom
+    const matchesDateTo = !dateTo || itemDate <= dateTo
+    
+    return matchesSearch && matchesStatus && matchesTech && matchesType && matchesDateFrom && matchesDateTo
+  })
 
   useEffect(() => {
     setMaintenanceData(maintenance)
@@ -4875,27 +5939,106 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, f
         <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Maintenance</Button>
       </header>
       <main className="container mx-auto py-8 px-6 space-y-6">
-        <Card className="border-none shadow-sm p-4">
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input className="pl-10" placeholder="Search maintenance by client, service type, or technician..." />
+        {/* Filters Card */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter Maintenance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  className="pl-10"
+                  placeholder="Search maintenance..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="From"
+                />
+                <span className="text-gray-400">-</span>
+                <Input
+                  type="date"
+                  className="w-[140px]"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  placeholder="To"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="Scheduled">Scheduled</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="Standard">Standard</SelectItem>
+                  <SelectItem value="Real-Time">Real-Time</SelectItem>
+                  <SelectItem value="Schedule">Schedule</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Technicians" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Technicians</SelectItem>
+                  {uniqueTechnicians.map((t: string) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter('all')
+                  setTypeFilter('all')
+                  setTechnicianFilter('all')
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+              >
+                Clear
+              </Button>
             </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-[180px]"><Filter className="h-4 w-4 mr-2" /><SelectValue placeholder="All Status" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">All Status</SelectItem></SelectContent>
-            </Select>
-          </div>
+            <p className="text-sm text-gray-500 mt-3">
+              Showing <span className="font-bold text-[#005596]">{filteredMaintenance.length}</span> of <span className="font-bold">{maintenance.length}</span> jobs
+            </p>
+          </CardContent>
         </Card>
+
         <div className="grid grid-cols-4 gap-6">
-          <MiniStatCard title="Total Maintenance" value={maintenanceData.length.toString()} icon={<Wrench className="text-blue-600" />} />
-          <MiniStatCard title="In Progress" value={maintenanceData.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
-          <MiniStatCard title="Scheduled" value={maintenanceData.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
-          <MiniStatCard title="Completed" value={maintenanceData.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
+          <MiniStatCard title="Total Maintenance" value={filteredMaintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
+          <MiniStatCard title="In Progress" value={filteredMaintenance.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
+          <MiniStatCard title="Scheduled" value={filteredMaintenance.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
+          <MiniStatCard title="Completed" value={filteredMaintenance.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
         </div>
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596]">Maintenance Services ({total})</h2>
-          {maintenanceData.map((item: any) => (
+          <h2 className="font-bold text-[#005596]">Maintenance Services ({filteredMaintenance.length})</h2>
+          {filteredMaintenance.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -5216,10 +6359,6 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
     return matchesSearch && matchesStatus
   })
 
-  const activeCount = technicians.filter((t: any) => t.status === 'Active').length
-  const inactiveCount = technicians.filter((t: any) => t.status === 'Inactive').length
-  const onLeaveCount = technicians.filter((t: any) => t.status === 'On Leave').length
-
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
@@ -5240,12 +6379,13 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
       </header>
 
       <main className="container mx-auto py-8 px-6 space-y-6">
+        {/* Stats - now reflect filtered results */}
         <div className="grid grid-cols-4 gap-6">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Total Technicians</p>
-                <p className="text-3xl font-bold text-[#005596]">{technicians.length}</p>
+                <p className="text-3xl font-bold text-[#005596]">{filteredTechnicians.length}</p>
               </div>
               <HardHat className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -5254,7 +6394,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Active</p>
-                <p className="text-3xl font-bold text-green-600">{activeCount}</p>
+                <p className="text-3xl font-bold text-green-600">{filteredTechnicians.filter((t: any) => t.status === 'Active').length}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -5263,7 +6403,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">On Leave</p>
-                <p className="text-3xl font-bold text-yellow-600">{onLeaveCount}</p>
+                <p className="text-3xl font-bold text-yellow-600">{filteredTechnicians.filter((t: any) => t.status === 'On Leave').length}</p>
               </div>
               <Clock className="h-8 w-8 text-gray-300" />
             </CardContent>
@@ -5272,15 +6412,16 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Inactive</p>
-                <p className="text-3xl font-bold text-red-600">{inactiveCount}</p>
+                <p className="text-3xl font-bold text-red-600">{filteredTechnicians.filter((t: any) => t.status === 'Inactive').length}</p>
               </div>
               <X className="h-8 w-8 text-gray-300" />
             </CardContent>
           </Card>
         </div>
 
-        <div className="flex gap-4">
-          <div className="relative flex-1">
+        {/* Filters */}
+        <div className="flex gap-4 items-center flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               className="pl-10"
@@ -5301,7 +6442,23 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
               <SelectItem value="Inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-gray-500"
+            onClick={() => {
+              setSearchQuery('')
+              setStatusFilter('all')
+            }}
+          >
+            Clear
+          </Button>
         </div>
+
+        {/* Results count */}
+        <p className="text-sm text-gray-500">
+          Showing <span className="font-bold text-[#005596]">{filteredTechnicians.length}</span> of <span className="font-bold">{technicians.length}</span> technicians
+        </p>
 
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-2">

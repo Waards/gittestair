@@ -2,13 +2,13 @@
 
 import { createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
-
-const validatePHPhone = (phone: string): boolean => {
-  const phRegex = /^09\d{9}$/;
-  return phRegex.test(phone);
-};
-
-const PHONE_VALIDATION_ERROR = "Phone number must be a valid Philippines number (e.g., 09123456789) and maximum 11 digits.";
+import { 
+  sanitizedName, 
+  sanitizedPhone, 
+  sanitizedEmail, 
+  sanitizedString,
+  validateAndSanitizeLead
+} from '@/lib/security'
 
 export async function submitLead(formData: FormData) {
   const supabase = await createAdminClient()
@@ -16,24 +16,51 @@ export async function submitLead(formData: FormData) {
   const fullName = formData.get('fullName') as string
   const phone = formData.get('phone') as string
   const email = formData.get('email') as string
-  const serviceAddress = formData.get('serviceAddress') as string
+  const street = formData.get('street') as string
+  const barangay = formData.get('barangay') as string
+  const city = formData.get('city') as string
+  const zipCode = formData.get('zipCode') as string
+  const serviceAddress = formData.get('serviceAddress') as string || `${street}, ${barangay}, ${city} ${zipCode ? ', ' + zipCode : ''}`
   const clientType = formData.get('clientType') as string
   const serviceType = formData.get('serviceType') as string
   const preferredDate = formData.get('preferredDate') as string
   const preferredTime = formData.get('preferredTime') as string
   const additionalInfo = formData.get('additionalInfo') as string
-  const unitBrandType = formData.get('unitBrandType') as string | null
 
-  // Validation
-  if (!fullName || !phone || !email || !serviceAddress || !clientType || !serviceType || !preferredDate || !preferredTime) {
+  if (!fullName || !phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
     return { error: 'Please fill in all required fields' }
   }
 
-  if (!validatePHPhone(phone)) {
-    return { error: PHONE_VALIDATION_ERROR }
+  const sanitizedFullName = sanitizedName(fullName)
+  const sanitizedPhoneNum = sanitizedPhone(phone)
+  const sanitizedEmailAddr = sanitizedEmail(email)
+  const sanitizedStreet = sanitizedString(street)
+  const sanitizedBarangay = sanitizedString(barangay)
+  const sanitizedCity = sanitizedString(city)
+  const sanitizedZipCode = sanitizedString(zipCode)
+  const sanitizedServiceType = sanitizedString(serviceType)
+  const sanitizedAdditionalInfo = sanitizedString(additionalInfo || '')
+
+  if (!sanitizedFullName || !sanitizedEmailAddr || !sanitizedStreet || !sanitizedBarangay || !sanitizedCity) {
+    return { error: 'Invalid input detected. Please check your entries.' }
   }
 
-  // Enforce Max Bookings per day (Maximum 4 bookings)
+  const validation = validateAndSanitizeLead({
+    fullName: sanitizedFullName,
+    phone: sanitizedPhoneNum,
+    email: sanitizedEmailAddr,
+    serviceAddress: `${sanitizedStreet}, ${sanitizedBarangay}, ${sanitizedCity}${sanitizedZipCode ? ' ' + sanitizedZipCode : ''}`,
+    clientType,
+    serviceType: sanitizedServiceType,
+    preferredDate,
+    preferredTime,
+    additionalInfo: sanitizedAdditionalInfo,
+  })
+
+  if (!validation.success || !validation.data) {
+    return { error: validation.error || 'Validation failed' }
+  }
+
   const { count: appointmentsCount, error: apptError } = await supabase
     .from('appointments')
     .select('id', { count: 'exact', head: true })
@@ -59,18 +86,11 @@ export async function submitLead(formData: FormData) {
   const { error } = await supabase
     .from('leads')
     .insert({
-      full_name: fullName,
-      phone_number: phone,
-      email,
-      service_address: serviceAddress,
-      client_type: clientType,
-      service_type: serviceType,
-      preferred_date: preferredDate,
-      preferred_time: preferredTime,
-      additional_info: additionalInfo,
-      // unit_brand_type is not present in schema for this project setup,
-      // so we store brand/type details inside additional_info instead.
-      status: 'Pending'
+      ...validation.data,
+      street: sanitizedStreet,
+      barangay: sanitizedBarangay,
+      city: sanitizedCity,
+      zip_code: sanitizedZipCode || null,
     })
 
   if (error) {
@@ -78,12 +98,11 @@ export async function submitLead(formData: FormData) {
     return { error: error.message }
   }
 
-  // Create notification for admin
   await supabase
     .from('notifications')
     .insert({
       title: 'New Lead Generated',
-      message: `${fullName} has submitted a booking request via landing page.`,
+      message: `${sanitizedFullName} has submitted a booking request via landing page.`,
       type: 'request',
       link: '/admin'
     })
@@ -118,6 +137,222 @@ export async function updateLeadStatus(leadId: string, status: string) {
     console.error('updateLeadStatus: error updating lead:', error)
     return { error: error.message }
   }
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function acceptLead(leadId: string, data: {
+  serviceType: string
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: lead, error: fetchError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .single()
+
+  if (fetchError || !lead) {
+    return { error: 'Lead not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('installations')
+    .insert({
+      title: data.serviceType,
+      client_name: lead.full_name,
+      location: lead.service_address,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || lead.additional_info,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    console.error('acceptLead: error creating installation:', insertError)
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('leads')
+    .update({ status: 'Accepted' })
+    .eq('id', leadId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Lead Accepted',
+      message: `${lead.full_name}'s request has been accepted. ${data.serviceType} job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function acceptLeadAsRepair(leadId: string, data: {
+  serviceType: string
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: lead, error: fetchError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .single()
+
+  if (fetchError || !lead) {
+    return { error: 'Lead not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('repairs')
+    .insert({
+      title: data.serviceType,
+      client_name: lead.full_name,
+      location: lead.service_address,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || lead.additional_info,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    console.error('acceptLeadAsRepair: error creating repair:', insertError)
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('leads')
+    .update({ status: 'Accepted' })
+    .eq('id', leadId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Lead Accepted',
+      message: `${lead.full_name}'s request has been accepted. Repair job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function acceptLeadAsMaintenance(leadId: string, data: {
+  serviceType: string
+  technician: string
+  date: string
+  time: string
+  cost: string
+  notes: string
+  type: string
+}) {
+  const supabase = await createAdminClient()
+  
+  const { data: lead, error: fetchError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .single()
+
+  if (fetchError || !lead) {
+    return { error: 'Lead not found' }
+  }
+
+  const { error: insertError } = await supabase
+    .from('maintenance')
+    .insert({
+      title: data.serviceType,
+      client_name: lead.full_name,
+      location: lead.service_address,
+      technician: data.technician,
+      date: data.date,
+      time: data.time,
+      cost: data.cost,
+      notes: data.notes || lead.additional_info,
+      type: data.type || 'Standard',
+      status: 'Scheduled',
+      progress: 0
+    })
+
+  if (insertError) {
+    console.error('acceptLeadAsMaintenance: error creating maintenance:', insertError)
+    return { error: insertError.message }
+  }
+
+  await supabase
+    .from('leads')
+    .update({ status: 'Accepted' })
+    .eq('id', leadId)
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Lead Accepted',
+      message: `${lead.full_name}'s request has been accepted. Maintenance job created.`,
+      type: 'info',
+      link: '/admin'
+    })
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function rejectLead(leadId: string, reason?: string) {
+  const supabase = await createAdminClient()
+  
+  const { data: lead, error: fetchError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .single()
+
+  if (fetchError || !lead) {
+    return { error: 'Lead not found' }
+  }
+
+  const { error } = await supabase
+    .from('leads')
+    .update({ status: 'Rejected', additional_info: reason ? `Rejected: ${reason}` : lead.additional_info })
+    .eq('id', leadId)
+
+  if (error) {
+    console.error('rejectLead: error rejecting lead:', error)
+    return { error: error.message }
+  }
+
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Lead Rejected',
+      message: `${lead.full_name}'s request has been rejected.${reason ? ` Reason: ${reason}` : ''}`,
+      type: 'info',
+      link: '/admin'
+    })
 
   revalidatePath('/admin')
   return { success: true }

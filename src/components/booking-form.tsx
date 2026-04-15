@@ -49,12 +49,12 @@ const services = [
 ]
 
 const allTimeSlots = [
-  '08:00 AM - 10:00 AM',
-  '10:00 AM - 12:00 PM',
-  '01:00 PM - 03:00 PM',
-  '03:00 PM - 05:00 PM',
-  '05:00 PM - 07:00 PM',
-  '07:00 PM - 08:00 PM',
+  { value: '08:00 AM - 10:00 AM', label: '08:00 AM - 10:00 AM' },
+  { value: '10:00 AM - 12:00 PM', label: '10:00 AM - 12:00 PM' },
+  { value: '01:00 PM - 03:00 PM', label: '01:00 PM - 03:00 PM' },
+  { value: '03:00 PM - 05:00 PM', label: '03:00 PM - 05:00 PM' },
+  { value: '05:00 PM - 07:00 PM', label: '05:00 PM - 07:00 PM' },
+  { value: '07:00 PM - 08:00 PM', label: '07:00 PM - 08:00 PM' },
 ]
 
 interface BookingFormProps {
@@ -66,7 +66,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
   const [step, setStep] = useState(1)
   const [isOpen, setIsOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [availableSlots, setAvailableSlots] = useState<string[]>(allTimeSlots)
+  const [bookedSlots, setBookedSlots] = useState<string[]>([])
 
   useEffect(() => {
     setMounted(true)
@@ -76,7 +76,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
     fullName: '',
     phone: '',
     email: '',
-    serviceAddress: '',
+    street: '',
+    barangay: '',
+    city: '',
+    zipCode: '',
     clientType: 'Residential',
     serviceType: '',
     preferredDate: '',
@@ -86,10 +89,20 @@ export function BookingForm({ trigger }: BookingFormProps) {
     airconBrand: '',
     airconType: '',
     horsepower: '',
-    unitAge: '',
+    btu: '',
     // Issue description (non-installation)
     issueDescription: '',
   })
+
+  const getFullAddress = () => {
+    const parts = [
+      formData.street,
+      formData.barangay,
+      formData.city,
+      formData.zipCode
+    ].filter(Boolean)
+    return parts.join(', ')
+  }
 
   const isInstallation = formData.serviceType === 'Aircon Installation'
 
@@ -103,7 +116,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
     }
     
     if (name === 'preferredDate' && value) {
-      getAvailableTimeSlots(value).then(slots => setAvailableSlots(slots))
+      getAvailableTimeSlots(value).then(available => {
+        const booked = allTimeSlots.filter(slot => !available.includes(slot.value)).map(s => s.value)
+        setBookedSlots(booked)
+      })
       setFormData(prev => ({ ...prev, preferredTime: '' }))
     }
   }
@@ -114,10 +130,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
 
   const nextStep = () => {
     if (step === 1) {
-      if (!formData.fullName || !formData.phone || !formData.email || !formData.serviceAddress) {
-        toast.error('Please fill in all required fields')
-        return
-      }
+if (!formData.fullName || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city) {
+      toast.error('Please fill in all required fields')
+      return
+    }
       if (!validatePHPhone(formData.phone)) {
         toast.error(PHONE_VALIDATION_ERROR)
         return
@@ -145,11 +161,17 @@ export function BookingForm({ trigger }: BookingFormProps) {
     data.append('fullName', formData.fullName)
     data.append('phone', formData.phone)
     data.append('email', formData.email)
-    data.append('serviceAddress', formData.serviceAddress)
+    data.append('street', formData.street)
+    data.append('barangay', formData.barangay)
+    data.append('city', formData.city)
+    data.append('zipCode', formData.zipCode)
     data.append('clientType', formData.clientType)
     data.append('serviceType', formData.serviceType)
     data.append('preferredDate', formData.preferredDate)
     data.append('preferredTime', formData.preferredTime)
+
+    // Build serviceAddress for backward compatibility
+    data.append('serviceAddress', getFullAddress())
 
     // Build additionalInfo
     if (isInstallation) {
@@ -157,7 +179,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
         `Brand: ${formData.airconBrand}`,
         `Type: ${formData.airconType}`,
         `HP: ${formData.horsepower}`,
-        formData.unitAge ? `Unit Age: ${formData.unitAge} yr(s)` : null,
+        formData.btu ? `BTU: ${formData.btu}` : null,
       ].filter(Boolean).join(' | ')
       const combined = techParts + (formData.additionalInfo ? ` | Notes: ${formData.additionalInfo}` : '')
       data.append('additionalInfo', combined)
@@ -180,7 +202,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
         fullName: '',
         phone: '',
         email: '',
-        serviceAddress: '',
+        street: '',
+        barangay: '',
+        city: '',
+        zipCode: '',
         clientType: 'Residential',
         serviceType: '',
         preferredDate: '',
@@ -189,7 +214,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
         airconBrand: '',
         airconType: '',
         horsepower: '',
-        unitAge: '',
+        btu: '',
         issueDescription: '',
       })
     } else {
@@ -275,15 +300,48 @@ export function BookingForm({ trigger }: BookingFormProps) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="serviceAddress">Service Address *</Label>
-                    <Textarea
-                      id="serviceAddress"
-                      name="serviceAddress"
-                      placeholder="Service Address"
-                      className="min-h-[100px]"
-                      value={formData.serviceAddress}
-                      onChange={handleInputChange}
-                    />
+                    <Label>Service Address *</Label>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Street / House Number</Label>
+                        <Input
+                          name="street"
+                          placeholder="e.g., 123 Main Street, Unit 5B"
+                          value={formData.street}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Barangay / District</Label>
+                        <Input
+                          name="barangay"
+                          placeholder="e.g., San Lorenzo"
+                          value={formData.barangay}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">City / Municipality</Label>
+                          <Input
+                            name="city"
+                            placeholder="e.g., Makati City"
+                            value={formData.city}
+                            onChange={handleInputChange}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">ZIP Code</Label>
+                          <Input
+                            name="zipCode"
+                            placeholder="e.g., 1234"
+                            value={formData.zipCode}
+                            onChange={handleInputChange}
+                            maxLength={4}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     <Label>Client Type *</Label>
@@ -318,7 +376,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
                     <Select value={formData.serviceType} onValueChange={(v) => {
                       handleSelectChange('serviceType', v)
                       // Reset tech specs when service type changes
-                      setFormData(prev => ({ ...prev, airconBrand: '', airconType: '', horsepower: '', unitAge: '', issueDescription: '' }))
+                      setFormData(prev => ({ ...prev, airconBrand: '', airconType: '', horsepower: '', btu: '', issueDescription: '' }))
                     }}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a service" />
@@ -352,7 +410,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
                               <SelectValue placeholder="Select brand" />
                             </SelectTrigger>
                             <SelectContent>
-                              {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
+                              {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier', 'Panasonic', 'Hitachi', 'Sharp', 'Kelvinator'].map(b => (
                                 <SelectItem key={b} value={b}>{b}</SelectItem>
                               ))}
                             </SelectContent>
@@ -368,6 +426,9 @@ export function BookingForm({ trigger }: BookingFormProps) {
                               <SelectItem value="Window">Window</SelectItem>
                               <SelectItem value="Split">Split</SelectItem>
                               <SelectItem value="Inverter">Inverter</SelectItem>
+                              <SelectItem value="Cassette">Cassette</SelectItem>
+                              <SelectItem value="Console">Console</SelectItem>
+                              <SelectItem value="Central">Central</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -378,21 +439,18 @@ export function BookingForm({ trigger }: BookingFormProps) {
                               <SelectValue placeholder="Select HP" />
                             </SelectTrigger>
                             <SelectContent>
-                              {['0.5 HP', '0.75 HP', '1.0 HP', '1.5 HP', '2.0 HP', '2.5 HP', '3.0 HP'].map(hp => (
+                              {['0.5 HP', '0.75 HP', '1.0 HP', '1.5 HP', '2.0 HP', '2.5 HP', '3.0 HP', '4.0 HP', '5.0 HP'].map(hp => (
                                 <SelectItem key={hp} value={hp}>{hp}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm">Unit Age (Years)</Label>
+                          <Label className="text-sm">BTU</Label>
                           <Input
-                            name="unitAge"
-                            type="number"
-                            min="0"
-                            max="30"
-                            placeholder="e.g. 2"
-                            value={formData.unitAge}
+                            name="btu"
+                            placeholder="e.g. 12000"
+                            value={formData.btu || ''}
                             onChange={handleInputChange}
                           />
                         </div>
@@ -433,7 +491,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="preferredTime">Preferred Time *</Label>
-                      {availableSlots.length === 0 ? (
+                      {bookedSlots.length >= allTimeSlots.length ? (
                         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
                           No available time slots for this date. Please select another date.
                         </div>
@@ -443,9 +501,20 @@ export function BookingForm({ trigger }: BookingFormProps) {
                             <SelectValue placeholder="Select time slot" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableSlots.map((slot) => (
-                              <SelectItem key={slot} value={slot}>{slot}</SelectItem>
-                            ))}
+                            {allTimeSlots.map((slot) => {
+                              const isBooked = bookedSlots.includes(slot.value)
+                              return (
+                                <SelectItem 
+                                  key={slot.value} 
+                                  value={slot.value}
+                                  disabled={isBooked}
+                                >
+                                  <span className={isBooked ? 'text-slate-400 line-through' : ''}>
+                                    {slot.label} {isBooked && '(Booked)'}
+                                  </span>
+                                </SelectItem>
+                              )
+                            })}
                           </SelectContent>
                         </Select>
                       )}
@@ -491,7 +560,11 @@ export function BookingForm({ trigger }: BookingFormProps) {
                         </div>
                         <div className="flex items-start gap-2 text-sm">
                           <MapPin className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
-                          <span>{formData.serviceAddress}</span>
+                          <div className="flex flex-col">
+                            {formData.street && <span>{formData.street}</span>}
+                            {formData.barangay && <span>{formData.barangay}, {formData.city}</span>}
+                            {formData.zipCode && <span className="text-slate-500">{formData.zipCode}</span>}
+                          </div>
                         </div>
                         <div className="text-sm">
                           <span className="text-slate-500">Type: </span>
@@ -530,7 +603,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
                         <div><span className="text-slate-500">Brand: </span><span className="font-medium">{formData.airconBrand}</span></div>
                         <div><span className="text-slate-500">Type: </span><span className="font-medium">{formData.airconType}</span></div>
                         <div><span className="text-slate-500">Horsepower: </span><span className="font-medium">{formData.horsepower}</span></div>
-                        {formData.unitAge && <div><span className="text-slate-500">Unit Age: </span><span className="font-medium">{formData.unitAge} yr(s)</span></div>}
+                        {formData.btu && <div><span className="text-slate-500">BTU: </span><span className="font-medium">{formData.btu}</span></div>}
                       </div>
                     </div>
                   )}
