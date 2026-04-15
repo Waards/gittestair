@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase-server'
+import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { validatePHPhone, PHONE_VALIDATION_ERROR } from '@/lib/utils'
@@ -36,9 +36,35 @@ export async function signIn(prevState: any, formData: FormData) {
 
   console.log('signIn: profile result:', !!profile, profile?.role)
 
+  let userRole = profile?.role
+
+  if (!profile) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: data.user.email?.split('@')[0] || 'User',
+        role: 'client'
+      })
+
+    if (profileError) {
+      console.error('signIn: error creating profile:', profileError)
+    } else {
+      const { data: newProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single()
+      if (newProfile) {
+        userRole = newProfile.role
+      }
+    }
+  }
+
   revalidatePath('/', 'layout')
   
-  if (profile?.role === 'admin') {
+  if (userRole === 'admin') {
     redirect('/admin')
   } else {
     redirect('/dashboard')
@@ -76,11 +102,12 @@ export async function changePassword(formData: FormData) {
 }
 
 export async function getUserNotifications() {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  const { data, error } = await supabase
+  const { data, error } = await adminSupabase
     .from('notifications')
     .select('*')
     .eq('user_id', user.id)
@@ -94,8 +121,8 @@ export async function getUserNotifications() {
 }
 
 export async function markUserNotificationAsRead(id: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
+  const adminSupabase = await createAdminClient()
+  const { error } = await adminSupabase
     .from('notifications')
     .update({ is_read: true })
     .eq('id', id)
@@ -106,6 +133,7 @@ export async function markUserNotificationAsRead(id: string) {
 }
 
 export async function getProfile() {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -114,7 +142,7 @@ export async function getProfile() {
     return null
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await adminSupabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
@@ -128,6 +156,7 @@ export async function getProfile() {
 }
 
 export async function getDashboardStats() {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -139,7 +168,11 @@ export async function getDashboardStats() {
     }
   }
 
-  const { data: appointments, error } = await supabase
+  // Get user profile for client_name matching
+  const { data: profile } = await adminSupabase.from('profiles').select('full_name').eq('id', user.id).single()
+  const clientName = profile?.full_name || user.email?.split('@')[0]
+
+  const { data: appointments, error } = await adminSupabase
     .from('appointments')
     .select('status')
     .eq('email', user.email)
@@ -154,17 +187,54 @@ export async function getDashboardStats() {
   }
 
   const totalBookings = appointments?.length || 0
-  const activeServices = appointments?.filter(a => a.status === 'scheduled' || a.status === 'in_progress' || a.status === 'pending').length || 0
-  const completedServices = appointments?.filter(a => a.status === 'completed' || a.status === 'finished').length || 0
+  const activeServices = appointments?.filter(a => {
+    const s = a.status?.toLowerCase()
+    return s === 'scheduled' || s === 'in_progress' || s === 'pending'
+  }).length || 0
+  const completedServices = appointments?.filter(a => {
+    const s = a.status?.toLowerCase()
+    return s === 'completed' || s === 'finished'
+  }).length || 0
+
+  // Also check installations and repairs for more accurate counts
+  const { data: installations } = await adminSupabase
+    .from('installations')
+    .select('status')
+    .eq('client_name', clientName)
+
+  const { data: repairs } = await adminSupabase
+    .from('repairs')
+    .select('status')
+    .eq('client_name', clientName)
+
+  const totalInstallations = installations?.length || 0
+  const totalRepairs = repairs?.length || 0
+  const activeInstallations = installations?.filter(i => {
+    const s = i.status?.toLowerCase()
+    return s === 'scheduled' || s === 'in_progress' || s === 'pending'
+  }).length || 0
+  const completedInstallations = installations?.filter(i => {
+    const s = i.status?.toLowerCase()
+    return s === 'completed' || s === 'finished'
+  }).length || 0
+  const activeRepairs = repairs?.filter(r => {
+    const s = r.status?.toLowerCase()
+    return s === 'scheduled' || s === 'in_progress' || s === 'pending'
+  }).length || 0
+  const completedRepairs = repairs?.filter(r => {
+    const s = r.status?.toLowerCase()
+    return s === 'completed' || s === 'finished'
+  }).length || 0
 
   return {
-    totalBookings,
-    activeServices,
-    completedServices
+    totalBookings: totalBookings + totalInstallations + totalRepairs,
+    activeServices: activeServices + activeInstallations + activeRepairs,
+    completedServices: completedServices + completedInstallations + completedRepairs
   }
 }
 
-export async function getUserActivity() {
+export async function getUserActivity(limit: number = 20) {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -172,22 +242,31 @@ export async function getUserActivity() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .select('*')
-    .eq('email', user.email)
-    .order('created_at', { ascending: false })
+  // Get user profile for client_name matching
+  const { data: profile } = await adminSupabase.from('profiles').select('full_name').eq('id', user.id).single()
+  const clientName = profile?.full_name || user.email?.split('@')[0]
 
-  if (error) {
-    console.error('getUserActivity: error fetching appointments:', error)
-    return []
-  }
+  // Fetch appointments by email, installations/repairs by client_name (with limits)
+  const [appointmentsRes, installationsRes, repairsRes] = await Promise.all([
+    adminSupabase.from('appointments').select('*').eq('email', user.email).order('created_at', { ascending: false }).limit(limit),
+    adminSupabase.from('installations').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit),
+    adminSupabase.from('repairs').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit)
+  ])
 
-  return data
+  const appointments = (appointmentsRes.data || []).map(a => ({ ...a, table: 'appointments' }))
+  const installations = (installationsRes.data || []).map(i => ({ ...i, service_type: 'Installation', table: 'installations' }))
+  const repairs = (repairsRes.data || []).map(r => ({ ...r, service_type: r.title, table: 'repairs' }))
+
+  // Combine and sort by date
+  const allActivities = [...appointments, ...installations, ...repairs]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  return allActivities
 }
 
 export async function requestService(formData: FormData) {
   const supabase = await createClient()
+  const adminSupabase = await createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
@@ -219,8 +298,30 @@ export async function requestService(formData: FormData) {
 
   const clientName = profile?.full_name || user.email?.split('@')[0] || 'Unknown'
 
-  // Insert into appointments
-  const { error: appointmentError } = await supabase
+  // Get selected units if any
+  const selectedUnitsJson = formData.get('selectedUnits') as string
+  let selectedUnitIds: string[] = []
+  let selectedUnitsData: any[] = []
+  
+  if (selectedUnitsJson) {
+    try {
+      selectedUnitIds = JSON.parse(selectedUnitsJson)
+      if (selectedUnitIds.length > 0) {
+        const { data: units } = await adminSupabase
+          .from('client_units')
+          .select('*')
+          .in('id', selectedUnitIds)
+        selectedUnitsData = units || []
+      }
+    } catch (e) {
+      console.error('Error parsing selectedUnits:', e)
+    }
+  }
+
+  const isMultiUnit = selectedUnitsData.length > 1
+
+  // Insert into appointments using admin client
+  const { error: appointmentError } = await adminSupabase
     .from('appointments')
     .insert({
       client_name: clientName,
@@ -230,7 +331,7 @@ export async function requestService(formData: FormData) {
       date,
       time,
       service_type: serviceType,
-      notes,
+      notes: notes || (isMultiUnit ? `Multi-unit service for ${selectedUnitsData.length} units` : ''),
       status: 'pending'
     })
 
@@ -241,7 +342,7 @@ export async function requestService(formData: FormData) {
 
   // Insert into appropriate monitoring table based on service type
   if (serviceType === 'Installation') {
-    await supabase
+    await adminSupabase
       .from('installations')
       .insert({
         title: serviceType,
@@ -253,9 +354,49 @@ export async function requestService(formData: FormData) {
         status: 'Scheduled',
         progress: 0
       })
+  } else if (['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && selectedUnitsData.length > 0) {
+    // Multi-unit service: Create maintenance record with items
+    const maintenanceTitle = `${serviceType} - ${selectedUnitsData.map(u => u.unit_name).join(', ')}`
+    
+    const { data: maintenanceRecord, error: maintError } = await adminSupabase
+      .from('maintenance')
+      .insert({
+        title: maintenanceTitle,
+        client_name: clientName,
+        location: address,
+        date,
+        time,
+        notes: isMultiUnit ? `Multi-unit ${serviceType} for ${selectedUnitsData.length} units` : notes,
+        status: 'Scheduled',
+        progress: 0,
+        is_multi_unit: isMultiUnit,
+        cost: 0
+      })
+      .select()
+      .single()
+
+    if (maintError) {
+      console.error('requestService: error inserting maintenance:', maintError)
+      return { error: maintError.message }
+    }
+
+    // Insert maintenance items for each selected unit
+    if (maintenanceRecord) {
+      for (const unit of selectedUnitsData) {
+        await adminSupabase
+          .from('maintenance_items')
+          .insert({
+            maintenance_id: maintenanceRecord.id,
+            unit_id: unit.id,
+            service_type: serviceType,
+            status: 'Scheduled',
+            notes: `${unit.brand} ${unit.unit_type} ${unit.horsepower}HP`
+          })
+      }
+    }
   } else {
-    // Repair, Cleaning, Maintenance, Inspection go to repairs table
-    await supabase
+    // Repair or single unit service go to repairs table
+    await adminSupabase
       .from('repairs')
       .insert({
         title: serviceType,
@@ -263,14 +404,14 @@ export async function requestService(formData: FormData) {
         location: address,
         date,
         time,
-        notes,
+        notes: notes || (selectedUnitsData.length === 1 ? `Unit: ${selectedUnitsData[0].unit_name}` : ''),
         status: 'Scheduled',
         progress: 0
       })
   }
 
   // Create client request record for admin
-  await supabase
+  await adminSupabase
     .from('client_requests')
     .insert({
       client_id: user.id,
@@ -282,13 +423,20 @@ export async function requestService(formData: FormData) {
     })
 
   // Create notification for admin with detailed information
-  const detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +
+  let detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +
     `Phone: ${phone}\n` +
     `Date: ${date} at ${time}\n` +
-    `Address: ${address || 'Not specified'}\n` +
-    `${notes ? `Details: ${notes}` : ''}`
+    `Address: ${address || 'Not specified'}\n`
 
-  const { error: notifError } = await supabase
+  if (selectedUnitsData.length > 0) {
+    detailedMessage += `Units: ${selectedUnitsData.map(u => `${u.unit_name} (${u.brand} ${u.unit_type} ${u.horsepower}HP)`).join(', ')}\n`
+  }
+  
+  if (notes) {
+    detailedMessage += `Details: ${notes}`
+  }
+
+  const { error: notifError } = await adminSupabase
     .from('notifications')
     .insert({
       title: `New ${serviceType} Service Request`,
@@ -307,7 +455,86 @@ export async function requestService(formData: FormData) {
   return { success: true }
 }
 
+export async function rescheduleService(appointmentId: string, newDate: string, newTime: string, serviceType: string) {
+  const adminSupabase = await createAdminClient()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const tableMap: Record<string, string> = {
+    'Installation': 'installations',
+    'Repair': 'repairs',
+    'Maintenance': 'maintenance',
+    'Cleaning': 'maintenance',
+    'Inspection': 'maintenance'
+  }
+  
+  const table = tableMap[serviceType] || 'appointments'
+  
+  const { data: appointment, error: fetchError } = await adminSupabase
+    .from(table)
+    .select('*')
+    .eq('id', appointmentId)
+    .single()
+
+  if (fetchError || !appointment) {
+    return { error: 'Appointment not found' }
+  }
+
+  const originalDateTime = new Date(`${appointment.date}T${appointment.time?.split(' - ')[0] || '12:00'}`)
+  const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
+  const now = new Date()
+
+  if (now >= threeHoursBefore) {
+    return { error: 'Rescheduling is only allowed up to 3 hours before the original scheduled time' }
+  }
+
+  const { data: existingBooking } = await adminSupabase
+    .from('appointments')
+    .select('id')
+    .eq('date', newDate)
+    .eq('time', newTime)
+    .neq('status', 'cancelled')
+    .single()
+
+  if (existingBooking) {
+    return { error: 'This time slot is already booked' }
+  }
+
+  const newRescheduleCount = (appointment.reschedule_count || 0) + 1
+
+  const { error: updateError } = await adminSupabase
+    .from(table)
+    .update({ 
+      date: newDate, 
+      time: newTime,
+      reschedule_count: newRescheduleCount,
+      status: 'Rescheduled'
+    })
+    .eq('id', appointmentId)
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  await adminSupabase
+    .from('notifications')
+    .insert({
+      title: 'Service Rescheduled',
+      message: `Service has been rescheduled to ${newDate} at ${newTime}`,
+      type: 'info',
+      user_id: user.id
+    })
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
 export async function updateProfile(formData: FormData) {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -320,7 +547,7 @@ export async function updateProfile(formData: FormData) {
     return { error: PHONE_VALIDATION_ERROR }
   }
 
-  const { error } = await supabase
+  const { error } = await adminSupabase
     .from('profiles')
     .update({ 
       full_name: fullName,
@@ -334,11 +561,16 @@ export async function updateProfile(formData: FormData) {
     return { error: error.message }
   }
 
-  revalidatePath('/dashboard')
+  try {
+    revalidatePath('/dashboard')
+  } catch (e) {
+    console.error('revalidatePath error:', e)
+  }
   return { success: true }
 }
 
 export async function getUserMaintenanceWithItems() {
+  const adminSupabase = await createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -347,7 +579,7 @@ export async function getUserMaintenanceWithItems() {
   }
 
   // Get user's profile to match by client_name
-  const { data: profile } = await supabase
+  const { data: profile } = await adminSupabase
     .from('profiles')
     .select('full_name')
     .eq('id', user.id)
@@ -356,7 +588,7 @@ export async function getUserMaintenanceWithItems() {
   const clientName = profile?.full_name
 
   // Get maintenance records for this client
-  const { data: maintenance, error } = await supabase
+  const { data: maintenance, error } = await adminSupabase
     .from('maintenance')
     .select('*')
     .eq('client_name', clientName)
@@ -370,7 +602,7 @@ export async function getUserMaintenanceWithItems() {
   // Get all maintenance items if there are maintenance records
   let items: any[] = []
   if (maintenance && maintenance.length > 0) {
-    const { data: itemsData } = await supabase
+    const { data: itemsData } = await adminSupabase
       .from('maintenance_items')
       .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
       .in('maintenance_id', (maintenance || []).map(m => m.id))
@@ -384,4 +616,76 @@ export async function getUserMaintenanceWithItems() {
   }))
 
   return maintenanceWithItems
+}
+
+export async function getUserClientUnits() {
+  const adminSupabase = await createAdminClient()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return []
+  }
+
+  // Query by client_id (more reliable) or client_name as fallback
+  const { data: units, error } = await adminSupabase
+    .from('client_units')
+    .select('*')
+    .eq('client_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('getUserClientUnits error:', error)
+    return []
+  }
+
+  return units || []
+}
+
+export async function getUserUnitServiceHistory(unitId: string) {
+  const adminSupabase = await createAdminClient()
+  
+  const { data: maintenanceItems } = await adminSupabase
+    .from('maintenance_items')
+    .select('*, maintenance!inner(id, title, date, status, client_name)')
+    .eq('unit_id', unitId)
+    .order('created_at', { ascending: false })
+
+  const { data: installations } = await adminSupabase
+    .from('installations')
+    .select('*')
+    .eq('unit_id', unitId)
+    .order('created_at', { ascending: false })
+
+  const { data: repairs } = await adminSupabase
+    .from('repairs')
+    .select('*')
+    .eq('unit_id', unitId)
+    .order('created_at', { ascending: false })
+
+  const history = [
+    ...(maintenanceItems || []).map(item => ({
+      type: 'Maintenance',
+      title: item.maintenance?.title || 'Maintenance Service',
+      date: item.completed_at || item.created_at,
+      status: item.status,
+      notes: item.notes
+    })),
+    ...(installations || []).map(item => ({
+      type: 'Installation',
+      title: item.title || 'Aircon Installation',
+      date: item.date || item.created_at,
+      status: item.status,
+      notes: item.notes
+    })),
+    ...(repairs || []).map(item => ({
+      type: 'Repair',
+      title: item.title || 'Aircon Repair',
+      date: item.date || item.created_at,
+      status: item.status,
+      notes: item.notes
+    }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  return history
 }

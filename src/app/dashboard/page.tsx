@@ -11,8 +11,12 @@ import {
   getUserNotifications,
   markUserNotificationAsRead,
   updateProfile,
-  getUserMaintenanceWithItems
+  getUserMaintenanceWithItems,
+  rescheduleService,
+  getUserClientUnits,
+  getUserUnitServiceHistory
 } from '@/app/actions/user'
+import { getAvailableTimeSlots } from '@/app/actions/admin'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,7 +35,12 @@ import {
   ShieldCheck,
   Phone,
   MapPin,
-  Settings
+  Settings,
+  Calendar,
+  Edit3,
+  Wind,
+  ChevronRight,
+  Package
 } from 'lucide-react'
 import {
   Dialog,
@@ -53,6 +62,15 @@ import { validatePHPhone, PHONE_VALIDATION_ERROR } from "@/lib/utils"
 import { calculateDynamicProgress } from "@/lib/progress"
 import { ClientSidebar } from '@/components/client-sidebar'
 
+const allTimeSlots = [
+  '08:00 AM - 10:00 AM',
+  '10:00 AM - 12:00 PM',
+  '01:00 PM - 03:00 PM',
+  '03:00 PM - 05:00 PM',
+  '05:00 PM - 07:00 PM',
+  '07:00 PM - 08:00 PM',
+]
+
 export default function ClientDashboard() {
   const [profile, setProfile] = useState<any>(null)
   const [stats, setStats] = useState({
@@ -71,7 +89,21 @@ export default function ClientDashboard() {
   const [airconBrand, setAirconBrand] = useState<string>('')
   const [airconType, setAirconType] = useState<string>('')
   const [, setTick] = useState<number>(0)
-  const [view, setView] = useState<'dashboard' | 'settings'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'settings' | 'machines'>('dashboard')
+  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<any>(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
+  const [availableSlots, setAvailableSlots] = useState<string[]>(allTimeSlots)
+  const [isRescheduling, setIsRescheduling] = useState(false)
+  const [clientUnits, setClientUnits] = useState<any[]>([])
+  const [selectedUnit, setSelectedUnit] = useState<any>(null)
+  const [unitHistory, setUnitHistory] = useState<any[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([])
+  const [showUnitSelector, setShowUnitSelector] = useState(false)
+  const [requestDate, setRequestDate] = useState('')
+  const [requestTime, setRequestTime] = useState('')
 
   const router = useRouter()
   const supabase = createClient()
@@ -81,6 +113,26 @@ export default function ClientDashboard() {
     const interval = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (view === 'machines') {
+      getUserClientUnits().then(units => setClientUnits(units || []))
+    }
+  }, [view])
+
+  useEffect(() => {
+    if (isRequestDialogOpen && clientUnits.length === 0) {
+      getUserClientUnits().then(units => setClientUnits(units || []))
+    }
+  }, [isRequestDialogOpen])
+
+  const handleViewUnitHistory = async (unit: any) => {
+    setSelectedUnit(unit)
+    setIsLoadingHistory(true)
+    const history = await getUserUnitServiceHistory(unit.id)
+    setUnitHistory(history || [])
+    setIsLoadingHistory(false)
+  }
 
   const fetchData = async () => {
     try {
@@ -98,116 +150,158 @@ export default function ClientDashboard() {
       }
       setProfile(profileData)
       setStats(statsData)
-      setActivities(activityData)
-      setNotifications(notifData)
+      setActivities(activityData || [])
       setMaintenanceData(maintenanceItems || [])
+      setNotifications(notifData || [])
     } catch (error) {
-      toast.error('Failed to fetch dashboard data')
+      console.error('Error fetching data:', error)
     } finally {
       setIsFetching(false)
     }
   }
 
-  const getStatusProgress = (activity: any) => {
-    return Math.round(calculateDynamicProgress(activity))
-  }
-
-  const getStatusType = (status: string): 'pending' | 'in_progress' | 'completed' | 'default' => {
-    const s = status?.toLowerCase()
-    if (s === 'completed' || s === 'finished') return 'completed'
-    if (s === 'in_progress' || s === 'in progress') return 'in_progress'
-    if (s === 'pending' || s === 'scheduled') return 'pending'
-    return 'default'
-  }
-
   const getStatusColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'pending': return 'bg-amber-500'
-      case 'scheduled': return 'bg-blue-500'
-      case 'in_progress': return 'bg-purple-500'
-      case 'completed':
-      case 'finished': return 'bg-emerald-500'
-      case 'rejected':
-      case 'cancelled': return 'bg-red-500'
-      default: return 'bg-slate-500'
+    const statusColors: Record<string, string> = {
+      'Pending': 'bg-yellow-500',
+      'Scheduled': 'bg-blue-500',
+      'In Progress': 'bg-orange-500',
+      'Completed': 'bg-green-500',
+      'Success': 'bg-green-600',
+      'Delayed': 'bg-red-400',
+      'Failed': 'bg-red-600',
+      'Issue': 'bg-purple-500',
+      'Cancelled': 'bg-gray-500',
     }
+    return statusColors[status] || 'bg-gray-400'
   }
 
-  const today = new Date().toISOString().split('T')[0]
-
-  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    const formData = new FormData(e.currentTarget)
-    const result = await changePassword(formData)
-
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success('Password changed successfully')
-      ;(e.target as HTMLFormElement).reset()
+  const getStatusType = (status: string) => {
+    const statusTypes: Record<string, string> = {
+      'Completed': 'success',
+      'Success': 'success',
+      'In Progress': 'active',
+      'Scheduled': 'active',
+      'Delayed': 'warning',
+      'Issue': 'warning',
+      'Failed': 'error',
+      'Pending': 'pending',
     }
-    setIsLoading(false)
+    return statusTypes[status] || 'pending'
   }
 
-  const handleUpdateProfile = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsLoading(true)
-    
-    const formData = new FormData(e.currentTarget)
-    const result = await updateProfile(formData)
-
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success('Profile updated successfully!')
-      fetchData()
+  const getStatusProgress = (item: any) => {
+    if (item.progress !== undefined) return item.progress
+    const statusProgress: Record<string, number> = {
+      'Pending': 0,
+      'Scheduled': 20,
+      'In Progress': 50,
+      'Delayed': 30,
+      'Completed': 100,
+      'Success': 100,
+      'Failed': 100,
+      'Issue': 40,
     }
-    setIsLoading(false)
+    return statusProgress[item.status] || 0
   }
 
-  const handleRequestService = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const formData = new FormData(e.currentTarget)
-    formData.append('serviceType', serviceType)
-    const phone = formData.get('phone') as string
-
-    if (!validatePHPhone(phone)) {
-      toast.error(PHONE_VALIDATION_ERROR)
+  const handleServiceRequest = async () => {
+    if (!serviceType) {
+      toast.error('Please select a service type')
+      return
+    }
+    if (!profile?.full_name || !profile?.email) {
+      toast.error('Please complete your profile first')
+      return
+    }
+    if (!requestDate || !requestTime) {
+      toast.error('Please select a preferred date and time')
       return
     }
 
-    if (airconBrand || airconType) {
-      const unitInfo = [
-        airconBrand ? `Brand: ${airconBrand}` : null,
-        airconType ? `Type: ${airconType}` : null,
-      ].filter(Boolean).join(' | ')
-      const existingNotes = formData.get('notes') as string
-      formData.set('notes', unitInfo + (existingNotes ? `\n${existingNotes}` : ''))
+    const servicesWithMultipleUnits = ['Cleaning', 'Maintenance', 'Inspection']
+    if (servicesWithMultipleUnits.includes(serviceType) && selectedUnits.length === 0) {
+      toast.error('Please select at least one unit')
+      return
     }
 
     setIsLoading(true)
+    const formData = new FormData()
+    formData.append('fullName', profile.full_name)
+    formData.append('phone', profile.phone || '')
+    formData.append('email', profile.email)
+    formData.append('address', profile.address || '')
+    formData.append('serviceType', serviceType)
+    formData.append('date', requestDate)
+    formData.append('time', requestTime)
+    if (selectedUnits.length > 0) {
+      formData.append('selectedUnits', JSON.stringify(selectedUnits))
+    }
+    if (serviceType === 'Installation') {
+      formData.append('airconBrand', airconBrand)
+      formData.append('airconType', airconType)
+    }
+
+    const notesInput = document.getElementById('requestNotes') as HTMLTextAreaElement
+    if (notesInput) formData.append('notes', notesInput.value)
+    
     const result = await requestService(formData)
 
-    if (result?.error) {
+    if (result.error) {
       toast.error(result.error)
-    } else if (result?.success) {
+    } else {
       toast.success('Service request submitted successfully!')
       setIsRequestDialogOpen(false)
       setServiceType('')
       setAirconBrand('')
       setAirconType('')
-      fetchData()
-    } else {
-      toast.success('Service request submitted!')
-      setIsRequestDialogOpen(false)
-      setServiceType('')
-      setAirconBrand('')
-      setAirconType('')
+      setSelectedUnits([])
+      setRequestDate('')
+      setRequestTime('')
+      setAvailableSlots(allTimeSlots)
       fetchData()
     }
     setIsLoading(false)
+  }
+
+  const canReschedule = (item: any) => {
+    if (!item.date || !item.time) return false
+    const timePart = item.time.split(' - ')[0]
+    const dateTime = new Date(`${item.date}T${timePart}`)
+    const threeHoursBefore = new Date(dateTime.getTime() - (3 * 60 * 60 * 1000))
+    return new Date() < threeHoursBefore
+  }
+
+  const handleRescheduleClick = (item: any) => {
+    setSelectedItem(item)
+    setRescheduleDate(item.date || '')
+    setRescheduleTime('')
+    getAvailableTimeSlots(item.date).then(slots => setAvailableSlots(slots))
+    setShowRescheduleDialog(true)
+  }
+
+  const handleRescheduleDateChange = (date: string) => {
+    setRescheduleDate(date)
+    setRescheduleTime('')
+    getAvailableTimeSlots(date).then(slots => setAvailableSlots(slots))
+  }
+
+  const handleRescheduleSubmit = async () => {
+    if (!selectedItem || !rescheduleDate || !rescheduleTime) {
+      toast.error('Please select date and time')
+      return
+    }
+
+    setIsRescheduling(true)
+    const result = await rescheduleService(selectedItem.id, rescheduleDate, rescheduleTime, selectedItem.service_type || selectedItem.title)
+    
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Service rescheduled successfully')
+      setShowRescheduleDialog(false)
+      fetchData()
+    }
+    setIsRescheduling(false)
   }
 
   const handleLogout = async () => {
@@ -226,8 +320,6 @@ export default function ClientDashboard() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F8FAFC]">
-      
-      {/* Sidebar Navigation */}
       <ClientSidebar 
         view={view}
         onViewChange={setView}
@@ -237,9 +329,7 @@ export default function ClientDashboard() {
         unreadNotifications={notifications.filter(n => !n.is_read).length}
       />
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">
-        
         {view === 'dashboard' && (
           <div className="container mx-auto py-8 px-4 md:px-8 max-w-7xl space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -249,7 +339,6 @@ export default function ClientDashboard() {
               </div>
             </div>
 
-            {/* Profile Information Card */}
             <Card className="border-none shadow-sm bg-white">
               <CardHeader className="flex flex-row items-center gap-4 py-5 border-b border-slate-50">
                 <div className="p-2.5 bg-[#005596]/10 rounded-xl">
@@ -284,7 +373,6 @@ export default function ClientDashboard() {
               </CardContent>
             </Card>
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="border-none shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
@@ -332,139 +420,198 @@ export default function ClientDashboard() {
               </Card>
             </div>
 
-            {/* Recent Activity Section */}
-            <Card className="border-none shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-slate-100 rounded-lg">
-                    <History className="h-5 w-5 text-slate-600" />
+            <div className="bg-white p-6 rounded-xl border border-slate-100">
+              <h2 className="font-bold text-[#1E293B] mb-4">Your Recent Services</h2>
+              {activities.length === 0 && maintenanceData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
+                    <Activity className="h-8 w-8 text-slate-300" />
                   </div>
-                  <CardTitle className="text-xl font-bold text-[#1E293B]">Recent Activity</CardTitle>
+                  <div className="space-y-1">
+                    <p className="text-[#1E293B] font-bold text-lg">No activity yet</p>
+                    <p className="text-slate-500 text-sm max-w-xs mx-auto">
+                      Your service requests, repair histories, and progress tracking will be organized here.
+                    </p>
+                  </div>
+                  <Button className="bg-[#005596] hover:bg-[#00447a] mt-4 shadow-sm" onClick={() => setIsRequestDialogOpen(true)}>
+                    Make your first request
+                  </Button>
                 </div>
-                {(activities.length > 0 || maintenanceData.length > 0) && (
-                  <span className="text-xs font-bold text-[#64748B] bg-slate-100 px-3 py-1 rounded-full uppercase tracking-wider">
-                    {activities.length + maintenanceData.length} entries
-                  </span>
-                )}
-              </CardHeader>
-              <CardContent className="pt-6">
-                {activities.length === 0 && maintenanceData.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-                    <div className="p-5 bg-slate-50 rounded-full border border-dashed border-slate-200">
-                      <TrendingUp className="h-10 w-10 text-slate-300" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[#1E293B] font-bold text-lg">No activity yet</p>
-                      <p className="text-slate-500 text-sm max-w-xs mx-auto">
-                        Your service requests, repair histories, and progress tracking will be organized here.
-                      </p>
-                    </div>
-                    <Button className="bg-[#005596] hover:bg-[#00447a] mt-4 shadow-sm" onClick={() => setIsRequestDialogOpen(true)}>
-                      Make your first request
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Regular Activities */}
-                    {activities.map((activity) => (
-                      <div key={activity.id} className="p-5 rounded-xl border border-slate-100 bg-white hover:border-[#005596]/20 hover:shadow-md transition-all">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                          <div className="space-y-1.5 flex-1">
-                            <div className="flex items-center gap-3">
-                              <span className="font-extrabold text-[15px] text-[#1E293B] tracking-tight">{activity.service_type}</span>
-                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white tracking-wider ${getStatusColor(activity.status)}`}>
-                                {activity.status}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                              <Clock className="h-3.5 w-3.5" />
-                              Requested on {activity.date} at {activity.time}
-                            </p>
+              ) : (
+                <div className="space-y-4">
+                  {activities.map((activity) => (
+                    <div key={activity.id} className="p-5 rounded-xl border border-slate-100 bg-white hover:border-[#005596]/20 hover:shadow-md transition-all">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="font-extrabold text-[15px] text-[#1E293B] tracking-tight">{activity.service_type}</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white tracking-wider ${getStatusColor(activity.status)}`}>
+                              {activity.status}
+                            </span>
                           </div>
-                          <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
-                            <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{getStatusProgress(activity)}% Complete</span>
-                            <div className="w-full">
-                              <Progress value={getStatusProgress(activity)} status={getStatusType(activity.status)} className="h-2 rounded-full" />
-                            </div>
+                          <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            Requested on {activity.date} at {activity.time}
+                          </p>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
+                          <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{getStatusProgress(activity)}% Complete</span>
+                          <div className="w-full">
+                            <Progress value={getStatusProgress(activity)} status={getStatusType(activity.status)} className="h-2 rounded-full" />
                           </div>
                         </div>
-                        {activity.notes && (
-                          <div className="mt-4 pt-4 border-t border-slate-50">
-                            <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
-                              <span className="font-bold text-[10px] uppercase tracking-widest text-[#005596] block mb-1 opacity-80">Reference Notes:</span>
-                              {activity.notes}
-                            </p>
-                          </div>
-                        )}
                       </div>
-                    ))}
+                      {activity.notes && (
+                        <div className="mt-4 pt-4 border-t border-slate-50">
+                          <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
+                            <span className="font-bold text-[10px] uppercase tracking-widest text-[#005596] block mb-1 opacity-80">Reference Notes:</span>
+                            {activity.notes}
+                          </p>
+                        </div>
+                      )}
+                      {canReschedule(activity) && (
+                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleRescheduleClick(activity)}
+                            className="text-[#005596] border-[#005596]"
+                          >
+                            <Edit3 className="h-3 w-3 mr-2" />
+                            Reschedule
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
 
-                    {/* Maintenance with Multi-Unit Items */}
-                    {maintenanceData.map((maint) => (
-                      <div key={maint.id} className="p-5 rounded-xl border border-slate-100 bg-white hover:border-[#005596]/20 hover:shadow-md transition-all">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                          <div className="space-y-1.5 flex-1">
-                            <div className="flex items-center gap-3">
-                              <span className="font-extrabold text-[15px] text-[#1E293B] tracking-tight">{maint.title}</span>
-                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white tracking-wider ${getStatusColor(maint.status)}`}>
-                                {maint.status}
+                  {maintenanceData.map((maint) => (
+                    <div key={maint.id} className="p-5 rounded-xl border border-slate-100 bg-white hover:border-[#005596]/20 hover:shadow-md transition-all">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="font-extrabold text-[15px] text-[#1E293B] tracking-tight">{maint.title}</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white tracking-wider ${getStatusColor(maint.status)}`}>
+                              {maint.status}
+                            </span>
+                            {maint.is_multi_unit && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
+                                Multi-Unit
                               </span>
-                              {maint.is_multi_unit && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
-                                  Multi-Unit
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                              <Clock className="h-3.5 w-3.5" />
-                              Scheduled on {maint.date} at {maint.time}
-                            </p>
+                            )}
                           </div>
-                          <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
-                            <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{maint.progress || 0}% Complete</span>
-                            <div className="w-full">
-                              <Progress value={maint.progress || 0} status={getStatusType(maint.status)} className="h-2 rounded-full" />
-                            </div>
+                          <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            Scheduled on {maint.date} at {maint.time}
+                          </p>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
+                          <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{maint.progress || 0}% Complete</span>
+                          <div className="w-full">
+                            <Progress value={maint.progress || 0} status={getStatusType(maint.status)} className="h-2 rounded-full" />
                           </div>
                         </div>
-                        
-                        {/* Multi-Unit Items Display */}
-                        {maint.items && maint.items.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-slate-50">
-                            <p className="text-[10px] font-bold text-[#005596] uppercase tracking-widest mb-3">Unit Services</p>
-                            <div className="space-y-2">
-                              {maint.items.map((item: any) => (
-                                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                                  <div>
-                                    <p className="font-medium text-sm">{item.client_units?.unit_name || `Unit ${item.unit_id}`}</p>
-                                    <p className="text-xs text-slate-500">{item.client_units?.brand} {item.client_units?.unit_type} - {item.client_units?.horsepower}HP</p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white ${getStatusColor(item.status)}`}>
-                                      {item.status}
-                                    </span>
-                                    <span className="text-xs text-slate-500">{item.service_type}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                      </div>
+                      {maint.notes && (
+                        <div className="mt-4 pt-4 border-t border-slate-50">
+                          <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
+                            <span className="font-bold text-[10px] uppercase tracking-widest text-[#005596] block mb-1 opacity-80">Reference Notes:</span>
+                            {maint.notes}
+                          </p>
+                        </div>
+                      )}
+                      {canReschedule(maint) && (
+                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleRescheduleClick(maint)}
+                            className="text-[#005596] border-[#005596]"
+                          >
+                            <Edit3 className="h-3 w-3 mr-2" />
+                            Reschedule
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'machines' && (
+          <div className="container mx-auto py-8 px-4 md:px-8 max-w-7xl space-y-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-[#005596] rounded-xl shadow-lg shadow-[#005596]/20">
+                <Wind className="h-6 w-6 text-white" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-[#1E293B]">My Machine List</h1>
+            </div>
+
+            {clientUnits.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+                <Wind className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500">No registered air conditioning units found</p>
+                <p className="text-sm text-gray-400 mt-2">Your registered units will appear here after installation</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {clientUnits.map((unit) => (
+                  <Card key={unit.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-blue-50 rounded-xl">
+                          <Wind className="h-8 w-8 text-[#005596]" />
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewUnitHistory(unit)}
+                        >
+                          <History className="h-4 w-4 mr-2" />
+                          History
+                        </Button>
+                      </div>
+                      <h3 className="font-bold text-lg text-[#1E293B] mb-3">{unit.unit_name}</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Brand:</span>
+                          <span className="font-medium">{unit.brand || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Type:</span>
+                          <span className="font-medium">{unit.unit_type || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Horsepower:</span>
+                          <span className="font-medium">{unit.horsepower ? `${unit.horsepower} HP` : 'N/A'}</span>
+                        </div>
+                        {unit.indoor_serial && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Indoor S/N:</span>
+                            <span className="font-medium text-xs">{unit.indoor_serial}</span>
                           </div>
                         )}
-                        
-                        {maint.notes && (
-                          <div className="mt-4 pt-4 border-t border-slate-50">
-                            <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
-                              <span className="font-bold text-[10px] uppercase tracking-widest text-[#005596] block mb-1 opacity-80">Reference Notes:</span>
-                              {maint.notes}
-                            </p>
+                        {unit.outdoor_serial && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Outdoor S/N:</span>
+                            <span className="font-medium text-xs">{unit.outdoor_serial}</span>
+                          </div>
+                        )}
+                        {unit.installation_date && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Installed:</span>
+                            <span className="font-medium text-xs">{unit.installation_date}</span>
                           </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -476,240 +623,450 @@ export default function ClientDashboard() {
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-[#1E293B]">Account Settings</h1>
             </div>
+            <Card className="border-none shadow-sm">
+              <CardHeader>
+                <CardTitle>Profile Information</CardTitle>
+                <CardDescription>Update your personal details and contact information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Full Name</Label>
+                    <Input defaultValue={profile?.full_name || ''} disabled className="bg-slate-50" />
+                    <p className="text-xs text-slate-400">Contact support to change your name</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Email Address</Label>
+                    <Input defaultValue={profile?.email || ''} disabled className="bg-slate-50" />
+                    <p className="text-xs text-slate-400">Email cannot be changed</p>
+                  </div>
+                </div>
 
-            <div className="grid gap-8">
-              {/* Profile Settings */}
-              <Card className="border-none shadow-sm overflow-hidden">
-                <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-5">
-                  <CardTitle className="flex items-center gap-2 text-lg text-[#1E293B]">
-                    <User className="h-5 w-5 text-[#005596]" /> Profile Information
-                  </CardTitle>
-                  <CardDescription>
-                    Update your contact details and home address.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <form onSubmit={handleUpdateProfile} className="space-y-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="space-y-2">
-                        <Label htmlFor="fullName" className="text-slate-700 font-medium">Full Name</Label>
-                        <Input id="fullName" name="fullName" defaultValue={profile?.full_name} required className="bg-white" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phone" className="text-slate-700 font-medium">Phone Number</Label>
-                        <Input id="phone" name="phone" type="tel" defaultValue={profile?.phone} placeholder="09XXXXXXXXX" maxLength={11 as any} required className="bg-white" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="address" className="text-slate-700 font-medium">Default Address</Label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                        <Input id="address" name="address" defaultValue={profile?.address} placeholder="123 Block, City, Province" className="bg-white pl-9" />
-                      </div>
-                    </div>
-                    <div className="pt-2">
-                      <Button type="submit" disabled={isLoading} className="bg-[#005596] hover:bg-[#00447a] text-white px-6">
-                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Information
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Phone Number</Label>
+                    <Input 
+                      id="settingsPhone"
+                      placeholder="Enter phone number (e.g., 09123456789)"
+                      defaultValue={profile?.phone || ''}
+                      className="max-w-md"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Client Type</Label>
+                    <Input 
+                      defaultValue={profile?.client_type || 'Residential'} 
+                      disabled 
+                      className="bg-slate-50 max-w-md" 
+                    />
+                  </div>
+                </div>
 
-              {/* Security Settings */}
-              <Card className="border-none shadow-sm overflow-hidden border-rose-100">
-                <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-5">
-                  <CardTitle className="flex items-center gap-2 text-lg text-[#1E293B]">
-                    <ShieldCheck className="h-5 w-5 text-emerald-600" /> Password & Security
-                  </CardTitle>
-                  <CardDescription>
-                    Maintain account access and update your private password.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <form onSubmit={handleChangePassword} className="space-y-5 max-w-md">
-                    <div className="space-y-2">
-                      <Label htmlFor="newPassword" className="text-slate-700 font-medium">New Password</Label>
-                      <Input id="newPassword" name="newPassword" type="password" required className="bg-white" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword" className="text-slate-700 font-medium">Confirm New Password</Label>
-                      <Input id="confirmPassword" name="confirmPassword" type="password" required className="bg-white" />
-                    </div>
-                    <div className="pt-2">
-                      <Button type="submit" variant="default" disabled={isLoading} className="bg-slate-800 hover:bg-slate-900 border-none">
-                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Update Password
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            </div>
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Address</Label>
+                  <Input 
+                    id="settingsAddress"
+                    placeholder="Enter your address"
+                    defaultValue={profile?.address || ''}
+                    className="max-w-md"
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <Button 
+                    className="bg-[#005596] hover:bg-[#00447a]"
+                    onClick={async () => {
+                      const phoneInput = document.getElementById('settingsPhone') as HTMLInputElement
+                      const addressInput = document.getElementById('settingsAddress') as HTMLInputElement
+                      const formData = new FormData()
+                      formData.append('fullName', profile?.full_name || '')
+                      formData.append('phone', phoneInput?.value || '')
+                      formData.append('address', addressInput?.value || '')
+                      const result = await updateProfile(formData)
+                      if (result.error) {
+                        toast.error(result.error)
+                      } else {
+                        toast.success('Profile updated successfully')
+                        fetchData()
+                      }
+                    }}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-sm">
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Current Password</Label>
+                    <Input 
+                      id="currentPassword"
+                      type="password"
+                      placeholder="Enter current password"
+                      className="max-w-md"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">New Password</Label>
+                    <Input 
+                      id="newPassword"
+                      type="password"
+                      placeholder="Enter new password"
+                      className="max-w-md"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-4 pt-2">
+                  <Button 
+                    variant="outline"
+                    onClick={async () => {
+                      const currentPassword = (document.getElementById('currentPassword') as HTMLInputElement)?.value
+                      const newPassword = (document.getElementById('newPassword') as HTMLInputElement)?.value
+                      if (!currentPassword || !newPassword) {
+                        toast.error('Please enter both current and new password')
+                        return
+                      }
+                      if (newPassword.length < 6) {
+                        toast.error('Password must be at least 6 characters')
+                        return
+                      }
+                      const supabase = createClient()
+                      const { error } = await supabase.auth.updateUser({ password: newPassword })
+                      if (error) {
+                        toast.error(error.message)
+                      } else {
+                        toast.success('Password changed successfully')
+                        ;(document.getElementById('currentPassword') as HTMLInputElement).value = ''
+                        ;(document.getElementById('newPassword') as HTMLInputElement).value = ''
+                      }
+                    }}
+                  >
+                    Update Password
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
-
       </main>
 
-      {/* Global Modals */}
-
       {/* Request Service Dialog */}
-      <Dialog open={isRequestDialogOpen} onOpenChange={setIsRequestDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={isRequestDialogOpen} onOpenChange={(open) => {
+        setIsRequestDialogOpen(open)
+        if (!open) {
+          setServiceType('')
+          setAirconBrand('')
+          setAirconType('')
+          setSelectedUnits([])
+          setRequestDate('')
+          setRequestTime('')
+          setAvailableSlots(allTimeSlots)
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-[#005596]">Request a Service</DialogTitle>
-            <DialogDescription>
-              Fill out the form below to remotely queue an aircon service operation.
-            </DialogDescription>
+            <DialogTitle>Request Service</DialogTitle>
+            <DialogDescription>Fill in the details for your service request</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleRequestService} className="space-y-4 py-2">
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="serviceType">Service Type *</Label>
-              <Select value={serviceType} onValueChange={(v: string) => {
-                setServiceType(v)
-                setAirconBrand('')
-                setAirconType('')
-              }} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a service" />
-                </SelectTrigger>
+              <Label>Service Type *</Label>
+              <Select value={serviceType} onValueChange={(val) => { setServiceType(val); setSelectedUnits([]) }}>
+                <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Installation">Installation</SelectItem>
                   <SelectItem value="Repair">Repair</SelectItem>
-                  <SelectItem value="Maintenance">Maintenance</SelectItem>
                   <SelectItem value="Cleaning">Cleaning</SelectItem>
+                  <SelectItem value="Maintenance">Maintenance</SelectItem>
                   <SelectItem value="Inspection">Inspection</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {serviceType && (
-              <div className="grid grid-cols-2 gap-3 p-4 border border-[#005596]/10 rounded-xl bg-blue-50/20">
-                <div className="col-span-2">
-                  <p className="text-[10px] font-bold text-[#005596] uppercase tracking-widest mb-1.5 opacity-80">
-                    Unit Information (Optional)
-                  </p>
+            {serviceType === 'Installation' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Aircon Brand *</Label>
+                    <Select value={airconBrand} onValueChange={setAirconBrand}>
+                      <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                      <SelectContent>
+                        {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
+                          <SelectItem key={b} value={b}>{b}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Aircon Type *</Label>
+                    <Select value={airconType} onValueChange={setAirconType}>
+                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Window">Window</SelectItem>
+                        <SelectItem value="Split">Split</SelectItem>
+                        <SelectItem value="Inverter">Inverter</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Brand</Label>
-                  <Select value={airconBrand} onValueChange={(v: string) => setAirconBrand(v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Brand" /></SelectTrigger>
-                    <SelectContent>
-                      {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
-                        <SelectItem key={b} value={b}>{b}</SelectItem>
+              </>
+            )}
+
+            {['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && clientUnits.length > 0 && (
+              <div className="space-y-2">
+                <Label>Select Units (Multi-Select) *</Label>
+                {clientUnits.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                    No registered units found. Please register units first.
+                  </div>
+                ) : (
+                  <>
+                    <div className="border border-slate-200 rounded-lg max-h-[200px] overflow-y-auto">
+                      {clientUnits.map((unit) => (
+                        <div key={unit.id} className="flex items-center gap-3 p-3 border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            id={`unit-${unit.id}`}
+                            checked={selectedUnits.includes(unit.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedUnits([...selectedUnits, unit.id])
+                              } else {
+                                setSelectedUnits(selectedUnits.filter(id => id !== unit.id))
+                              }
+                            }}
+                            className="h-4 w-4 text-[#005596] rounded border-slate-300"
+                          />
+                          <label htmlFor={`unit-${unit.id}`} className="cursor-pointer flex-1">
+                            <span className="font-medium">{unit.unit_name}</span>
+                            <span className="text-slate-500 text-sm ml-2">
+                              {unit.brand} {unit.unit_type} {unit.horsepower}HP
+                            </span>
+                          </label>
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Type</Label>
-                  <Select value={airconType} onValueChange={(v: string) => setAirconType(v)}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Window">Window</SelectItem>
-                      <SelectItem value="Split">Split</SelectItem>
-                      <SelectItem value="Inverter">Inverter</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Selected: {selectedUnits.length} unit(s)
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number *</Label>
-              <Input id="phone" name="phone" type="tel" defaultValue={profile?.phone} placeholder="09XXXXXXXXX" maxLength={11 as any} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Address *</Label>
-              <Input id="address" name="address" defaultValue={profile?.address} placeholder="Your current address" required/>
-            </div>
+            {['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && clientUnits.length === 0 && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                No registered units found. Please contact support or register units first.
+              </div>
+            )}
+
+            {serviceType === 'Repair' && (
+              <div className="space-y-2">
+                <Label>Issue Description</Label>
+                <Textarea
+                  placeholder="Describe the issue with your aircon (e.g., not cooling, making noise, leaking water)"
+                  className="min-h-[80px]"
+                />
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="date">Date *</Label>
-                <Input id="date" name="date" type="date" min={today} required />
+                <Label>Preferred Date *</Label>
+                <Input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={requestDate}
+                  onChange={(e) => {
+                    setRequestDate(e.target.value)
+                    setRequestTime('')
+                    if (e.target.value) {
+                      getAvailableTimeSlots(e.target.value).then(slots => setAvailableSlots(slots))
+                    } else {
+                      setAvailableSlots(allTimeSlots)
+                    }
+                  }}
+                />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="time">Time *</Label>
-                <Input id="time" name="time" type="time" required />
+                <Label>Preferred Time *</Label>
+                {availableSlots.length === 0 ? (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                    No slots for this date
+                  </div>
+                ) : (
+                  <Select value={requestTime} onValueChange={setRequestTime}>
+                    <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
+                    <SelectContent>
+                      {availableSlots.map((slot) => (
+                        <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="notes">Diagnostics / Notes</Label>
-              <Textarea id="notes" name="notes" placeholder="Describe your issue or requirements..." className="resize-none" />
+              <Label>Additional Notes</Label>
+              <Textarea
+                id="requestNotes"
+                placeholder="Any other details or special instructions..."
+                className="min-h-[80px]"
+              />
             </div>
-            <div className="pt-2">
-              <Button type="submit" className="w-full bg-[#005596] hover:bg-[#00447a] h-11 text-md font-bold" disabled={isLoading || !serviceType}>
-                {isLoading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                Submit Request
-              </Button>
-            </div>
-          </form>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsRequestDialogOpen(false)}>Cancel</Button>
+            <Button className="bg-[#005596]" onClick={handleServiceRequest} disabled={isLoading}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Submit Request
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Notifications Dialog */}
       <Dialog open={showNotifications} onOpenChange={setShowNotifications}>
-        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0">
-          <DialogHeader className="p-6 pb-4 bg-slate-50 border-b border-slate-100">
-            <div className="flex items-center justify-between">
-              <DialogTitle className="flex items-center gap-2 font-bold text-xl text-[#1E293B]">
-                <Bell className="h-5 w-5 text-[#005596]" />
-                Recent Alerts
-              </DialogTitle>
-              {notifications.some(n => !n.is_read) && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-[11px] font-bold uppercase tracking-wider text-[#005596] hover:bg-[#005596]/10 h-8"
-                  onClick={async () => {
-                    for (const n of notifications.filter(notif => !notif.is_read)) {
-                      await markUserNotificationAsRead(n.id)
-                    }
-                    fetchData()
-                  }}
-                >
-                  Mark all read
-                </Button>
-              )}
-            </div>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Notifications</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8FAFC]">
+          <div className="space-y-3">
             {notifications.length === 0 ? (
-              <div className="py-16 text-center text-slate-400">
-                <div className="p-4 bg-white rounded-full inline-block shadow-sm mb-3">
-                  <Bell className="h-6 w-6 opacity-40 text-[#005596]" />
-                </div>
-                <p className="font-medium text-[#1E293B]">All caught up!</p>
-                <p className="text-xs">No pending notifications.</p>
-              </div>
+              <div className="text-center py-8 text-gray-500">No notifications</div>
             ) : (
               notifications.map((n) => (
-                <div 
-                  key={n.id} 
-                  className={`p-4 rounded-xl border shadow-sm transition-all cursor-pointer ${n.is_read ? 'bg-white border-slate-100 opacity-70 hover:opacity-100' : 'bg-[#005596]/5 border-[#005596]/20 ring-1 ring-[#005596]/10'}`}
-                  onClick={async () => {
-                    if (!n.is_read) {
-                      await markUserNotificationAsRead(n.id)
-                      fetchData()
-                    }
-                  }}
-                >
-                  <div className="flex justify-between items-start mb-1.5">
-                    <h4 className={`font-bold text-sm leading-tight pr-4 ${n.is_read ? 'text-slate-700' : 'text-[#005596]'}`}>{n.title}</h4>
-                    {!n.is_read && <div className="h-2 w-2 bg-[#005596] rounded-full mt-1 flex-shrink-0" />}
-                  </div>
-                  <p className="text-xs text-slate-600 mb-3 leading-relaxed">{n.message}</p>
-                  <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-                    <span className="text-[10px] font-medium text-slate-400">
-                      {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    {n.type === 'reminder' && (
-                      <span className="text-[9px] font-bold text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">Reminder</span>
-                    )}
-                  </div>
+                <div key={n.id} className={`p-4 rounded-xl border ${n.is_read ? 'bg-white border-slate-100 opacity-70' : 'bg-[#005596]/5 border-[#005596]/20'}`}>
+                  <h4 className={`font-bold text-sm ${n.is_read ? 'text-slate-700' : 'text-[#005596]'}`}>{n.title}</h4>
+                  <p className="text-xs text-slate-600 mt-1">{n.message}</p>
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    {new Date(n.created_at).toLocaleDateString()}
+                  </p>
                 </div>
               ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reschedule Dialog */}
+      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-[#005596]" />
+              Reschedule Service
+            </DialogTitle>
+            <DialogDescription>
+              Select a new date and time for your {selectedItem?.service_type || selectedItem?.title} service.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-sm text-slate-600">
+                <span className="font-medium">Current Schedule:</span> {selectedItem?.date} at {selectedItem?.time}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rescheduleDate">New Date</Label>
+              <Input
+                id="rescheduleDate"
+                type="date"
+                min={new Date().toISOString().split('T')[0]}
+                value={rescheduleDate}
+                onChange={(e) => handleRescheduleDateChange(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rescheduleTime">New Time</Label>
+              {availableSlots.length === 0 ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                  No available time slots for this date.
+                </div>
+              ) : (
+                <Select value={rescheduleTime} onValueChange={setRescheduleTime}>
+                  <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
+                  <SelectContent>
+                    {availableSlots.map((slot) => (
+                      <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <p className="text-xs text-slate-500">
+              Rescheduling is only allowed up to 3 hours before the original scheduled time.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowRescheduleDialog(false)}>Cancel</Button>
+            <Button 
+              className="bg-[#005596]" 
+              onClick={handleRescheduleSubmit}
+              disabled={!rescheduleDate || !rescheduleTime || isRescheduling}
+            >
+              {isRescheduling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm Reschedule
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unit Service History Dialog */}
+      <Dialog open={!!selectedUnit} onOpenChange={(open) => !open && setSelectedUnit(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wind className="h-5 w-5 text-[#005596]" />
+              Service History
+            </DialogTitle>
+            <DialogDescription>
+              {selectedUnit?.unit_name} - {selectedUnit?.brand} {selectedUnit?.unit_type} {selectedUnit?.horsepower}HP
+            </DialogDescription>
+          </DialogHeader>
+          {isLoadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-[#005596]" />
+            </div>
+          ) : unitHistory.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <History className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p>No service history found for this unit</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {unitHistory.map((item, index) => (
+                <div key={index} className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        item.type === 'Installation' ? 'bg-green-100 text-green-700' :
+                        item.type === 'Repair' ? 'bg-red-100 text-red-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {item.type}
+                      </span>
+                      <span className="font-medium text-sm">{item.title}</span>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      {item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}
+                    </span>
+                  </div>
+                  {item.notes && (
+                    <p className="text-xs text-slate-600 mt-2">{item.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

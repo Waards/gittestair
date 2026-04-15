@@ -157,6 +157,7 @@ export async function convertLeadToClient(leadId: string) {
   }
 
   const password = generatePassword()
+  const clientUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/login`
 
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: lead.email,
@@ -209,8 +210,17 @@ export async function convertLeadToClient(leadId: string) {
       link: '/admin'
     })
 
+  await supabase
+    .from('notifications')
+    .insert({
+      title: 'Welcome to Aircon Pro Services!',
+      message: `Your account has been created. Login at ${clientUrl} with password: ${password}`,
+      type: 'reminder',
+      user_id: authData.user.id
+    })
+
   revalidatePath('/admin')
-  return { success: true, password }
+  return { success: true, password, email: lead.email }
 }
 
 export async function deleteLead(leadId: string) {

@@ -60,32 +60,48 @@ export async function createClientUser(formData: FormData) {
   return { success: true, password }
 }
 
-export async function getClients() {
+export async function getClients(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
+  const offset = (page - 1) * limit
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('role', 'client')
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
 
   if (error) {
     console.error('getClients error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+
+  const { count } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('role', 'client')
+
+  return { data: data || [], total: count || 0 }
 }
 
-export async function getInstallations() {
+export async function getInstallations(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
+  const offset = (page - 1) * limit
   const { data, error } = await supabase
     .from('installations')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
   if (error) {
     console.error('getInstallations error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+
+  const { count } = await supabase
+    .from('installations')
+    .select('*', { count: 'exact', head: true })
+
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getDashboardInstallations() {
@@ -102,17 +118,25 @@ export async function getDashboardInstallations() {
   return data || []
 }
 
-export async function getRepairs() {
+export async function getRepairs(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
+  const offset = (page - 1) * limit
   const { data, error } = await supabase
     .from('repairs')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
   if (error) {
     console.error('getRepairs error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+
+  const { count } = await supabase
+    .from('repairs')
+    .select('*', { count: 'exact', head: true })
+
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getDashboardRepairs() {
@@ -140,6 +164,87 @@ export async function getAppointments() {
     return []
   }
   return data || []
+}
+
+export async function getAvailableTimeSlots(date: string) {
+  const supabase = await createAdminClient()
+  
+  const allSlots = [
+    '08:00 AM - 10:00 AM',
+    '10:00 AM - 12:00 PM',
+    '01:00 PM - 03:00 PM',
+    '03:00 PM - 05:00 PM',
+    '05:00 PM - 07:00 PM',
+    '07:00 PM - 08:00 PM',
+  ]
+
+  const { data: bookings, error } = await supabase
+    .from('appointments')
+    .select('time')
+    .eq('date', date)
+    .neq('status', 'cancelled')
+
+  if (error) {
+    console.error('getAvailableTimeSlots error:', error)
+    return allSlots
+  }
+
+  const bookedSlots = (bookings || []).map(b => b.time)
+  return allSlots.filter(slot => !bookedSlots.includes(slot))
+}
+
+export async function rescheduleAppointment(id: string, newDate: string, newTime: string) {
+  const supabase = await createAdminClient()
+  
+  const { data: appointment, error: fetchError } = await supabase
+    .from('appointments')
+    .select('*, leads!inner(*)')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !appointment) {
+    return { error: 'Appointment not found' }
+  }
+
+  const originalDateTime = new Date(`${appointment.date}T${appointment.time.split(' - ')[0]}`)
+  const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
+  const now = new Date()
+
+  if (now >= threeHoursBefore) {
+    return { error: 'Rescheduling is only allowed up to 3 hours before the original scheduled time' }
+  }
+
+  const { data: existingBooking } = await supabase
+    .from('appointments')
+    .select('id')
+    .eq('date', newDate)
+    .eq('time', newTime)
+    .neq('id', id)
+    .neq('status', 'cancelled')
+    .single()
+
+  if (existingBooking) {
+    return { error: 'This time slot is already booked' }
+  }
+
+  const newRescheduleCount = (appointment.reschedule_count || 0) + 1
+
+  const { error: updateError } = await supabase
+    .from('appointments')
+    .update({ 
+      date: newDate, 
+      time: newTime,
+      reschedule_count: newRescheduleCount,
+      status: 'Rescheduled'
+    })
+    .eq('id', id)
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  revalidatePath('/admin')
+  return { success: true }
 }
 
 export async function getSettings() {
@@ -372,6 +477,45 @@ export async function markRepairComplete(id: string) {
   return { success: true }
 }
 
+export async function updateInstallationProgress(id: string, status: string, progress: number, notes?: string) {
+  const supabase = await createAdminClient()
+  const updateData: any = { status, progress }
+  if (notes) updateData.notes = notes
+  const { error } = await supabase
+    .from('installations')
+    .update(updateData)
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function updateRepairProgress(id: string, status: string, progress: number, notes?: string) {
+  const supabase = await createAdminClient()
+  const updateData: any = { status, progress }
+  if (notes) updateData.notes = notes
+  const { error } = await supabase
+    .from('repairs')
+    .update(updateData)
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function updateMaintenanceProgress(id: string, status: string, progress: number, notes?: string) {
+  const supabase = await createAdminClient()
+  const updateData: any = { status, progress }
+  if (notes) updateData.notes = notes
+  const { error } = await supabase
+    .from('maintenance')
+    .update(updateData)
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
 export async function createMaintenance(formData: FormData) {
   const supabase = await createAdminClient()
   const type = formData.get('type') as string
@@ -398,17 +542,25 @@ export async function createMaintenance(formData: FormData) {
   return { success: true }
 }
 
-export async function getMaintenance() {
+export async function getMaintenance(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
+  const offset = (page - 1) * limit
   const { data, error } = await supabase
     .from('maintenance')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
   if (error) {
     console.error('getMaintenance error:', error)
-    return []
+    return { data: [], total: 0 }
   }
-  return data || []
+
+  const { count } = await supabase
+    .from('maintenance')
+    .select('*', { count: 'exact', head: true })
+
+  return { data: data || [], total: count || 0 }
 }
 
 export async function getDashboardMaintenance() {
@@ -681,40 +833,6 @@ export async function updateAppointmentStatus(id: string, status: string) {
   return { success: true }
 }
 
-export async function rescheduleAppointment(id: string, date: string, time: string) {
-  const supabase = await createAdminClient()
-  
-  // Enforce Max Bookings per day (Maximum 4 bookings) for the new date
-  const { count: appointmentsCount, error: apptError } = await supabase
-    .from('appointments')
-    .select('id', { count: 'exact', head: true })
-    .eq('date', date)
-
-  const { count: leadsCount, error: leadsError } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('preferred_date', date)
-    .neq('status', 'Cancelled')
-
-  if (apptError || leadsError) {
-    return { error: 'Failed to verify booking availability for the new date.' }
-  }
-
-  const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
-  
-  if (totalBookings >= 4) {
-    return { error: 'The new date is fully booked (Max 4 bookings). Please select another day.' }
-  }
-
-  const { error } = await supabase
-    .from('appointments')
-    .update({ date, time })
-    .eq('id', id)
-  if (error) return { error: error.message }
-  revalidatePath('/admin')
-  return { success: true }
-}
-
 // --------------------------------------------------------------------
 // ASSET REGISTRY - client_units
 // --------------------------------------------------------------------
@@ -733,9 +851,28 @@ export async function registerUnit(formData: FormData) {
   if (!clientId || !unitName || !brand || !unitType || !technology || !horsepower) {
     return { error: 'Please fill in all required fields.' }
   }
+
+  // Get client name from profiles
+  const { data: clientProfile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', clientId)
+    .single()
+
   const { data, error } = await supabase
     .from('client_units')
-    .insert({ client_id: clientId, unit_name: unitName, brand, unit_type: unitType, technology, horsepower, indoor_serial: indoorSerial || null, outdoor_serial: outdoorSerial || null, installation_date: installationDate || null })
+    .insert({ 
+      client_id: clientId, 
+      client_name: clientProfile?.full_name || null,
+      unit_name: unitName, 
+      brand, 
+      unit_type: unitType, 
+      technology, 
+      horsepower, 
+      indoor_serial: indoorSerial || null, 
+      outdoor_serial: outdoorSerial || null, 
+      installation_date: installationDate || null 
+    })
     .select().single()
   if (error) { console.error('registerUnit error:', error); return { error: error.message } }
   revalidatePath('/admin')
@@ -885,43 +1022,54 @@ export async function createMaintenanceWithUnits(formData: FormData) {
   return { success: true, maintenance }
 }
 
-export async function getMaintenanceWithItems() {
+export async function getMaintenanceWithItems(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
+  const offset = (page - 1) * limit
   
   try {
-    // Get all maintenance records
-    const { data: maintenance, error } = await supabase
+    // Get maintenance records with count
+    const { data: maintenance, error, count } = await supabase
       .from('maintenance')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     
     if (error) {
       console.error('getMaintenanceWithItems error:', error)
-      return []
+      return { data: [], total: 0, error: error.message }
     }
     
-    // Get all maintenance items (if table exists)
+    if (!maintenance || maintenance.length === 0) {
+      return { data: [], total: count || 0, error: null }
+    }
+    
+    // Get all maintenance items for the fetched maintenance records (if table exists)
     let items: any[] = []
     try {
-      const { data: itemsData } = await supabase
+      const { data: itemsData, error: itemsError } = await supabase
         .from('maintenance_items')
         .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)')
-      items = itemsData || []
+        .in('maintenance_id', maintenance.map(m => m.id))
+      
+      if (itemsError) {
+        console.log('maintenance_items query error:', itemsError.message)
+      } else {
+        items = itemsData || []
+      }
     } catch (e) {
-      // Table might not exist yet
       console.log('maintenance_items table not ready yet')
     }
     
     // Attach items to maintenance records
-    const maintenanceWithItems = (maintenance || []).map(m => ({
+    const maintenanceWithItems = maintenance.map(m => ({
       ...m,
       items: items.filter(item => item.maintenance_id === m.id)
     }))
     
-    return maintenanceWithItems
+    return { data: maintenanceWithItems, total: count || 0, error: null }
   } catch (e) {
     console.error('getMaintenanceWithItems fatal error:', e)
-    return []
+    return { data: [], total: 0, error: String(e) }
   }
 }
 

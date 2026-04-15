@@ -48,8 +48,10 @@ import {
   createMaintenanceWithUnits,
   getMaintenanceWithItems,
   updateMaintenanceItemStatus,
-  updateMaintenanceItemServiceType,
-  deleteMaintenanceItem
+  deleteMaintenanceItem,
+  updateInstallationProgress,
+  updateRepairProgress,
+  updateMaintenanceProgress
 } from '@/app/actions/admin'
 import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead } from '@/app/actions/leads'
 import {
@@ -138,9 +140,17 @@ type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
   const [clients, setClients] = useState<any[]>([])
+  const [clientsTotal, setClientsTotal] = useState(0)
+  const [clientsPage, setClientsPage] = useState(1)
   const [installations, setInstallations] = useState<any[]>([])
+  const [installationsTotal, setInstallationsTotal] = useState(0)
+  const [installationsPage, setInstallationsPage] = useState(1)
   const [repairs, setRepairs] = useState<any[]>([])
+  const [repairsTotal, setRepairsTotal] = useState(0)
+  const [repairsPage, setRepairsPage] = useState(1)
   const [maintenance, setMaintenance] = useState<any[]>([])
+  const [maintenanceTotal, setMaintenanceTotal] = useState(0)
+  const [maintenancePage, setMaintenancePage] = useState(1)
   const [appointments, setAppointments] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
   const [leads, setLeads] = useState<any[]>([])
@@ -161,6 +171,12 @@ export default function AdminDashboard() {
   const [isSendingReminder, setIsSendingReminder] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<any>(null)
   const [showBookingDetails, setShowBookingDetails] = useState(false)
+  const [selectedInstallation, setSelectedInstallation] = useState<any>(null)
+  const [showInstallationDetails, setShowInstallationDetails] = useState(false)
+  const [selectedRepair, setSelectedRepair] = useState<any>(null)
+  const [showRepairDetails, setShowRepairDetails] = useState(false)
+  const [selectedMaintenance, setSelectedMaintenance] = useState<any>(null)
+  const [showMaintenanceDetails, setShowMaintenanceDetails] = useState(false)
   const [, setTick] = useState<number>(0)
 
   const router = useRouter()
@@ -178,50 +194,32 @@ export default function AdminDashboard() {
       console.log('Fetching dashboard data...')
       
       // Only fetch essential dashboard data initially (very fast)
-      const results = await Promise.allSettled([
+      // Priority: fast dashboard data (stats, settings, notifications)
+      const priorityResults = await Promise.allSettled([
         getDashboardInstallations(),
         getDashboardRepairs(),
         getDashboardMaintenance(),
         getSettings(),
-        getNotifications(),
-        getClients(),
+        getNotifications()
+      ])
+
+      if (priorityResults[0].status === 'fulfilled') setInstallations(priorityResults[0].value || [])
+      if (priorityResults[1].status === 'fulfilled') setRepairs(priorityResults[1].value || [])
+      if (priorityResults[2].status === 'fulfilled') setMaintenance(priorityResults[2].value || [])
+      if (priorityResults[3].status === 'fulfilled') setSettings(priorityResults[3].value)
+      if (priorityResults[4].status === 'fulfilled') setNotifications(priorityResults[4].value || [])
+
+      // Load secondary data in background (clients, appointments, leads)
+      const [clientsResult, appointmentsResult, leadsResult] = await Promise.all([
+        getClients(1, 20),
         getAppointments(),
         getLeads()
       ])
-
-      // Log each result
-      const resultNames = ['installations', 'repairs', 'maintenance', 'settings', 'notifications', 'clients', 'appointments', 'leads']
-      results.forEach((r, i) => {
-        if (r.status === 'rejected') {
-          console.error(`Failed to fetch ${resultNames[i]}:`, r.reason)
-        }
-      })
-
-      if (results[0].status === 'fulfilled') setInstallations(results[0].value || [])
-      if (results[1].status === 'fulfilled') setRepairs(results[1].value || [])
-      if (results[2].status === 'fulfilled') setMaintenance(results[2].value || [])
-      if (results[3].status === 'fulfilled') setSettings(results[3].value)
-      if (results[4].status === 'fulfilled') setNotifications(results[4].value || [])
-      if (results[5].status === 'fulfilled') setClients(results[5].value || [])
-      if (results[6].status === 'fulfilled') setAppointments(results[6].value || [])
-      if (results[7].status === 'fulfilled') setLeads(results[7].value || [])
-
-      console.log('Dashboard data loaded:', {
-        installations: results[0].status,
-        repairs: results[1].status,
-        maintenance: results[2].status,
-        settings: results[3].status,
-        notifications: results[4].status,
-        clients: results[5].status,
-        appointments: results[6].status,
-        leads: results[7].status,
-      })
-
-      const failedCount = results.filter(r => r.status === 'rejected').length
-      if (failedCount > 0) {
-        console.error(`${failedCount} data sources failed to load`)
-        toast.warning(`${failedCount} data sources could not be loaded`)
-      }
+      
+      setClients(clientsResult.data || [])
+      setClientsTotal(clientsResult.total || 0)
+      setAppointments(appointmentsResult || [])
+      setLeads(leadsResult || [])
     } catch (error) {
       console.error('fetchDashboardData error:', error)
       toast.error('Failed to load dashboard')
@@ -233,20 +231,33 @@ export default function AdminDashboard() {
   // Lazy load data when view changes
   useEffect(() => {
     if (view === 'clients' && clients.length === 0) {
-      getClients().then(setClients)
+      const result = getClients(1, 20)
+      result.then((r: any) => {
+        setClients(r.data || [])
+        setClientsTotal(r.total || 0)
+      })
     } else if (view === 'installations') {
-      getInstallations().then(setInstallations)
+      getInstallations(1, 20).then((r: any) => {
+        setInstallations(r.data || [])
+        setInstallationsTotal(r.total || 0)
+      })
       getClientUnits().then(setClientUnits)
-      if (clients.length === 0) getClients().then(setClients)
+      if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'repairs') {
-      getRepairs().then(setRepairs)
+      getRepairs(1, 20).then((r: any) => {
+        setRepairs(r.data || [])
+        setRepairsTotal(r.total || 0)
+      })
       getRepairJobs().then(setRepairJobs)
       getClientUnits().then(setClientUnits)
-      if (clients.length === 0) getClients().then(setClients)
+      if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'maintenance' && maintenance.length === 0) {
-      getMaintenance().then(setMaintenance)
+      getMaintenanceWithItems(1, 20).then((result: any) => {
+        setMaintenance(result.data || [])
+        setMaintenanceTotal(result.total || 0)
+      })
       getClientUnits().then(setClientUnits)
-      if (clients.length === 0) getClients().then(setClients)
+      if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'requests' && requests.length === 0) {
       getClientRequests().then(setRequests)
     } else if (view === 'leads' && leads.length === 0) {
@@ -260,19 +271,31 @@ export default function AdminDashboard() {
   const refreshData = async () => {
     switch (view) {
       case 'clients':
-        getClients().then(setClients)
+        getClients(clientsPage, 20).then((r: any) => {
+          setClients(r.data || [])
+          setClientsTotal(r.total || 0)
+        })
         break
       case 'installations':
-        getInstallations().then(setInstallations)
+        getInstallations(installationsPage, 20).then((r: any) => {
+          setInstallations(r.data || [])
+          setInstallationsTotal(r.total || 0)
+        })
         getClientUnits().then(setClientUnits)
         break
       case 'repairs':
-        getRepairs().then(setRepairs)
+        getRepairs(repairsPage, 20).then((r: any) => {
+          setRepairs(r.data || [])
+          setRepairsTotal(r.total || 0)
+        })
         getRepairJobs().then(setRepairJobs)
         getClientUnits().then(setClientUnits)
         break
       case 'maintenance':
-        getMaintenance().then(setMaintenance)
+        getMaintenanceWithItems(maintenancePage, 20).then((result: any) => {
+          setMaintenance(result.data || [])
+          setMaintenanceTotal(result.total || 0)
+        })
         break
       case 'requests':
         getClientRequests().then(setRequests)
@@ -291,6 +314,144 @@ export default function AdminDashboard() {
   const handleViewBookingDetails = (booking: any) => {
     setSelectedBooking(booking)
     setShowBookingDetails(true)
+  }
+
+  const [installationProgressStatus, setInstallationProgressStatus] = useState('Scheduled')
+  const [installationProgress, setInstallationProgress] = useState(0)
+  const [installationProgressNotes, setInstallationProgressNotes] = useState('')
+  const [repairProgressStatus, setRepairProgressStatus] = useState('Scheduled')
+  const [repairProgress, setRepairProgress] = useState(0)
+  const [repairProgressNotes, setRepairProgressNotes] = useState('')
+  const [maintenanceProgressStatus, setMaintenanceProgressStatus] = useState('Scheduled')
+  const [maintenanceProgress, setMaintenanceProgress] = useState(0)
+  const [maintenanceProgressNotes, setMaintenanceProgressNotes] = useState('')
+
+  // Auto-update progress when status changes
+  useEffect(() => {
+    const statusProgressMap: Record<string, number> = {
+      'Scheduled': 0,
+      'In Progress': 50,
+      'Delayed': 25,
+      'Issue': 50,
+      'Success': 100,
+      'Completed': 100,
+      'Failed': 0
+    }
+    if (maintenanceProgressStatus) {
+      setMaintenanceProgress(statusProgressMap[maintenanceProgressStatus] ?? maintenanceProgress)
+    }
+  }, [maintenanceProgressStatus])
+
+  // Auto-update installation progress when status changes
+  useEffect(() => {
+    const statusProgressMap: Record<string, number> = {
+      'Scheduled': 0,
+      'In Progress': 50,
+      'Delayed': 25,
+      'Issue': 50,
+      'Success': 100,
+      'Completed': 100,
+      'Failed': 0
+    }
+    if (installationProgressStatus) {
+      setInstallationProgress(statusProgressMap[installationProgressStatus] ?? installationProgress)
+    }
+  }, [installationProgressStatus])
+
+  // Auto-update repair progress when status changes
+  useEffect(() => {
+    const statusProgressMap: Record<string, number> = {
+      'Scheduled': 0,
+      'In Progress': 50,
+      'Delayed': 25,
+      'Issue': 50,
+      'Success': 100,
+      'Completed': 100,
+      'Failed': 0
+    }
+    if (repairProgressStatus) {
+      setRepairProgress(statusProgressMap[repairProgressStatus] ?? repairProgress)
+    }
+  }, [repairProgressStatus])
+
+  const handleViewInstallationDetails = (installation: any) => {
+    setSelectedInstallation(installation)
+    setInstallationProgressStatus(installation.status || 'Scheduled')
+    setInstallationProgress(installation.progress || 0)
+    setInstallationProgressNotes(installation.notes || '')
+    setShowInstallationDetails(true)
+  }
+
+  const handleViewRepairDetails = (repair: any) => {
+    setSelectedRepair(repair)
+    setRepairProgressStatus(repair.status || 'Scheduled')
+    setRepairProgress(repair.progress || 0)
+    setRepairProgressNotes(repair.notes || '')
+    setShowRepairDetails(true)
+  }
+
+  const handleViewMaintenanceDetails = (maintenance: any) => {
+    setSelectedMaintenance(maintenance)
+    setMaintenanceProgressStatus(maintenance.status || 'Scheduled')
+    // Auto-set progress based on status
+    const statusProgressMap: Record<string, number> = {
+      'Scheduled': 0,
+      'In Progress': 50,
+      'Delayed': 25,
+      'Issue': 50,
+      'Success': 100,
+      'Completed': 100,
+      'Failed': 100
+    }
+    setMaintenanceProgress(statusProgressMap[maintenance.status] || maintenance.progress || 0)
+    setMaintenanceProgressNotes(maintenance.notes || '')
+    setShowMaintenanceDetails(true)
+  }
+
+  const handleUpdateInstallationProgress = async () => {
+    if (!selectedInstallation) return
+    setIsLoading(true)
+    const result = await updateInstallationProgress(selectedInstallation.id, installationProgressStatus, installationProgress, installationProgressNotes)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Installation progress updated')
+      refreshData()
+      setShowInstallationDetails(false)
+    }
+    setIsLoading(false)
+  }
+
+  const handleUpdateRepairProgress = async () => {
+    if (!selectedRepair) return
+    setIsLoading(true)
+    const result = await updateRepairProgress(selectedRepair.id, repairProgressStatus, repairProgress, repairProgressNotes)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Repair progress updated')
+      refreshData()
+      setShowRepairDetails(false)
+    }
+    setIsLoading(false)
+  }
+
+  const handleUpdateMaintenanceProgress = async () => {
+    if (!selectedMaintenance) return
+    setIsLoading(true)
+    try {
+      const result = await updateMaintenanceProgress(selectedMaintenance.id, maintenanceProgressStatus, maintenanceProgress, maintenanceProgressNotes)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Maintenance progress updated')
+        refreshData()
+        setShowMaintenanceDetails(false)
+      }
+    } catch (error: any) {
+      console.error('Update maintenance progress error:', error)
+      toast.error(error.message || 'Failed to update progress')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleSignOut = async () => {
@@ -436,6 +597,9 @@ export default function AdminDashboard() {
         {view === 'clients' && (
           <ClientsView
             clients={clients}
+            total={clientsTotal}
+            page={clientsPage}
+            setPage={setClientsPage}
             isFetching={isFetching}
             onBack={() => setView('dashboard')}
             fetchClients={refreshData}
@@ -445,34 +609,43 @@ export default function AdminDashboard() {
         {view === 'installations' && (
           <InstallationsView
             installations={installations}
+            total={installationsTotal}
+            page={installationsPage}
+            setPage={setInstallationsPage}
             clients={clients}
             clientUnits={clientUnits}
             onBack={() => setView('dashboard')}
             fetchInstallations={refreshData}
-            onViewDetails={handleViewBookingDetails}
+            onViewDetails={handleViewInstallationDetails}
           />
         )}
 
         {view === 'repairs' && (
           <RepairsView
             repairs={repairs}
+            total={repairsTotal}
+            page={repairsPage}
+            setPage={setRepairsPage}
             clients={clients}
             clientUnits={clientUnits}
             repairJobs={repairJobs}
             onBack={() => setView('dashboard')}
             fetchRepairs={refreshData}
-            onViewDetails={handleViewBookingDetails}
+            onViewDetails={handleViewRepairDetails}
           />
         )}
 
         {view === 'maintenance' && (
           <MaintenanceView
             maintenance={maintenance}
+            total={maintenanceTotal}
+            page={maintenancePage}
+            setPage={setMaintenancePage}
             clients={clients}
             clientUnits={clientUnits}
             onBack={() => setView('dashboard')}
             fetchMaintenance={refreshData}
-            onViewDetails={handleViewBookingDetails}
+            onViewDetails={handleViewMaintenanceDetails}
           />
         )}
 
@@ -723,7 +896,7 @@ export default function AdminDashboard() {
       <Dialog open={showBookingDetails} onOpenChange={setShowBookingDetails}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Booking Details</DialogTitle>
+            <DialogTitle>Client Details</DialogTitle>
           </DialogHeader>
           {selectedBooking && (
             <div className="space-y-6 py-4">
@@ -784,6 +957,310 @@ export default function AdminDashboard() {
           )}
         </DialogContent>
       </Dialog>
+      {/* Installation Details Dialog */}
+      <Dialog open={showInstallationDetails} onOpenChange={setShowInstallationDetails}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Installation Details</DialogTitle>
+          </DialogHeader>
+          {selectedInstallation && (
+            <div className="space-y-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#005596]">{selectedInstallation.title}</h3>
+                  <Badge className={selectedInstallation.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
+                    {selectedInstallation.status}
+                  </Badge>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-blue-600">{selectedInstallation.cost || 'N/A'}</p>
+                  <p className="text-xs text-gray-500">Service Fee</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Client Name</p>
+                  <p className="text-sm font-bold">{selectedInstallation.client_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Technician</p>
+                  <p className="text-sm font-bold">{selectedInstallation.technician || 'Not assigned'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
+                  <p className="text-sm">{selectedInstallation.date}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Time</p>
+                  <p className="text-sm">{selectedInstallation.time || 'N/A'}</p>
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <p className="text-xs text-gray-500 font-medium">Location</p>
+                  <p className="text-sm">{selectedInstallation.location}</p>
+                </div>
+              </div>
+
+              {/* Progress Update Section */}
+              {selectedInstallation.status !== 'Completed' && (
+              <div className="border-t pt-4 space-y-4">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Update In Progress</p>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={installationProgressStatus} onValueChange={setInstallationProgressStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Scheduled">Scheduled</SelectItem>
+                      <SelectItem value="In Progress">In Progress</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Success">Success</SelectItem>
+                      <SelectItem value="Delayed">Delayed</SelectItem>
+                      <SelectItem value="Failed">Failed</SelectItem>
+                      <SelectItem value="Issue">Has Issue</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Progress</Label>
+                  <div className="flex items-center gap-3">
+                    <Progress 
+                      value={installationProgress} 
+                      status={installationProgressStatus === 'Failed' ? 'error' : installationProgressStatus === 'Completed' ? 'completed' : installationProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
+                      className="flex-1 h-2" 
+                    />
+                    <span className={`text-sm font-medium w-12 ${installationProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{installationProgress}%</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea 
+                    value={installationProgressNotes} 
+                    onChange={(e) => setInstallationProgressNotes(e.target.value)}
+                    placeholder="Add notes about the installation progress..."
+                  />
+                </div>
+              </div>
+              )}
+
+              {selectedInstallation.status !== 'Completed' && (
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowInstallationDetails(false)}>Close</Button>
+                <Button className="bg-[#005596]" onClick={handleUpdateInstallationProgress} disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update In Progress
+                </Button>
+              </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Repair Details Dialog */}
+      <Dialog open={showRepairDetails} onOpenChange={setShowRepairDetails}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Repair Details</DialogTitle>
+          </DialogHeader>
+          {selectedRepair && (
+            <div className="space-y-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#005596]">{selectedRepair.title}</h3>
+                  <Badge className={selectedRepair.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
+                    {selectedRepair.status}
+                  </Badge>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-blue-600">{selectedRepair.cost || 'N/A'}</p>
+                  <p className="text-xs text-gray-500">Service Fee</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Client Name</p>
+                  <p className="text-sm font-bold">{selectedRepair.client_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Technician</p>
+                  <p className="text-sm font-bold">{selectedRepair.technician || 'Not assigned'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
+                  <p className="text-sm">{selectedRepair.date}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Time</p>
+                  <p className="text-sm">{selectedRepair.time || 'N/A'}</p>
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <p className="text-xs text-gray-500 font-medium">Location</p>
+                  <p className="text-sm">{selectedRepair.location}</p>
+                </div>
+              </div>
+
+              {/* Progress Update Section */}
+              {selectedRepair.status !== 'Completed' && (
+              <div className="border-t pt-4 space-y-4">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Update In Progress</p>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={repairProgressStatus} onValueChange={setRepairProgressStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Scheduled">Scheduled</SelectItem>
+                      <SelectItem value="In Progress">In Progress</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Success">Success</SelectItem>
+                      <SelectItem value="Delayed">Delayed</SelectItem>
+                      <SelectItem value="Failed">Failed</SelectItem>
+                      <SelectItem value="Issue">Has Issue</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Progress</Label>
+                  <div className="flex items-center gap-3">
+                    <Progress 
+                      value={repairProgress} 
+                      status={repairProgressStatus === 'Failed' ? 'error' : repairProgressStatus === 'Completed' ? 'completed' : repairProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
+                      className="flex-1 h-2" 
+                    />
+                    <span className={`text-sm font-medium w-12 ${repairProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{repairProgress}%</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea 
+                    value={repairProgressNotes} 
+                    onChange={(e) => setRepairProgressNotes(e.target.value)}
+                    placeholder="Add notes about the repair progress..."
+                  />
+                </div>
+              </div>
+              )}
+
+              {selectedRepair.status !== 'Completed' && (
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowRepairDetails(false)}>Close</Button>
+                <Button className="bg-[#005596]" onClick={handleUpdateRepairProgress} disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update In Progress
+                </Button>
+              </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Maintenance Details Dialog */}
+      <Dialog open={showMaintenanceDetails} onOpenChange={setShowMaintenanceDetails}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Maintenance Details</DialogTitle>
+          </DialogHeader>
+          {selectedMaintenance && (
+            <form onSubmit={(e) => e.preventDefault()}>
+              <div className="space-y-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-[#005596]">{selectedMaintenance.title}</h3>
+                    <Badge className={selectedMaintenance.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
+                      {selectedMaintenance.status}
+                    </Badge>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-blue-600">{selectedMaintenance.cost || 'N/A'}</p>
+                    <p className="text-xs text-gray-500">Service Fee</p>
+                  </div>
+                </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Client Name</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.client_name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Technician</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.technician || 'Not assigned'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
+                  <p className="text-sm">{selectedMaintenance.date}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Time</p>
+                  <p className="text-sm">{selectedMaintenance.time || 'N/A'}</p>
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <p className="text-xs text-gray-500 font-medium">Location</p>
+                  <p className="text-sm">{selectedMaintenance.location}</p>
+                </div>
+              </div>
+
+              {/* Progress Update Section */}
+              {selectedMaintenance.status !== 'Completed' && (
+              <div className="border-t pt-4 space-y-4">
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Update In Progress</p>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={maintenanceProgressStatus} onValueChange={setMaintenanceProgressStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Scheduled">Scheduled</SelectItem>
+                      <SelectItem value="In Progress">In Progress</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Success">Success</SelectItem>
+                      <SelectItem value="Delayed">Delayed</SelectItem>
+                      <SelectItem value="Failed">Failed</SelectItem>
+                      <SelectItem value="Issue">Has Issue</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Progress</Label>
+                  <div className="flex items-center gap-3">
+                    <Progress 
+                      value={maintenanceProgress} 
+                      status={maintenanceProgressStatus === 'Failed' ? 'error' : maintenanceProgressStatus === 'Completed' ? 'completed' : maintenanceProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
+                      className="flex-1 h-2" 
+                    />
+                    <span className={`text-sm font-medium w-12 ${maintenanceProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{maintenanceProgress}%</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea 
+                    value={maintenanceProgressNotes} 
+                    onChange={(e) => setMaintenanceProgressNotes(e.target.value)}
+                    placeholder="Add notes about the maintenance progress..."
+                  />
+                </div>
+              </div>
+              )}
+
+              {selectedMaintenance.status !== 'Completed' && (
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowMaintenanceDetails(false)}>Close</Button>
+                <Button 
+                  type="button"
+                  className="bg-[#005596]" 
+                  onClick={() => handleUpdateMaintenanceProgress()} 
+                  disabled={isLoading}
+                >
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update In Progress
+                </Button>
+              </div>
+              )}
+            </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }
@@ -1125,18 +1602,19 @@ function ActionCard({ title, description, icon, onClick }: { title: string, desc
 
 // VIEW COMPONENTS
 
-function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
+function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchClients }: any) {
   const [isLoading, setIsLoading] = useState(false)
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [showArchived, setShowArchived] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
   const [selectedClient, setSelectedClient] = useState<any>(null)
   const [showDetails, setShowDetails] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const itemsPerPage = 5
+  const itemsPerPage = 20
+
+  const totalPages = Math.ceil(total / itemsPerPage)
 
   const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -1208,25 +1686,16 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   }
 
   const filteredClients = clients.filter((client: any) => {
-    const matchesSearch =
-      client.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = client.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.phone?.includes(searchQuery) ||
-      client.address?.toLowerCase().includes(searchQuery.toLowerCase())
-
-    const matchesType = typeFilter === 'all' ||
-      (client.client_type || 'Residential').toLowerCase() === typeFilter.toLowerCase()
-
+      client.phone?.includes(searchQuery)
+    const matchesType = typeFilter === 'all' || client.client_type === typeFilter
     const matchesArchived = showArchived ? client.is_archived === true : client.is_archived !== true
 
     return matchesSearch && matchesType && matchesArchived
   })
 
-  const totalPages = Math.ceil(filteredClients.length / itemsPerPage)
-  const paginatedClients = filteredClients.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
+  const clientTotalPages = Math.ceil(total / itemsPerPage)
 
   const residentialCount = clients.filter((c: any) => (c.client_type || 'Residential') === 'Residential' && !c.is_archived).length
   const corporateCount = clients.filter((c: any) => c.client_type === 'Corporate' && !c.is_archived).length
@@ -1264,7 +1733,7 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
             size="sm"
             onClick={() => {
               setShowArchived(!showArchived)
-              setCurrentPage(1)
+              setPage(1)
             }}
           >
             {showArchived ? <ArchiveRestore className="h-4 w-4 mr-2" /> : <Archive className="h-4 w-4 mr-2" />}
@@ -1281,11 +1750,11 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
-                setCurrentPage(1)
+                setPage(1)
               }}
             />
           </div>
-          <Select value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setCurrentPage(1) }}>
+          <Select value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setPage(1) }}>
             <SelectTrigger className="w-[180px]">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="All Types" />
@@ -1331,7 +1800,7 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              {showArchived ? 'Archived Clients' : 'Clients'} ({filteredClients.length})
+              {showArchived ? 'Archived Clients' : 'Clients'} ({total})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1339,13 +1808,13 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               </div>
-            ) : paginatedClients.length === 0 ? (
+            ) : filteredClients.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Users className="h-12 w-12 mx-auto mb-4 opacity-20" />
                 <p>{showArchived ? 'No archived clients found' : 'No clients found'}</p>
               </div>
             ) : (
-              paginatedClients.map((client: any) => (
+              filteredClients.slice((page - 1) * itemsPerPage, page * itemsPerPage).map((client: any) => (
                 <div key={client.id} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl hover:border-gray-200 transition-all">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
@@ -1422,33 +1891,33 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-4 border-t">
                 <p className="text-sm text-gray-500">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredClients.length)} of {filteredClients.length} clients
+                  Showing {((page - 1) * itemsPerPage) + 1} to {Math.min(page * itemsPerPage, total)} of {total} clients
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage((p: number) => Math.max(1, p - 1))}
+                    disabled={page === 1}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  {Array.from({ length: clientTotalPages }, (_, i) => i + 1).map(p => (
                     <Button
-                      key={page}
-                      variant={currentPage === page ? 'default' : 'outline'}
+                      key={p}
+                      variant={page === p ? 'default' : 'outline'}
                       size="sm"
-                      className={currentPage === page ? 'bg-[#005596]' : ''}
-                      onClick={() => setCurrentPage(page)}
+                      className={page === p ? 'bg-[#005596]' : ''}
+                      onClick={() => setPage(p)}
                     >
-                      {page}
+                      {p}
                     </Button>
                   ))}
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setPage((p: number) => Math.min(clientTotalPages, p + 1))}
+                    disabled={page === clientTotalPages}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -1600,7 +2069,7 @@ function ClientsView({ clients, isFetching, onBack, fetchClients }: any) {
   )
 }
 
-function InstallationsView({ installations, clients, clientUnits, onBack, fetchInstallations, onViewDetails }: any) {
+function InstallationsView({ installations, total, page, setPage, clients, clientUnits, onBack, fetchInstallations, onViewDetails, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [showRegisterUnit, setShowRegisterUnit] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -1608,6 +2077,8 @@ function InstallationsView({ installations, clients, clientUnits, onBack, fetchI
   const [technology, setTechnology] = useState('Inverter')
   const [selectedUnit, setSelectedUnit] = useState<any>(null)
   const today = new Date().toISOString().split('T')[0]
+  const itemsPerPage = 20
+  const totalPages = Math.ceil(total / itemsPerPage)
 
   const BRANDS = ['LG', 'Samsung', 'Carrier', 'Daikin', 'Midea', 'Aux', 'Panasonic', 'Kolin', 'Sharp', 'Fujidenzo', 'Generic']
   const HP_OPTIONS = ['0.5', '1.0', '1.5', '2.0', '2.5', '3.0']
@@ -1724,7 +2195,7 @@ function InstallationsView({ installations, clients, clientUnits, onBack, fetchI
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-medium">
-                    <span>Installation Progress</span>
+                    <span>{item.status === 'Completed' ? 'Completed' : 'Installation Progress'}</span>
                     <span>{Math.round(calculateDynamicProgress(item))}%</span>
                   </div>
                   <Progress value={Math.round(calculateDynamicProgress(item))} status={item.status === 'Completed' ? 'completed' : item.status === 'In Progress' ? 'in_progress' : 'pending'} className="h-2" />
@@ -1988,7 +2459,7 @@ function InstallationsView({ installations, clients, clientUnits, onBack, fetchI
   )
 }
 
-function RepairsView({ repairs, clients, clientUnits, repairJobs, onBack, fetchRepairs, onViewDetails }: any) {
+function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repairJobs, onBack, fetchRepairs, onViewDetails, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [showLogRepair, setShowLogRepair] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -1999,6 +2470,8 @@ function RepairsView({ repairs, clients, clientUnits, repairJobs, onBack, fetchR
   const [newPartQty, setNewPartQty] = useState(1)
   const [newPartPrice, setNewPartPrice] = useState(0)
   const today = new Date().toISOString().split('T')[0]
+  const itemsPerPage = 20
+  const totalPages = Math.ceil(total / itemsPerPage)
 
   // Units for the currently selected client
   const filteredUnits = clientUnits.filter((u: any) => u.client_id === selectedClientId)
@@ -2108,7 +2581,7 @@ function RepairsView({ repairs, clients, clientUnits, repairJobs, onBack, fetchR
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
+                  <div className="flex justify-between text-xs font-medium"><span>{item.status === 'Completed' ? 'Completed' : 'Progress'}</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
                   <Progress value={Math.round(calculateDynamicProgress(item))} status={item.status === 'Completed' ? 'completed' : item.status === 'In Progress' ? 'in_progress' : 'pending'} className="h-2" />
                 </div>
               </CardContent>
@@ -4290,12 +4763,11 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   )
 }
 
-function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onViewDetails, clientUnits: propClientUnits }: any) {
+function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, fetchMaintenance, onViewDetails, clientUnits: propClientUnits, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [type, setType] = useState('Real-Time')
   const [maintenanceData, setMaintenanceData] = useState<any[]>(maintenance)
-  const [isLoadingItems, setIsLoadingItems] = useState(false)
 
   // New maintenance form state
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -4304,21 +4776,19 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
   const [unitServiceTypes, setUnitServiceTypes] = useState<Record<string, string>>({})
 
   const today = new Date().toISOString().split('T')[0]
+  const itemsPerPage = 20
+  const totalPages = Math.ceil(total / itemsPerPage)
 
   useEffect(() => {
-    loadMaintenanceWithItems()
-  }, [])
+    setMaintenanceData(maintenance)
+  }, [maintenance])
 
   const loadMaintenanceWithItems = async () => {
-    try {
-      setIsLoadingItems(true)
-      const data = await getMaintenanceWithItems()
-      setMaintenanceData(data)
-    } catch (e) {
-      console.error('loadMaintenanceWithItems error:', e)
-    } finally {
-      setIsLoadingItems(false)
+    const result = await getMaintenanceWithItems(page, 20)
+    if (result.error) {
+      console.error('loadMaintenanceWithItems error:', result.error)
     }
+    setMaintenanceData(result.data || [])
   }
 
   const handleClientChange = async (clientId: string) => {
@@ -4424,12 +4894,8 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
           <MiniStatCard title="Completed" value={maintenanceData.filter((m: any) => m.status === 'Completed').length.toString()} icon={<CheckCircle className="text-green-600" />} />
         </div>
         <div className="space-y-4">
-          <h2 className="font-bold text-[#005596]">Maintenance Services ({maintenanceData.length})</h2>
-          {isLoadingItems ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#005596]" />
-            </div>
-          ) : maintenanceData.map((item: any) => (
+          <h2 className="font-bold text-[#005596]">Maintenance Services ({total})</h2>
+          {maintenanceData.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
@@ -4520,14 +4986,14 @@ function MaintenanceView({ maintenance, clients, onBack, fetchMaintenance, onVie
                 {/* Legacy single-unit maintenance */}
                 {!item.is_multi_unit && (
                   <div className="space-y-3">
-                    <div className="flex justify-between text-xs font-medium"><span>Progress</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
+                    <div className="flex justify-between text-xs font-medium"><span>{item.status === 'Completed' ? 'Completed' : 'Progress'}</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
 <Progress value={Math.round(calculateDynamicProgress(item))} status={item.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
                   </div>
                 )}
               </CardContent>
             </Card>
           ))}
-          {maintenanceData.length === 0 && !isLoadingItems && <div className="text-center py-12 text-gray-400">No maintenance services found</div>}
+          {maintenanceData.length === 0 && <div className="text-center py-12 text-gray-400">No maintenance services found</div>}
         </div>
       </main>
 

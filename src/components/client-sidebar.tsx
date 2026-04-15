@@ -7,10 +7,11 @@ import {
   Bell,
   Wrench,
   LogOut,
+  Wind,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type View = 'dashboard' | 'settings'
+type View = 'dashboard' | 'settings' | 'machines'
 
 interface ClientSidebarProps {
   view: View
@@ -37,6 +38,7 @@ export function ClientSidebar({
     view: View
   }[] = [
     { label: 'Overview', icon: <Home className="h-5 w-5" />, view: 'dashboard' },
+    { label: 'Machine List', icon: <Wind className="h-5 w-5" />, view: 'machines' },
     { label: 'Settings', icon: <SettingsIcon className="h-5 w-5" />, view: 'settings' },
   ]
 

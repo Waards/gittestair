@@ -6,7 +6,7 @@ import * as ProgressPrimitive from "@radix-ui/react-progress"
 import { cn } from "@/lib/utils"
 
 interface ProgressProps extends React.ComponentProps<typeof ProgressPrimitive.Root> {
-  status?: 'pending' | 'in_progress' | 'completed' | 'default'
+  status?: 'pending' | 'in_progress' | 'completed' | 'default' | 'error'
 }
 
 function Progress({
@@ -18,6 +18,7 @@ function Progress({
   const progressValue = value ?? 0
   
   const getColorClass = () => {
+    if (status === 'error') return 'bg-red-500'
     if (progressValue >= 100 || status === 'completed') return 'bg-green-500'
     if (progressValue > 0 || status === 'in_progress') return 'bg-orange-500'
     return 'bg-primary'
