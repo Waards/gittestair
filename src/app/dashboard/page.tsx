@@ -89,7 +89,7 @@ export default function ClientDashboard() {
   const [airconBrand, setAirconBrand] = useState<string>('')
   const [airconType, setAirconType] = useState<string>('')
   const [, setTick] = useState<number>(0)
-  const [view, setView] = useState<'dashboard' | 'settings' | 'machines'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'settings' | 'machines' | 'notifications'>('dashboard')
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false)
   const [selectedItem, setSelectedItem] = useState<any>(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -175,18 +175,18 @@ export default function ClientDashboard() {
     return statusColors[status] || 'bg-gray-400'
   }
 
-  const getStatusType = (status: string) => {
-    const statusTypes: Record<string, string> = {
-      'Completed': 'success',
-      'Success': 'success',
-      'In Progress': 'active',
-      'Scheduled': 'active',
-      'Delayed': 'warning',
-      'Issue': 'warning',
+  const getStatusType = (status: string): 'pending' | 'in_progress' | 'completed' | 'default' | 'error' => {
+    const statusTypes: Record<string, 'pending' | 'in_progress' | 'completed' | 'default' | 'error'> = {
+      'Completed': 'completed',
+      'Success': 'completed',
+      'In Progress': 'in_progress',
+      'Scheduled': 'in_progress',
+      'Delayed': 'pending',
+      'Issue': 'pending',
       'Failed': 'error',
       'Pending': 'pending',
     }
-    return statusTypes[status] || 'pending'
+    return statusTypes[status] || 'default'
   }
 
   const getStatusProgress = (item: any) => {
@@ -218,7 +218,7 @@ export default function ClientDashboard() {
       return
     }
 
-    const servicesWithMultipleUnits = ['Cleaning', 'Maintenance', 'Inspection']
+    const servicesWithMultipleUnits = ['Maintenance']
     if (servicesWithMultipleUnits.includes(serviceType) && selectedUnits.length === 0) {
       toast.error('Please select at least one unit')
       return
@@ -782,10 +782,8 @@ export default function ClientDashboard() {
                 <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Installation">Installation</SelectItem>
-                  <SelectItem value="Repair">Repair</SelectItem>
-                  <SelectItem value="Cleaning">Cleaning</SelectItem>
                   <SelectItem value="Maintenance">Maintenance</SelectItem>
-                  <SelectItem value="Inspection">Inspection</SelectItem>
+                  <SelectItem value="Repair">Repair</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -819,49 +817,32 @@ export default function ClientDashboard() {
               </>
             )}
 
-            {['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && clientUnits.length > 0 && (
+            {['Maintenance', 'Repair'].includes(serviceType) && clientUnits.length > 0 && (
               <div className="space-y-2">
-                <Label>Select Units (Multi-Select) *</Label>
+                <Label>Select Unit *</Label>
                 {clientUnits.length === 0 ? (
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
                     No registered units found. Please register units first.
                   </div>
                 ) : (
-                  <>
-                    <div className="border border-slate-200 rounded-lg max-h-[200px] overflow-y-auto">
+                  <Select 
+                    value={selectedUnits[0] || ''} 
+                    onValueChange={(val) => setSelectedUnits([val])}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select your unit" /></SelectTrigger>
+                    <SelectContent>
                       {clientUnits.map((unit) => (
-                        <div key={unit.id} className="flex items-center gap-3 p-3 border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                          <input
-                            type="checkbox"
-                            id={`unit-${unit.id}`}
-                            checked={selectedUnits.includes(unit.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedUnits([...selectedUnits, unit.id])
-                              } else {
-                                setSelectedUnits(selectedUnits.filter(id => id !== unit.id))
-                              }
-                            }}
-                            className="h-4 w-4 text-[#005596] rounded border-slate-300"
-                          />
-                          <label htmlFor={`unit-${unit.id}`} className="cursor-pointer flex-1">
-                            <span className="font-medium">{unit.unit_name}</span>
-                            <span className="text-slate-500 text-sm ml-2">
-                              {unit.brand} {unit.unit_type} {unit.horsepower}HP
-                            </span>
-                          </label>
-                        </div>
+                        <SelectItem key={unit.id} value={unit.id}>
+                          {unit.unit_name} - {unit.brand} {unit.unit_type} ({unit.horsepower}HP)
+                        </SelectItem>
                       ))}
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Selected: {selectedUnits.length} unit(s)
-                    </p>
-                  </>
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
             )}
 
-            {['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && clientUnits.length === 0 && (
+            {['Maintenance', 'Repair'].includes(serviceType) && clientUnits.length === 0 && (
               <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
                 No registered units found. Please contact support or register units first.
               </div>
@@ -869,11 +850,13 @@ export default function ClientDashboard() {
 
             {serviceType === 'Repair' && (
               <div className="space-y-2">
-                <Label>Issue Description</Label>
+                <Label>Describe the Issue *</Label>
                 <Textarea
                   placeholder="Describe the issue with your aircon (e.g., not cooling, making noise, leaking water)"
                   className="min-h-[80px]"
+                  required
                 />
+                <p className="text-xs text-slate-500">For issues with your registered aircon unit only</p>
               </div>
             )}
 
@@ -1048,13 +1031,12 @@ export default function ClientDashboard() {
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        item.type === 'Installation' ? 'bg-green-100 text-green-700' :
                         item.type === 'Repair' ? 'bg-red-100 text-red-700' :
                         'bg-blue-100 text-blue-700'
                       }`}>
-                        {item.type}
+                        {item.type || 'Service'}
                       </span>
-                      <span className="font-medium text-sm">{item.title}</span>
+                      <span className="font-medium text-sm">{item.title || 'Service'}</span>
                     </div>
                     <span className="text-xs text-slate-500">
                       {item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}

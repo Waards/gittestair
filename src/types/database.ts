@@ -16,6 +16,15 @@ export interface Lead {
   barangay: string | null
   city: string | null
   zip_code: string | null
+  aircon_brand: string | null
+  aircon_type: string | null
+  horsepower: string | null
+  btu: string | null
+  company_name: string | null
+  contact_person: string | null
+  building_name: string | null
+  floor: string | null
+  province: string | null
 }
 
 export interface ClientRequest {
@@ -56,20 +65,17 @@ export interface PendingRequest {
 export interface Appointment {
   id: string
   client_name: string
-  email: string | null
+  email: string
   phone: string
-  address: string | null
+  address: string
+  service_type: string
   date: string
   time: string
-  service_type: string
-  status: string
+  status: 'pending' | 'Scheduled' | 'Completed' | 'Cancelled'
   created_at: string
-  cost: string | null
-  notes: string | null
-  street: string | null
-  barangay: string | null
-  city: string | null
-  zip_code: string | null
+  notes?: string | null
+  priority?: string
+  is_corporate?: boolean
 }
 
 export interface Installation {
@@ -151,6 +157,46 @@ export interface ClientUnit {
   outdoor_serial: string | null
   installation_date: string | null
   created_at: string
+  is_multi_unit: boolean
+  warranty_months: number | null
+  warranty_start_date: string | null
+  warranty_end_date: string | null
+  warranty_provider: string | null
+  warranty_type: string | null
+}
+
+export interface UnitComponent {
+  id: string
+  client_unit_id: string | null
+  component_type: 'Indoor' | 'Outdoor' | 'Condenser' | 'Air Handler'
+  serial_number: string | null
+  position_index: number
+  created_at: string
+}
+
+export interface WarrantyStatus {
+  isActive: boolean
+  daysRemaining: number
+  provider: string | null
+  endDate: string | null
+  type: string | null
+}
+
+export interface RepairJob extends Record<string, unknown> {
+  id: string
+  unit_id: string | null
+  client_id: string | null
+  error_code: string | null
+  symptom: string | null
+  parts_replaced: Array<{ name: string; qty: number; price: number }>
+  before_photo_url: string | null
+  after_photo_url: string | null
+  status: 'Open' | 'In Progress' | 'Completed'
+  created_at: string
+  affected_unit_type?: 'Indoor' | 'Outdoor' | 'Both' | null
+  warranty_claim?: boolean
+  warranty_ref_number?: string | null
+  covered_by?: string | null
 }
 
 export interface Technician {

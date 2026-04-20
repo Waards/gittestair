@@ -124,7 +124,8 @@ import {
   AlertTriangle,
   Package,
   Camera,
-  ClipboardList
+  ClipboardList,
+  Shield
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -140,7 +141,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { AdminSidebar } from '@/components/admin-sidebar'
 
-type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
+type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians' | 'corporate'
 
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
@@ -601,16 +602,36 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {view === 'clients' && (
+{view === 'clients' && (
           <ClientsView
             clients={clients}
             total={clientsTotal}
             page={clientsPage}
             setPage={setClientsPage}
-            isFetching={isFetching}
+            clientsWithUnits={clientUnits}
             onBack={() => setView('dashboard')}
             fetchClients={refreshData}
+            onGoToLeads={() => setView('leads')}
           />
+        )}
+
+        {view === 'corporate' && (
+          <div className="p-6">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-[#005596] flex items-center gap-2">
+                <Building2 className="h-6 w-6" /> Corporate Queue
+              </h1>
+              <p className="text-gray-500">High priority corporate clients and leads</p>
+            </div>
+            {/* Corporate leads filter - will show leads with inspection_required or is_corporate */}
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-sm text-gray-500">
+                  Filter: Leads with client_type = 'Corporate' or inspection_required = true
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {view === 'installations' && (
@@ -659,6 +680,9 @@ export default function AdminDashboard() {
         {view === 'schedule' && (
           <ScheduleView
             appointments={appointments}
+            installations={installations}
+            repairs={repairs}
+            maintenance={maintenance}
             onBack={() => setView('dashboard')}
             fetchAppointments={refreshData}
           />
@@ -946,9 +970,9 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-500 font-medium">Progress</p>
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
-                      <span>{Math.round(calculateDynamicProgress(selectedBooking))}% Completed</span>
+                      <span>{Number.isNaN(Math.round(calculateDynamicProgress(selectedBooking))) ? 0 : Math.round(calculateDynamicProgress(selectedBooking))}% Completed</span>
                     </div>
-                    <Progress value={Math.round(calculateDynamicProgress(selectedBooking))} status={selectedBooking?.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
+                    <Progress value={Number.isNaN(Math.round(calculateDynamicProgress(selectedBooking))) ? 0 : Math.round(calculateDynamicProgress(selectedBooking))} status={selectedBooking?.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
                   </div>
                 </div>
                 <div className="space-y-1 col-span-2">
@@ -1032,11 +1056,11 @@ export default function AdminDashboard() {
                   <Label>Progress</Label>
                   <div className="flex items-center gap-3">
                     <Progress 
-                      value={installationProgress} 
+                      value={Number(installationProgress) || 0} 
                       status={installationProgressStatus === 'Failed' ? 'error' : installationProgressStatus === 'Completed' ? 'completed' : installationProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
                       className="flex-1 h-2" 
                     />
-                    <span className={`text-sm font-medium w-12 ${installationProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{installationProgress}%</span>
+                    <span className={`text-sm font-medium w-12 ${installationProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{Number(installationProgress) || 0}%</span>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1131,11 +1155,11 @@ export default function AdminDashboard() {
                   <Label>Progress</Label>
                   <div className="flex items-center gap-3">
                     <Progress 
-                      value={repairProgress} 
+                      value={Number(repairProgress) || 0} 
                       status={repairProgressStatus === 'Failed' ? 'error' : repairProgressStatus === 'Completed' ? 'completed' : repairProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
                       className="flex-1 h-2" 
                     />
-                    <span className={`text-sm font-medium w-12 ${repairProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{repairProgress}%</span>
+                    <span className={`text-sm font-medium w-12 ${repairProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{Number(repairProgress) || 0}%</span>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1231,11 +1255,11 @@ export default function AdminDashboard() {
                   <Label>Progress</Label>
                   <div className="flex items-center gap-3">
                     <Progress 
-                      value={maintenanceProgress} 
+                      value={Number(maintenanceProgress) || 0} 
                       status={maintenanceProgressStatus === 'Failed' ? 'error' : maintenanceProgressStatus === 'Completed' ? 'completed' : maintenanceProgressStatus === 'In Progress' ? 'in_progress' : 'pending'}
                       className="flex-1 h-2" 
                     />
-                    <span className={`text-sm font-medium w-12 ${maintenanceProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{maintenanceProgress}%</span>
+                    <span className={`text-sm font-medium w-12 ${maintenanceProgressStatus === 'Failed' ? 'text-red-500' : 'text-gray-700'}`}>{Number(maintenanceProgress) || 0}%</span>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1458,7 +1482,7 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <Badge className={
                           lead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
                             lead.status === 'Converted' ? 'bg-green-100 text-green-700' :
@@ -1466,7 +1490,20 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                         }>
                           {lead.status}
                         </Badge>
-                        <h3 className="font-bold text-lg text-[#005596]">{lead.full_name}</h3>
+                        {lead.client_type === 'Corporate' && (
+                          <Badge className="bg-purple-100 text-purple-700">Corporate</Badge>
+                        )}
+                        {lead.inspection_required && (
+                          <Badge className="bg-amber-100 text-amber-700">
+                            <Eye className="h-3 w-3 mr-1" /> Inspection
+                          </Badge>
+                        )}
+                        <h3 className="font-bold text-lg text-[#005596]">
+                          {lead.client_type === 'Corporate' ? lead.company_name : lead.full_name}
+                        </h3>
+                        {lead.client_type === 'Corporate' && lead.contact_person && (
+                          <span className="text-sm text-gray-500">({lead.contact_person})</span>
+                        )}
                         <span className="text-sm text-gray-400">• {format(parseISO(lead.created_at), 'MMM d, yyyy')}</span>
                       </div>
                       <div className="grid grid-cols-3 gap-4 text-sm">
@@ -1548,14 +1585,28 @@ function LeadsView({ leads, onBack, fetchLeads, onGoToClients }: any) {
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead Profile</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Potential Client Name</p>
-                    <p className="text-sm font-bold">{selectedLead.full_name}</p>
+                    <p className="text-xs text-gray-500 font-medium">
+                      {selectedLead.client_type === 'Corporate' ? 'Company Name' : 'Potential Client Name'}
+                    </p>
+                    <p className="text-sm font-bold">
+                      {selectedLead.client_type === 'Corporate' ? selectedLead.company_name : selectedLead.full_name}
+                    </p>
+                    {selectedLead.client_type === 'Corporate' && selectedLead.contact_person && (
+                      <p className="text-xs text-gray-500">Contact: {selectedLead.contact_person}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Lead Category</p>
-                    <Badge variant="outline" className={selectedLead.client_type === 'Corporate' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
-                      {selectedLead.client_type || 'Residential'}
-                    </Badge>
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge variant="outline" className={selectedLead.client_type === 'Corporate' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+                        {selectedLead.client_type || 'Residential'}
+                      </Badge>
+                      {selectedLead.inspection_required && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                          <Eye className="h-3 w-3 mr-1" /> Inspection Required
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Email</p>
@@ -2251,6 +2302,10 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   const [type, setType] = useState('Real-Time')
   const [technology, setTechnology] = useState('Inverter')
   const [selectedUnit, setSelectedUnit] = useState<any>(null)
+  const [prefillClientId, setPrefillClientId] = useState('')
+  const [unitType, setUnitType] = useState('')
+
+  const isMultiComponentUnit = unitType === 'Split Type' || unitType === 'Multi-Split' || unitType === 'Cassette' || unitType === 'Centralized' || unitType === 'Floor Mounted'
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
@@ -2331,6 +2386,11 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
     else {
       toast.success('Installation marked as completed')
       fetchInstallations()
+      const installation = installations.find((i: any) => i.id === id)
+      if (installation?.client_id) {
+        setPrefillClientId(installation.client_id)
+        setShowRegisterUnit(true)
+      }
     }
   }
 
@@ -2346,6 +2406,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
       fetchInstallations()
       setShowRegisterUnit(false)
       setTechnology('Inverter')
+      setUnitType('')
     }
     setIsLoading(false)
   }
@@ -2721,7 +2782,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
             {/* Client */}
             <div className="space-y-1">
               <Label>Client *</Label>
-              <Select name="clientId" required>
+              <Select name="clientId" required value={prefillClientId} onValueChange={setPrefillClientId}>
                 <SelectTrigger><SelectValue placeholder="Select client..." /></SelectTrigger>
                 <SelectContent>
                   {clients.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.full_name} — {c.email}</SelectItem>)}
@@ -2746,13 +2807,16 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 </div>
                 <div className="space-y-1">
                   <Label>Unit Type *</Label>
-                  <Select name="unitType" required>
+                  <Select name="unitType" required onValueChange={setUnitType}>
                     <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Split Type">Split Type</SelectItem>
                       <SelectItem value="Window">Window</SelectItem>
+                      <SelectItem value="Portable">Portable</SelectItem>
+                      <SelectItem value="Multi-Split">Multi-Split</SelectItem>
                       <SelectItem value="Cassette">Cassette</SelectItem>
                       <SelectItem value="Floor Mounted">Floor Mounted</SelectItem>
+                      <SelectItem value="Centralized">Centralized/Ducted</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2782,16 +2846,61 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
             {/* Serial Numbers */}
             <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
               <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Serial Numbers</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1"><Label>Indoor Unit Serial</Label><Input name="indoorSerial" placeholder="e.g. LG-IND-2024-001" /></div>
-                <div className="space-y-1"><Label>Outdoor Unit Serial</Label><Input name="outdoorSerial" placeholder="e.g. LG-OUT-2024-001" /></div>
-              </div>
+              {isMultiComponentUnit ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Indoor Unit Serial *</Label>
+                    <Input name="indoorSerial" placeholder="e.g. LG-IND-2024-001" required />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Outdoor Unit Serial *</Label>
+                    <Input name="outdoorSerial" placeholder="e.g. LG-OUT-2024-001" required />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label>Unit Serial Number</Label>
+                  <Input name="indoorSerial" placeholder="e.g. LG-WIN-2024-001" />
+                </div>
+              )}
             </div>
 
             {/* Installation Date */}
             <div className="space-y-1">
               <Label>Installation Date</Label>
               <Input name="installationDate" type="date" />
+            </div>
+
+            {/* Warranty Information */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Warranty Information</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Warranty Period (months)</Label>
+                  <Select name="warrantyMonths">
+                    <SelectTrigger><SelectValue placeholder="Select months" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="6">6 months</SelectItem>
+                      <SelectItem value="12">12 months</SelectItem>
+                      <SelectItem value="18">18 months</SelectItem>
+                      <SelectItem value="24">24 months</SelectItem>
+                      <SelectItem value="36">36 months</SelectItem>
+                      <SelectItem value="60">60 months</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Warranty Type</Label>
+                  <Select name="warrantyType">
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Manufacturer">Manufacturer</SelectItem>
+                      <SelectItem value="Store">Store/Retailer</SelectItem>
+                      <SelectItem value="Extended">Extended Warranty</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-2 border-t">
@@ -2817,6 +2926,8 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
   const [newPartName, setNewPartName] = useState('')
   const [newPartQty, setNewPartQty] = useState(1)
   const [newPartPrice, setNewPartPrice] = useState(0)
+  const [affectedUnitType, setAffectedUnitType] = useState('')
+  const [warrantyClaim, setWarrantyClaim] = useState(false)
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
@@ -3127,11 +3238,31 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
                   <Card key={job.id} className="border border-rose-100 shadow-sm">
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-start gap-3">
                           <div className="p-2 bg-rose-50 rounded-xl"><AlertTriangle className="h-5 w-5 text-rose-500" /></div>
-                          <div>
+                          <div className="flex-1">
                             <h3 className="font-bold text-[#1E293B] text-sm">{job.profiles?.full_name || 'Unknown Client'}</h3>
-                            {job.client_units && <p className="text-xs text-[#005596] font-semibold">{job.client_units.brand} {job.client_units.unit_name} ({job.client_units.unit_type})</p>}
+                            {job.client_units && (
+                              <div>
+                                <p className="text-xs text-[#005596] font-semibold">{job.client_units.brand} {job.client_units.unit_name} ({job.client_units.unit_type})</p>
+                                {(job.client_units.warranty_end_date || job.client_units.warranty_months) && (
+                                  <div className="mt-1">
+                                    {(() => {
+                                      const now = new Date()
+                                      const end = job.client_units.warranty_end_date ? new Date(job.client_units.warranty_end_date) : null
+                                      if (!end) return null
+                                      const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                                      const isWarrantyActive = daysLeft > 0
+                                      return (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${isWarrantyActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                          {isWarrantyActive ? `Warranty: ${daysLeft} days left` : 'Warranty: Expired'}
+                                        </span>
+                                      )
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {!job.client_units && <p className="text-xs text-gray-400 italic">No specific unit linked</p>}
                           </div>
                         </div>
@@ -3296,6 +3427,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
             {/* Error & Symptom */}
             <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
               <p className="text-xs font-bold text-rose-500 uppercase tracking-widest">Diagnostics</p>
+              <input type="hidden" name="affectedUnitType" value={affectedUnitType} />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>Error Code</Label>
@@ -3346,6 +3478,47 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
               <p className="text-[10px] text-gray-400">Upload your photos to any hosting service (e.g. Imgur, Google Drive) and paste the link here.</p>
             </div>
 
+            {/* Warranty Tracking */}
+            <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest flex items-center gap-2"><Shield className="h-4 w-4" /> Warranty Tracking</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Affected Unit *</Label>
+                  <Select value={affectedUnitType} onValueChange={setAffectedUnitType} required>
+                    <SelectTrigger><SelectValue placeholder="Select affected unit..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Indoor">Indoor Unit</SelectItem>
+                      <SelectItem value="Outdoor">Outdoor Unit</SelectItem>
+                      <SelectItem value="Both">Both Units</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 flex items-center gap-2 pt-5">
+                  <input type="checkbox" id="warrantyClaim" checked={warrantyClaim} onChange={e => setWarrantyClaim(e.target.checked)} className="h-4 w-4" />
+                  <Label htmlFor="warrantyClaim" className="font-medium">Claim Warranty?</Label>
+                </div>
+              </div>
+              {warrantyClaim && (
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div className="space-y-1">
+                    <Label>Warranty Reference #</Label>
+                    <Input name="warrantyRefNumber" placeholder="e.g. WR-2024-001234" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Covered By</Label>
+                    <Select name="coveredBy">
+                      <SelectTrigger><SelectValue placeholder="Select provider..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Manufacturer">Manufacturer</SelectItem>
+                        <SelectItem value="Store">Store/Retailer</SelectItem>
+                        <SelectItem value="Extended">Extended Warranty</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-2 border-t">
               <Button type="button" variant="outline" onClick={() => setShowLogRepair(false)}>Cancel</Button>
               <Button type="submit" className="bg-rose-600 hover:bg-rose-700 px-8" disabled={isLoading || !selectedClientId}>
@@ -3359,7 +3532,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
   )
 }
 
-function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
+function ScheduleView({ appointments, installations, repairs, maintenance, onBack, fetchAppointments }: any) {
 
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -3382,17 +3555,27 @@ function ScheduleView({ appointments, onBack, fetchAppointments }: any) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Filter appointments
-  const filteredAppointments = appointments.filter((apt: any) => {
+  // Combine all jobs for calendar view
+  const allJobs = [
+    ...appointments.map((apt: any) => ({ ...apt, jobType: 'appointment' })),
+    ...installations.map((inst: any) => ({ ...inst, jobType: 'installation' })),
+    ...repairs.map((rep: any) => ({ ...rep, jobType: 'repair' })),
+    ...maintenance.map((maint: any) => ({ ...maint, jobType: 'maintenance' }))
+  ]
+
+  // Filter all jobs
+  const filteredAppointments = allJobs.filter((apt: any) => {
     const searchLower = searchQuery.toLowerCase()
     const matchesSearch = !searchQuery ||
       apt.client_name?.toLowerCase().includes(searchLower) ||
+      apt.title?.toLowerCase().includes(searchLower) ||
       apt.service_type?.toLowerCase().includes(searchLower) ||
       apt.phone?.toLowerCase().includes(searchLower) ||
+      apt.location?.toLowerCase().includes(searchLower) ||
       apt.address?.toLowerCase().includes(searchLower)
     
     const matchesStatus = statusFilter === 'all' || apt.status === statusFilter
-    const matchesService = serviceFilter === 'all' || apt.service_type === serviceFilter
+    const matchesService = serviceFilter === 'all' || apt.title === serviceFilter || apt.service_type === serviceFilter
     
     return matchesSearch && matchesStatus && matchesService
   })
@@ -5268,30 +5451,35 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
       const totalCost = (form.querySelector('input[name="totalCost"]') as HTMLInputElement)?.value || '0'
       const notes = (form.querySelector('input[name="notes"]') as HTMLInputElement)?.value || ''
 
+      const serviceAddress = selectedRequestForApprove.service_address || selectedRequestForApprove.address || ''
+
       const jobData = {
         technician: approveTechnician,
         date: appointmentDate,
         time: appointmentTime,
+        location: serviceAddress,
         cost: totalCost,
         notes,
         type: 'Standard'
       }
 
+      const serviceCategory = selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || 'Maintenance'
+
       let result
       if (selectedRequestForApprove.source === 'lead') {
-        if (approveServiceCategory === 'Installation') {
+        if (serviceCategory === 'Installation') {
           result = await acceptLead(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
-        } else if (approveServiceCategory === 'Repair') {
+        } else if (serviceCategory === 'Repair') {
           result = await acceptLeadAsRepair(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
-        } else if (approveServiceCategory === 'Maintenance') {
+        } else if (serviceCategory === 'Maintenance') {
           result = await acceptLeadAsMaintenance(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
         }
       } else {
-        if (approveServiceCategory === 'Installation') {
+        if (serviceCategory === 'Installation') {
           result = await acceptRequestAsInstallation(selectedRequestForApprove.id, jobData)
-        } else if (approveServiceCategory === 'Repair') {
+        } else if (serviceCategory === 'Repair') {
           result = await acceptRequestAsRepair(selectedRequestForApprove.id, jobData)
-        } else if (approveServiceCategory === 'Maintenance') {
+        } else {
           result = await acceptRequestAsMaintenance(selectedRequestForApprove.id, jobData)
         }
       }
@@ -5302,17 +5490,17 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
         return
       }
 
-      toast.success(`Request approved! ${approveServiceCategory} job created.`)
+      toast.success(`Request approved! ${serviceCategory} job created.`)
       
-      if (approveServiceCategory === 'Installation') {
+      if (serviceCategory === 'Installation') {
         const updated = await getInstallations()
         setInstallations(updated.data || [])
         setView('installations')
-      } else if (approveServiceCategory === 'Repair') {
+      } else if (serviceCategory === 'Repair') {
         const updated = await getRepairs()
         setRepairs(updated.data || [])
         setView('repairs')
-      } else if (approveServiceCategory === 'Maintenance') {
+      } else {
         const updated = await getMaintenance()
         setMaintenance(updated.data || [])
         setView('maintenance')
@@ -5553,19 +5741,11 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           {selectedRequestForApprove && (
             <form onSubmit={handleApproveSubmit} className="space-y-6 py-2">
 
-              {/* Service Category */}
+              {/* Service Category - Auto-filled from request, read-only */}
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Service Category</p>
-                <div className="flex gap-4">
-                  {['Installation', 'Repair', 'Maintenance'].map((cat) => (
-                    <label key={cat} className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox
-                        checked={approveServiceCategory === cat}
-                        onCheckedChange={() => setApproveServiceCategory(cat)}
-                      />
-                      <span className="text-sm font-medium">{cat}</span>
-                    </label>
-                  ))}
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Service Type</p>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <span className="text-lg font-bold text-blue-800">{selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || 'Service'}</span>
                 </div>
               </div>
 
@@ -5575,73 +5755,41 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label>Client Name</Label>
-                    <Input defaultValue={selectedRequestForApprove.client_name} name="clientName" readOnly className="bg-gray-50" />
+                    <div className="p-2 bg-gray-50 border border-gray-200 rounded text-sm font-medium">
+                      {selectedRequestForApprove.client_name || selectedRequestForApprove.full_name || 'N/A'}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label>Contact Number</Label>
-                    <Input defaultValue={selectedRequestForApprove.phone || ''} name="contactNumber" placeholder="09XXXXXXXXX" />
+                    <div className="p-2 bg-gray-50 border border-gray-200 rounded text-sm font-medium">
+                      {selectedRequestForApprove.phone_number || selectedRequestForApprove.phone || 'N/A'}
+                    </div>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 col-span-2">
                     <Label>Service Address</Label>
-                    <Input defaultValue={selectedRequestForApprove.address || ''} name="serviceAddress" placeholder="Full address" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Nearest Landmark</Label>
-                    <Input name="landmark" placeholder="e.g., Near SM City" />
+                    <div className="p-2 bg-gray-50 border border-gray-200 rounded text-sm font-medium">
+                      {selectedRequestForApprove.service_address || selectedRequestForApprove.address || 'N/A'}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Technical Specifications */}
+              {/* Scheduling - Only Technician is Editable */}
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Technical Specifications</p>
+                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Scheduling</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label>Aircon Brand</Label>
-                    <Input name="airconBrand" placeholder="e.g., Samsung, LG" />
+                    <Label>Appointment Date</Label>
+                    <Input defaultValue={selectedRequestForApprove.preferred_date || ''} readOnly className="bg-gray-50" />
                   </div>
                   <div className="space-y-1">
-                    <Label>Aircon Type</Label>
-                    <Select name="airconType" defaultValue="Split">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Window">Window</SelectItem>
-                        <SelectItem value="Split">Split</SelectItem>
-                        <SelectItem value="Inverter">Inverter</SelectItem>
-                        <SelectItem value="Central">Central</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Appointment Time</Label>
+                    <Input defaultValue={selectedRequestForApprove.preferred_time || ''} readOnly className="bg-gray-50" />
                   </div>
-                  <div className="space-y-1">
-                    <Label>Horsepower (HP)</Label>
-                    <Select name="horsepower" defaultValue="1.0">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0.5">0.5 HP</SelectItem>
-                        <SelectItem value="0.75">0.75 HP</SelectItem>
-                        <SelectItem value="1.0">1.0 HP</SelectItem>
-                        <SelectItem value="1.5">1.5 HP</SelectItem>
-                        <SelectItem value="2.0">2.0 HP</SelectItem>
-                        <SelectItem value="2.5">2.5 HP</SelectItem>
-                        <SelectItem value="3.0">3.0 HP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Unit Age (Years)</Label>
-                    <Input name="unitAge" type="number" min="0" placeholder="e.g., 3" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Scheduling & Assignment */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Scheduling & Assignment</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label>Assigned Technician</Label>
-                    <Select value={approveTechnician} onValueChange={setApproveTechnician}>
-                      <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+                  <div className="space-y-1 col-span-2">
+                    <Label>Assigned Technician *</Label>
+                    <Select value={approveTechnician} onValueChange={setApproveTechnician} required>
+                      <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select technician" /></SelectTrigger>
                       <SelectContent>
                         {technicians.filter((t: any) => t.status === 'Active').map((t: any) => (
                           <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
@@ -5655,88 +5803,6 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                         )}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Priority Level</Label>
-                    <Select value={approvePriority} onValueChange={setApprovePriority}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Low">Low</SelectItem>
-                        <SelectItem value="Normal">Normal</SelectItem>
-                        <SelectItem value="High">High</SelectItem>
-                        <SelectItem value="Emergency">Emergency</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Appointment Date</Label>
-                    <Input name="appointmentDate" type="date" defaultValue={selectedRequestForApprove.preferred_date || ''} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Appointment Time</Label>
-                    <Input name="appointmentTime" type="time" defaultValue={selectedRequestForApprove.preferred_time || ''} />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <Label>Estimated Duration</Label>
-                    <Select name="estimatedDuration" defaultValue="2 Hours">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1 Hour">1 Hour</SelectItem>
-                        <SelectItem value="2 Hours">2 Hours</SelectItem>
-                        <SelectItem value="3 Hours">3 Hours</SelectItem>
-                        <SelectItem value="4 Hours">4 Hours</SelectItem>
-                        <SelectItem value="Half Day">Half Day</SelectItem>
-                        <SelectItem value="Full Day">Full Day</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Monitoring & Status */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Monitoring & Status</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label>Service Status</Label>
-                    <Select value={approveServiceStatus} onValueChange={setApproveServiceStatus}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Scheduled">Scheduled</SelectItem>
-                        <SelectItem value="In Progress">In Progress</SelectItem>
-                        <SelectItem value="Completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Booking Source</Label>
-                    <Select value={approveBookingSource} onValueChange={setApproveBookingSource}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Website">Website</SelectItem>
-                        <SelectItem value="Facebook">Facebook</SelectItem>
-                        <SelectItem value="Walk-in">Walk-in</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Financials */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Financials</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label>Service Fee (₱)</Label>
-                    <Input name="serviceFee" type="number" placeholder="0.00" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Est. Parts Cost (₱)</Label>
-                    <Input name="partsCost" type="number" placeholder="0.00" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Total Cost (₱)</Label>
-                    <Input name="totalCost" type="number" placeholder="0.00" />
                   </div>
                 </div>
               </div>
@@ -6129,8 +6195,8 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, f
                 {/* Legacy single-unit maintenance */}
                 {!item.is_multi_unit && (
                   <div className="space-y-3">
-                    <div className="flex justify-between text-xs font-medium"><span>{item.status === 'Completed' ? 'Completed' : 'Progress'}</span><span>{Math.round(calculateDynamicProgress(item))}%</span></div>
-<Progress value={Math.round(calculateDynamicProgress(item))} status={item.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
+                    <div className="flex justify-between text-xs font-medium"><span>{item.status === 'Completed' ? 'Completed' : 'Progress'}</span><span>{Number.isNaN(Math.round(calculateDynamicProgress(item))) ? 0 : Math.round(calculateDynamicProgress(item))}%</span></div>
+<Progress value={Number.isNaN(Math.round(calculateDynamicProgress(item))) ? 0 : Math.round(calculateDynamicProgress(item))} status={item.status?.toLowerCase()?.replace(' ', '_') as any} className="h-2" />
                   </div>
                 )}
               </CardContent>

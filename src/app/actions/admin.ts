@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { sanitizedString } from '@/lib/security'
+import { checkWarrantyStatus } from '@/lib/utils'
 
 const validatePHPhone = (phone: string): boolean => {
   const phRegex = /^09\d{9}$/;
@@ -64,7 +65,9 @@ export async function createClientUser(formData: FormData) {
 export async function getClients(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
   const offset = (page - 1) * limit
-  const { data, error } = await supabase
+  
+  // Single query with both data and count
+  const { data, error, count } = await supabase
     .from('profiles')
     .select('*', { count: 'exact' })
     .eq('role', 'client')
@@ -76,18 +79,14 @@ export async function getClients(page: number = 1, limit: number = 20) {
     return { data: [], total: 0 }
   }
 
-  const { count } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('role', 'client')
-
   return { data: data || [], total: count || 0 }
 }
 
 export async function getInstallations(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
   const offset = (page - 1) * limit
-  const { data, error } = await supabase
+  
+  const { data, error, count } = await supabase
     .from('installations')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -97,10 +96,6 @@ export async function getInstallations(page: number = 1, limit: number = 20) {
     console.error('getInstallations error:', error)
     return { data: [], total: 0 }
   }
-
-  const { count } = await supabase
-    .from('installations')
-    .select('*', { count: 'exact', head: true })
 
   return { data: data || [], total: count || 0 }
 }
@@ -122,9 +117,10 @@ export async function getDashboardInstallations() {
 export async function getRepairs(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
   const offset = (page - 1) * limit
-  const { data, error } = await supabase
+  
+  const { data, error, count } = await supabase
     .from('repairs')
-    .select('*', { count: 'exact' })
+    .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -132,10 +128,6 @@ export async function getRepairs(page: number = 1, limit: number = 20) {
     console.error('getRepairs error:', error)
     return { data: [], total: 0 }
   }
-
-  const { count } = await supabase
-    .from('repairs')
-    .select('*', { count: 'exact', head: true })
 
   return { data: data || [], total: count || 0 }
 }
@@ -453,6 +445,29 @@ function sanitizeJobFormData(formData: FormData, type: string): Record<string, u
 
 export async function markInstallationComplete(id: string) {
   const supabase = await createAdminClient()
+  
+  try {
+    const { data: job, error: fetchError } = await supabase
+      .from('installations')
+      .select('client_request_id')
+      .eq('id', id)
+      .single()
+
+    if (!fetchError && job?.client_request_id) {
+      const { data: request } = await supabase
+        .from('client_requests')
+        .select('status')
+        .eq('id', job.client_request_id)
+        .single()
+      
+      if (request?.status !== 'Approved') {
+        return { error: 'Cannot complete. Client request must be approved first in Client Requests section.' }
+      }
+    }
+  } catch (e) {
+    console.log('client_request_id check skipped:', e)
+  }
+
   const { error } = await supabase
     .from('installations')
     .update({ status: 'Completed', progress: 100 })
@@ -464,6 +479,29 @@ export async function markInstallationComplete(id: string) {
 
 export async function markRepairComplete(id: string) {
   const supabase = await createAdminClient()
+  
+  try {
+    const { data: job, error: fetchError } = await supabase
+      .from('repairs')
+      .select('client_request_id')
+      .eq('id', id)
+      .single()
+
+    if (!fetchError && job?.client_request_id) {
+      const { data: request } = await supabase
+        .from('client_requests')
+        .select('status')
+        .eq('id', job.client_request_id)
+        .single()
+      
+      if (request?.status !== 'Approved') {
+        return { error: 'Cannot complete. Client request must be approved first in Client Requests section.' }
+      }
+    }
+  } catch (e) {
+    console.log('client_request_id check skipped:', e)
+  }
+
   const { error } = await supabase
     .from('repairs')
     .update({ status: 'Completed', progress: 100 })
@@ -475,6 +513,29 @@ export async function markRepairComplete(id: string) {
 
 export async function updateInstallationProgress(id: string, status: string, progress: number, notes?: string) {
   const supabase = await createAdminClient()
+  
+  try {
+    const { data: job, error: fetchError } = await supabase
+      .from('installations')
+      .select('client_request_id')
+      .eq('id', id)
+      .single()
+
+    if (!fetchError && job?.client_request_id) {
+      const { data: request } = await supabase
+        .from('client_requests')
+        .select('status')
+        .eq('id', job.client_request_id)
+        .single()
+      
+      if (request?.status !== 'Approved') {
+        return { error: 'Cannot update. Client request must be approved first in Client Requests section.' }
+      }
+    }
+  } catch (e) {
+    console.log('client_request_id check skipped:', e)
+  }
+
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
   const { error } = await supabase
@@ -488,6 +549,29 @@ export async function updateInstallationProgress(id: string, status: string, pro
 
 export async function updateRepairProgress(id: string, status: string, progress: number, notes?: string) {
   const supabase = await createAdminClient()
+  
+  try {
+    const { data: job, error: fetchError } = await supabase
+      .from('repairs')
+      .select('client_request_id')
+      .eq('id', id)
+      .single()
+
+    if (!fetchError && job?.client_request_id) {
+      const { data: request } = await supabase
+        .from('client_requests')
+        .select('status')
+        .eq('id', job.client_request_id)
+        .single()
+      
+      if (request?.status !== 'Approved') {
+        return { error: 'Cannot update. Client request must be approved first in Client Requests section.' }
+      }
+    }
+  } catch (e) {
+    console.log('client_request_id check skipped:', e)
+  }
+
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
   const { error } = await supabase
@@ -501,6 +585,29 @@ export async function updateRepairProgress(id: string, status: string, progress:
 
 export async function updateMaintenanceProgress(id: string, status: string, progress: number, notes?: string) {
   const supabase = await createAdminClient()
+  
+  try {
+    const { data: job, error: fetchError } = await supabase
+      .from('maintenance')
+      .select('client_request_id')
+      .eq('id', id)
+      .single()
+
+    if (!fetchError && job?.client_request_id) {
+      const { data: request } = await supabase
+        .from('client_requests')
+        .select('status')
+        .eq('id', job.client_request_id)
+        .single()
+      
+      if (request?.status !== 'Approved') {
+        return { error: 'Cannot update. Client request must be approved first in Client Requests section.' }
+      }
+    }
+  } catch (e) {
+    console.log('client_request_id check skipped:', e)
+  }
+
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
   const { error } = await supabase
@@ -541,7 +648,8 @@ export async function createMaintenance(formData: FormData) {
 export async function getMaintenance(page: number = 1, limit: number = 20) {
   const supabase = await createAdminClient()
   const offset = (page - 1) * limit
-  const { data, error } = await supabase
+  
+  const { data, error, count } = await supabase
     .from('maintenance')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -551,10 +659,6 @@ export async function getMaintenance(page: number = 1, limit: number = 20) {
     console.error('getMaintenance error:', error)
     return { data: [], total: 0 }
   }
-
-  const { count } = await supabase
-    .from('maintenance')
-    .select('*', { count: 'exact', head: true })
 
   return { data: data || [], total: count || 0 }
 }
@@ -685,6 +789,7 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
   technician: string
   date: string
   time: string
+  location: string
   cost: string
   notes: string
   type: string
@@ -701,24 +806,30 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  const { error: insertError } = await supabase
-    .from('installations')
-    .insert({
-      title: request.request_type,
-      client_name: request.client_name,
-      location: request.preferred_date + ' ' + request.preferred_time,
-      technician: data.technician,
-      date: data.date,
-      time: data.time,
-      cost: data.cost,
-      notes: data.notes || request.message,
-      type: data.type || 'Standard',
-      status: 'Scheduled',
-      progress: 0
-    })
+  const insertData: any = {
+    title: request.request_type,
+    client_name: request.client_name,
+    location: data.location || request.service_address || '',
+    technician: data.technician,
+    date: data.date,
+    time: data.time,
+    cost: data.cost,
+    notes: data.notes || request.message,
+    type: data.type || 'Standard',
+    status: 'Scheduled',
+    progress: 0
+  }
 
-  if (insertError) {
-    return { error: insertError.message }
+  try {
+    const { error: insertError } = await supabase
+      .from('installations')
+      .insert(insertData)
+
+    if (insertError) {
+      return { error: insertError.message }
+    }
+  } catch (e) {
+    console.log('client_request_id column not available:', e)
   }
 
   await supabase
@@ -743,6 +854,7 @@ export async function acceptRequestAsRepair(requestId: string, data: {
   technician: string
   date: string
   time: string
+  location: string
   cost: string
   notes: string
   type: string
@@ -759,24 +871,30 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  const { error: insertError } = await supabase
-    .from('repairs')
-    .insert({
-      title: request.request_type,
-      client_name: request.client_name,
-      location: request.preferred_date + ' ' + request.preferred_time,
-      technician: data.technician,
-      date: data.date,
-      time: data.time,
-      cost: data.cost,
-      notes: data.notes || request.message,
-      type: data.type || 'Standard',
-      status: 'Scheduled',
-      progress: 0
-    })
+  const insertData: any = {
+    title: request.request_type,
+    client_name: request.client_name,
+    location: data.location || request.service_address || '',
+    technician: data.technician,
+    date: data.date,
+    time: data.time,
+    cost: data.cost,
+    notes: data.notes || request.message,
+    type: data.type || 'Standard',
+    status: 'Scheduled',
+    progress: 0
+  }
 
-  if (insertError) {
-    return { error: insertError.message }
+  try {
+    const { error: insertError } = await supabase
+      .from('repairs')
+      .insert(insertData)
+
+    if (insertError) {
+      return { error: insertError.message }
+    }
+  } catch (e) {
+    console.log('client_request_id column not available:', e)
   }
 
   await supabase
@@ -801,6 +919,7 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
   technician: string
   date: string
   time: string
+  location: string
   cost: string
   notes: string
   type: string
@@ -817,24 +936,30 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  const { error: insertError } = await supabase
-    .from('maintenance')
-    .insert({
-      title: request.request_type,
-      client_name: request.client_name,
-      location: request.preferred_date + ' ' + request.preferred_time,
-      technician: data.technician,
-      date: data.date,
-      time: data.time,
-      cost: data.cost,
-      notes: data.notes || request.message,
-      type: data.type || 'Standard',
-      status: 'Scheduled',
-      progress: 0
-    })
+  const insertData: any = {
+    title: request.request_type,
+    client_name: request.client_name,
+    location: data.location || request.service_address || '',
+    technician: data.technician,
+    date: data.date,
+    time: data.time,
+    cost: data.cost,
+    notes: data.notes || request.message,
+    type: data.type || 'Standard',
+    status: 'Scheduled',
+    progress: 0
+  }
 
-  if (insertError) {
-    return { error: insertError.message }
+  try {
+    const { error: insertError } = await supabase
+      .from('maintenance')
+      .insert(insertData)
+
+    if (insertError) {
+      return { error: insertError.message }
+    }
+  } catch (e) {
+    console.log('client_request_id column not available:', e)
   }
 
   await supabase
@@ -1087,22 +1212,23 @@ export async function registerUnit(formData: FormData) {
   const indoorSerial = formData.get('indoorSerial') as string
   const outdoorSerial = formData.get('outdoorSerial') as string
   const installationDate = formData.get('installationDate') as string
+  const warrantyMonths = parseInt(formData.get('warrantyMonths') as string) || 12
+  const warrantyType = formData.get('warrantyType') as string
   if (!clientId || !unitName || !brand || !unitType || !technology || !horsepower) {
     return { error: 'Please fill in all required fields.' }
   }
 
-  // Get client name from profiles
-  const { data: clientProfile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', clientId)
-    .single()
+  let warrantyEndDate: string | null = null
+  if (installationDate && warrantyMonths) {
+    const endDate = new Date(installationDate)
+    endDate.setMonth(endDate.getMonth() + warrantyMonths)
+    warrantyEndDate = endDate.toISOString().split('T')[0]
+  }
 
   const { data, error } = await supabase
     .from('client_units')
     .insert({ 
       client_id: clientId, 
-      client_name: clientProfile?.full_name || null,
       unit_name: unitName, 
       brand, 
       unit_type: unitType, 
@@ -1110,7 +1236,10 @@ export async function registerUnit(formData: FormData) {
       horsepower, 
       indoor_serial: indoorSerial || null, 
       outdoor_serial: outdoorSerial || null, 
-      installation_date: installationDate || null 
+      installation_date: installationDate || null,
+      warranty_months: warrantyMonths,
+      warranty_type: warrantyType || 'Manufacturer',
+      warranty_end_date: warrantyEndDate
     })
     .select().single()
   if (error) { console.error('registerUnit error:', error); return { error: error.message } }
@@ -1148,16 +1277,51 @@ export async function logRepairJob(formData: FormData) {
   const partsJson = formData.get('partsReplaced') as string
   const beforePhotoUrl = formData.get('beforePhotoUrl') as string
   const afterPhotoUrl = formData.get('afterPhotoUrl') as string
+  const affectedUnitType = formData.get('affectedUnitType') as string
+  const manualWarrantyClaim = formData.get('warrantyClaim') === 'on'
+  const warrantyRefNumber = formData.get('warrantyRefNumber') as string
+  const coveredBy = formData.get('coveredBy') as string
   if (!clientId) { return { error: 'Client is required.' } }
+
+  // Auto-check warranty if not manually set
+  let warrantyClaim = manualWarrantyClaim
+  if (!manualWarrantyClaim && unitId) {
+    const { data: unit } = await supabase
+      .from('client_units')
+      .select('warranty_end_date')
+      .eq('id', unitId)
+      .single()
+    
+    if (unit?.warranty_end_date) {
+      const now = new Date()
+      const end = new Date(unit.warranty_end_date)
+      const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      warrantyClaim = daysLeft > 0
+    }
+  }
+
   let partsReplaced: any[] = []
   try { partsReplaced = partsJson ? JSON.parse(partsJson) : [] } catch { partsReplaced = [] }
   const { data, error } = await supabase
     .from('repair_jobs')
-    .insert({ unit_id: unitId || null, client_id: clientId, error_code: errorCode || null, symptom: symptom || null, parts_replaced: partsReplaced, before_photo_url: beforePhotoUrl || null, after_photo_url: afterPhotoUrl || null, status: 'Open' })
+    .insert({ 
+      unit_id: unitId || null, 
+      client_id: clientId, 
+      error_code: errorCode || null, 
+      symptom: symptom || null, 
+      parts_replaced: partsReplaced, 
+      before_photo_url: beforePhotoUrl || null, 
+      after_photo_url: afterPhotoUrl || null, 
+      status: 'Open',
+      affected_unit_type: affectedUnitType || null,
+      warranty_claim: warrantyClaim,
+      warranty_ref_number: warrantyRefNumber || null,
+      covered_by: coveredBy || null
+    })
     .select().single()
   if (error) { console.error('logRepairJob error:', error); return { error: error.message } }
   revalidatePath('/admin')
-  return { success: true, job: data }
+  return { success: true, job: data, warrantyClaim }
 }
 
 export async function getRepairJobs() {
@@ -1406,6 +1570,395 @@ export async function deleteMaintenanceItem(itemId: string) {
     .eq('id', itemId)
   
   if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+// --------------------------------------------------------------------
+// CONVERT LEAD TO CLIENT - Convert corporate lead to client profile
+// --------------------------------------------------------------------
+
+export async function convertLeadToClient(leadId: string) {
+  const supabase = await createAdminClient()
+  
+  // Get lead data
+  const { data: lead, error: leadError } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .single()
+  
+  if (leadError || !lead) {
+    return { error: 'Lead not found' }
+  }
+  
+  // Generate temp password
+  const tempPassword = Math.random().toString(36).slice(-8) + 'A1!'
+  
+  // Create auth user
+  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    email: lead.email,
+    password: tempPassword,
+    email_confirm: true,
+   user_metadata: {
+      full_name: lead.client_type === 'Corporate' ? lead.company_name : lead.full_name
+    }
+  })
+  
+  if (authError) {
+    console.error('convertLeadToClient: auth error:', authError)
+    return { error: 'Failed to create user account' }
+  }
+  
+  const userId = authData.user.id
+  
+  // Create client profile
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .insert({
+      id: userId,
+      full_name: lead.client_type === 'Corporate' ? lead.company_name : lead.full_name,
+      email: lead.email,
+      phone: lead.phone_number,
+      role: 'client',
+      client_type: lead.client_type,
+      street: lead.street,
+      barangay: lead.barangay,
+      city: lead.city,
+      zip_code: lead.zip_code,
+      // Corporate fields
+      company_name: lead.company_name,
+      contact_person: lead.contact_person,
+      building_name: lead.building_name,
+      floor: lead.floor,
+      province: lead.province,
+    })
+  
+  if (profileError) {
+    console.error('convertLeadToClient: profile error:', profileError)
+    // Try to delete auth user
+    await supabase.auth.admin.deleteUser(userId)
+    return { error: 'Failed to create client profile' }
+  }
+  
+  // Update lead status
+  await supabase
+    .from('leads')
+    .update({ 
+      status: 'Converted',
+      converted_at: new Date().toISOString(),
+      client_id: userId
+    })
+    .eq('id', leadId)
+  
+  // Send notification to new client
+  await supabase
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      title: 'Welcome! Your account is ready',
+      message: lead.client_type === 'Corporate' 
+        ? `Your company ${lead.company_name} is now a registered client. Login with: ${lead.email}`
+        : `You are now a registered client. Login with: ${lead.email}`,
+      type: 'update',
+      link: '/dashboard'
+    })
+  
+  revalidatePath('/admin')
+  return { 
+    success: true, 
+    tempPassword,
+    email: lead.email,
+    message: `Client created! Temporary password: ${tempPassword}`
+  }
+}
+
+// --------------------------------------------------------------------
+// WARRANTY EXPIRY NOTIFICATIONS - Auto-notify and tag clients
+// --------------------------------------------------------------------
+
+export async function checkExpiringWarranties() {
+  const supabase = await createAdminClient()
+  const today = new Date().toISOString().split('T')[0]
+  const sevenDaysFromNow = new Date()
+  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7)
+  const sevenDaysStr = sevenDaysFromNow.toISOString().split('T')[0]
+
+  // Get units with warranty expiring in next 7 days (not yet notified)
+  const { data: expiringUnits, error } = await supabase
+    .from('client_units')
+    .select('*, profiles(id, full_name, email)')
+    .lte('warranty_end_date', sevenDaysStr)
+    .gte('warranty_end_date', today)
+
+  if (error) {
+    console.error('checkExpiringWarranties error:', error)
+    return { notified: 0, error: error.message }
+  }
+
+  let notifiedCount = 0
+  let taggedCount = 0
+
+  for (const unit of expiringUnits || []) {
+    const client = unit.profiles
+    if (!client?.id) continue
+
+    // Check if already notified today
+    const { data: existingNotif } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', client.id)
+      .eq('title', `Warranty Expiring: ${unit.unit_name}`)
+      .gte('created_at', today)
+      .single()
+
+    if (!existingNotif) {
+      const daysLeft = Math.ceil((new Date(unit.warranty_end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+      
+      // Send notification
+      await supabase.from('notifications').insert({
+        user_id: client.id,
+        title: 'Warranty Expiring Soon',
+        message: `Your ${unit.brand} ${unit.unit_name} warranty expires in ${daysLeft} days. Please contact us to renew or extend your warranty.`,
+        type: 'reminder',
+        link: '/dashboard'
+      })
+
+      // Send email if email exists (requires email service)
+      if (client.email) {
+        console.log(`Would send expiry email to ${client.email} for unit ${unit.unit_name}`)
+      }
+
+      notifiedCount++
+    }
+  }
+
+  // Get units with expired warranty (not tagged)
+  const { data: expiredUnits, error: expiredError } = await supabase
+    .from('client_units')
+    .select('*, profiles(id, full_name)')
+    .lt('warranty_end_date', today)
+    .eq('warranty_type', 'Manufacturer')
+
+  for (const unit of expiredUnits || []) {
+    const client = unit.profiles
+    if (!client?.id) continue
+
+    // Check if already tagged
+    const { data: existingTag } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', client.id)
+      .eq('title', `Warranty Expired: ${unit.unit_name}`)
+      .single()
+
+    if (!existingTag) {
+      // Tag as warranty expired
+      await supabase.from('notifications').insert({
+        user_id: client.id,
+        title: 'Warranty Expired',
+        message: `Your ${unit.brand} ${unit.unit_name} warranty has expired. Repairs may now be chargeable.`,
+        type: 'update',
+        link: '/dashboard'
+      })
+
+      taggedCount++
+    }
+  }
+
+  revalidatePath('/admin')
+  return { notified: notifiedCount, tagged: taggedCount }
+}
+
+// --------------------------------------------------------------------
+// WARRANTY CHECK - Uses checkWarrantyStatus from utils.ts
+// --------------------------------------------------------------------
+
+export async function getUnitsWithWarrantyInfo(clientId: string) {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('client_units')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('getUnitsWithWarrantyInfo error:', error)
+    return []
+  }
+
+  return (data || []).map(unit => ({
+    ...unit,
+    warranty_info: checkWarrantyStatus(unit)
+  }))
+}
+
+// --------------------------------------------------------------------
+// MAINTENANCE REMINDERS - Auto-notify clients
+// --------------------------------------------------------------------
+
+export async function triggerMaintenanceReminders() {
+  const supabase = await createAdminClient()
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const { data: settings } = await supabase
+    .from('settings')
+    .select('maintenance_reminder_enabled, maintenance_reminder_months')
+    .eq('id', 'main')
+    .single()
+
+  if (!settings?.maintenance_reminder_enabled) {
+    return { notified: 0, message: 'Reminders disabled' }
+  }
+
+  const reminderMonths = settings?.maintenance_reminder_months || 3
+  const checkDate = new Date()
+  checkDate.setMonth(checkDate.getMonth() + reminderMonths)
+  const checkDateStr = checkDate.toISOString().split('T')[0]
+
+  const { data: dueItems, error: queryError } = await supabase
+    .from('maintenance_items')
+    .select('*, client_units(unit_name, brand, technology, horsepower, client_id)')
+    .lte('next_cleaning_date', checkDateStr)
+    .gte('next_cleaning_date', today)
+    .eq('status', 'Done')
+
+  if (queryError) {
+    console.error('Query error:', queryError)
+    return { error: queryError.message }
+  }
+
+  let notifiedCount = 0
+
+  for (const item of dueItems || []) {
+    const clientId = item.client_units?.client_id
+    const unitName = item.client_units?.unit_name
+    const brand = item.client_units?.brand
+    const hp = item.client_units?.horsepower
+
+    if (!clientId) continue
+
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: clientId,
+        title: 'Aircon Maintenance Due',
+        message: `Your ${brand} ${unitName} (${hp}HP ${item.client_units?.technology}) is due for maintenance. Please schedule a maintenance appointment.`,
+        type: 'reminder',
+        link: '/dashboard'
+      })
+
+    notifiedCount++
+  }
+
+  revalidatePath('/admin')
+  return { success: true, notified: notifiedCount }
+}
+
+// --------------------------------------------------------------------
+// UNIT COMPONENTS - Serial number tracking per unit part
+// --------------------------------------------------------------------
+
+export async function createUnitComponent(formData: FormData) {
+  const supabase = await createAdminClient()
+  const clientUnitId = formData.get('clientUnitId') as string
+  const componentType = formData.get('componentType') as string
+  const serialNumber = formData.get('serialNumber') as string
+  const positionIndex = parseInt(formData.get('positionIndex') as string) || 0
+
+  if (!clientUnitId || !componentType) {
+    return { error: 'Unit and component type are required.' }
+  }
+
+  if (serialNumber) {
+    const { data: existing } = await supabase
+      .from('unit_components')
+      .select('id')
+      .eq('serial_number', serialNumber)
+      .single()
+    if (existing) {
+      return { error: 'Serial number already exists.' }
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('unit_components')
+    .insert({
+      client_unit_id: clientUnitId,
+      component_type: componentType,
+      serial_number: serialNumber || null,
+      position_index: positionIndex
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('createUnitComponent error:', error)
+    return { error: error.message }
+  }
+  revalidatePath('/admin')
+  return { success: true, component: data }
+}
+
+export async function getUnitComponents(clientUnitId: string) {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('unit_components')
+    .select('*')
+    .eq('client_unit_id', clientUnitId)
+    .order('position_index', { ascending: true })
+
+  if (error) {
+    console.error('getUnitComponents error:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function updateUnitComponent(componentId: string, data: {
+  component_type?: string
+  serial_number?: string
+  position_index?: number
+}) {
+  const supabase = await createAdminClient()
+
+  if (data.serial_number) {
+    const { data: existing } = await supabase
+      .from('unit_components')
+      .select('id')
+      .eq('serial_number', data.serial_number)
+      .neq('id', componentId)
+      .single()
+    if (existing) {
+      return { error: 'Serial number already exists.' }
+    }
+  }
+
+  const { error } = await supabase
+    .from('unit_components')
+    .update(data)
+    .eq('id', componentId)
+
+  if (error) {
+    console.error('updateUnitComponent error:', error)
+    return { error: error.message }
+  }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function deleteUnitComponent(componentId: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('unit_components')
+    .delete()
+    .eq('id', componentId)
+
+  if (error) {
+    console.error('deleteUnitComponent error:', error)
+    return { error: error.message }
+  }
   revalidatePath('/admin')
   return { success: true }
 }

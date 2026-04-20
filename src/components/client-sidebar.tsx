@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type View = 'dashboard' | 'settings' | 'machines'
+type View = 'dashboard' | 'settings' | 'machines' | 'notifications'
 
 interface ClientSidebarProps {
   view: View

@@ -246,19 +246,21 @@ export async function getUserActivity(limit: number = 20) {
   const { data: profile } = await adminSupabase.from('profiles').select('full_name').eq('id', user.id).single()
   const clientName = profile?.full_name || user.email?.split('@')[0]
 
-  // Fetch appointments by email, installations/repairs by client_name (with limits)
-  const [appointmentsRes, installationsRes, repairsRes] = await Promise.all([
+  // Fetch appointments by email, installations/repairs/maintenance by client_name (with limits)
+  const [appointmentsRes, installationsRes, repairsRes, maintenanceRes] = await Promise.all([
     adminSupabase.from('appointments').select('*').eq('email', user.email).order('created_at', { ascending: false }).limit(limit),
     adminSupabase.from('installations').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit),
-    adminSupabase.from('repairs').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit)
+    adminSupabase.from('repairs').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit),
+    adminSupabase.from('maintenance').select('*').eq('client_name', clientName).order('created_at', { ascending: false }).limit(limit)
   ])
 
   const appointments = (appointmentsRes.data || []).map(a => ({ ...a, table: 'appointments' }))
   const installations = (installationsRes.data || []).map(i => ({ ...i, service_type: 'Installation', table: 'installations' }))
   const repairs = (repairsRes.data || []).map(r => ({ ...r, service_type: r.title, table: 'repairs' }))
+  const maintenance = (maintenanceRes.data || []).map(m => ({ ...m, service_type: 'Maintenance', table: 'maintenance' }))
 
   // Combine and sort by date
-  const allActivities = [...appointments, ...installations, ...repairs]
+  const allActivities = [...appointments, ...installations, ...repairs, ...maintenance]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   return allActivities
@@ -356,6 +358,25 @@ export async function requestService(formData: FormData) {
       })
   } else if (['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && selectedUnitsData.length > 0) {
     // Multi-unit service: Create maintenance record with items
+    // Check warranty status for each unit
+    const warrantyInfo = selectedUnitsData.map(unit => {
+      const now = new Date()
+      const end = unit.warranty_end_date ? new Date(unit.warranty_end_date) : null
+      if (!end) return { unitName: unit.unit_name, isActive: false, daysLeft: 0 }
+      const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      return { unitName: unit.unit_name, isActive: daysLeft > 0, daysLeft: Math.max(0, daysLeft) }
+    })
+    
+    const allActive = warrantyInfo.every(w => w.isActive)
+    const anyActive = warrantyInfo.some(w => w.isActive)
+    let warrantyNote = ''
+    if (anyActive) {
+      const activeUnits = warrantyInfo.filter(w => w.isActive).map(w => `${w.unitName} (${w.daysLeft}d left)`).join(', ')
+      warrantyNote = allActive 
+        ? `All units under warranty` 
+        : `Some units under warranty: ${activeUnits}`
+    }
+
     const maintenanceTitle = `${serviceType} - ${selectedUnitsData.map(u => u.unit_name).join(', ')}`
     
     const { data: maintenanceRecord, error: maintError } = await adminSupabase
@@ -366,7 +387,9 @@ export async function requestService(formData: FormData) {
         location: address,
         date,
         time,
-        notes: isMultiUnit ? `Multi-unit ${serviceType} for ${selectedUnitsData.length} units` : notes,
+        notes: isMultiUnit 
+          ? `Multi-unit ${serviceType} for ${selectedUnitsData.length} units${warrantyNote ? '. ' + warrantyNote : ''}` 
+          : (warrantyNote ? warrantyNote + (notes ? '. ' + notes : '') : notes),
         status: 'Scheduled',
         progress: 0,
         is_multi_unit: isMultiUnit,
@@ -383,6 +406,13 @@ export async function requestService(formData: FormData) {
     // Insert maintenance items for each selected unit
     if (maintenanceRecord) {
       for (const unit of selectedUnitsData) {
+        const unitWarranty = unit.warranty_end_date ? (() => {
+          const now = new Date()
+          const end = new Date(unit.warranty_end_date)
+          const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          return days > 0
+        })() : false
+        
         await adminSupabase
           .from('maintenance_items')
           .insert({
@@ -419,7 +449,9 @@ export async function requestService(formData: FormData) {
       request_type: serviceType,
       message: notes,
       preferred_date: date,
-      preferred_time: time
+      preferred_time: time,
+      service_address: address || null,
+      phone_number: phone || null
     })
 
   // Create notification for admin with detailed information
@@ -643,49 +675,77 @@ export async function getUserClientUnits() {
 }
 
 export async function getUserUnitServiceHistory(unitId: string) {
-  const adminSupabase = await createAdminClient()
-  
-  const { data: maintenanceItems } = await adminSupabase
-    .from('maintenance_items')
-    .select('*, maintenance!inner(id, title, date, status, client_name)')
-    .eq('unit_id', unitId)
-    .order('created_at', { ascending: false })
+  try {
+    const adminSupabase = await createAdminClient()
+    
+    const history: any[] = []
 
-  const { data: installations } = await adminSupabase
-    .from('installations')
-    .select('*')
-    .eq('unit_id', unitId)
-    .order('created_at', { ascending: false })
+    const { data: unitData } = await adminSupabase
+      .from('client_units')
+      .select('*, profiles!inner(full_name)')
+      .eq('id', unitId)
+      .single()
+    
+    const clientName = unitData?.profiles?.full_name
+    
+    try {
+      const { data: maintenanceItems } = await adminSupabase
+        .from('maintenance_items')
+        .select('*, maintenance!inner(id, title, date, status, client_name)')
+        .eq('unit_id', unitId)
+      
+      if (maintenanceItems) {
+        history.push(...maintenanceItems.map((item: any) => ({
+          type: 'Maintenance',
+          title: item.maintenance?.title || 'Maintenance Service',
+          date: item.completed_at || item.created_at,
+          status: item.status,
+          notes: item.notes
+        })))
+      }
+    } catch {}
 
-  const { data: repairs } = await adminSupabase
-    .from('repairs')
-    .select('*')
-    .eq('unit_id', unitId)
-    .order('created_at', { ascending: false })
+    if (clientName) {
+      try {
+        const { data: repairs } = await adminSupabase
+          .from('repairs')
+          .select('*')
+          .eq('client_name', clientName)
+        
+        if (repairs) {
+          history.push(...repairs.map((item: any) => ({
+            type: 'Repair',
+            title: item.title || 'Aircon Repair',
+            date: item.date || item.created_at,
+            status: item.status,
+            notes: item.notes
+          })))
+        }
+      } catch {}
 
-  const history = [
-    ...(maintenanceItems || []).map(item => ({
-      type: 'Maintenance',
-      title: item.maintenance?.title || 'Maintenance Service',
-      date: item.completed_at || item.created_at,
-      status: item.status,
-      notes: item.notes
-    })),
-    ...(installations || []).map(item => ({
-      type: 'Installation',
-      title: item.title || 'Aircon Installation',
-      date: item.date || item.created_at,
-      status: item.status,
-      notes: item.notes
-    })),
-    ...(repairs || []).map(item => ({
-      type: 'Repair',
-      title: item.title || 'Aircon Repair',
-      date: item.date || item.created_at,
-      status: item.status,
-      notes: item.notes
-    }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      try {
+        const { data: repairJobs } = await adminSupabase
+          .from('repair_jobs')
+          .select('*')
+          .eq('unit_id', unitId)
+        
+        if (repairJobs) {
+          history.push(...repairJobs.map((item: any) => ({
+            type: 'Repair',
+            title: item.symptom || 'Aircon Repair',
+            date: item.created_at,
+            status: item.status,
+            notes: item.parts_replaced ? `Parts: ${item.parts_replaced.map((p: any) => p.name).join(', ')}` : null
+          })))
+        }
+      } catch {}
+    }
 
-  return history
+    history.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+
+    return history
+  } catch (error) {
+    console.error('getUserUnitServiceHistory error:', error)
+    return []
+  }
 }

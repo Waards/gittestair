@@ -26,6 +26,11 @@ export async function submitLead(formData: FormData) {
   const preferredDate = formData.get('preferredDate') as string
   const preferredTime = formData.get('preferredTime') as string
   const additionalInfo = formData.get('additionalInfo') as string
+  // Aircon specification fields
+  const airconBrand = formData.get('airconBrand') as string
+  const airconType = formData.get('airconType') as string
+  const horsepower = formData.get('horsepower') as string
+  const btu = formData.get('btu') as string
 
   if (!fullName || !phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
     return { error: 'Please fill in all required fields' }
@@ -40,6 +45,10 @@ export async function submitLead(formData: FormData) {
   const sanitizedZipCode = sanitizedString(zipCode)
   const sanitizedServiceType = sanitizedString(serviceType)
   const sanitizedAdditionalInfo = sanitizedString(additionalInfo || '')
+  const sanitizedAirconBrand = sanitizedString(airconBrand || '')
+  const sanitizedAirconType = sanitizedString(airconType || '')
+  const sanitizedHorsepower = sanitizedString(horsepower || '')
+  const sanitizedBtu = sanitizedString(btu || '')
 
   if (!sanitizedFullName || !sanitizedEmailAddr || !sanitizedStreet || !sanitizedBarangay || !sanitizedCity) {
     return { error: 'Invalid input detected. Please check your entries.' }
@@ -83,6 +92,25 @@ export async function submitLead(formData: FormData) {
     return { error: 'This date is fully booked (Max 4 bookings). Please select another day.' }
   }
 
+  // Get corporate fields
+  const companyName = formData.get('companyName') as string
+  const contactPerson = formData.get('contactPerson') as string
+  const buildingName = formData.get('buildingName') as string
+  const floor = formData.get('floor') as string
+  const province = formData.get('province') as string
+  const designation = formData.get('designation') as string
+  const numberOfUnits = formData.get('numberOfUnits') as string
+  const specialInstructions = formData.get('specialInstructions') as string
+
+  const sanitizedCompanyName = sanitizedString(companyName || '')
+  const sanitizedContactPerson = sanitizedString(contactPerson || '')
+  const sanitizedBuildingName = sanitizedString(buildingName || '')
+  const sanitizedFloor = sanitizedString(floor || '')
+  const sanitizedProvince = sanitizedString(province || '')
+  const sanitizedDesignation = sanitizedString(designation || '')
+  const sanitizedNumberOfUnits = numberOfUnits ? parseInt(numberOfUnits) || null : null
+  const sanitizedSpecialInstructions = sanitizedString(specialInstructions || '')
+
   const { error } = await supabase
     .from('leads')
     .insert({
@@ -91,6 +119,19 @@ export async function submitLead(formData: FormData) {
       barangay: sanitizedBarangay,
       city: sanitizedCity,
       zip_code: sanitizedZipCode || null,
+      aircon_brand: sanitizedAirconBrand || null,
+      aircon_type: sanitizedAirconType || null,
+      horsepower: sanitizedHorsepower || null,
+      btu: sanitizedBtu || null,
+      company_name: clientType === 'Corporate' ? sanitizedCompanyName : null,
+      contact_person: sanitizedContactPerson || null,
+      building_name: sanitizedBuildingName || null,
+      floor: sanitizedFloor || null,
+      province: sanitizedProvince || null,
+      designation: sanitizedDesignation || null,
+      number_of_units: sanitizedNumberOfUnits,
+      special_instructions: sanitizedSpecialInstructions || null,
+      inspection_required: clientType === 'Corporate',
     })
 
   if (error) {
@@ -128,6 +169,7 @@ export async function getLeads() {
 
 export async function updateLeadStatus(leadId: string, status: string) {
   const supabase = await createAdminClient()
+  
   const { error } = await supabase
     .from('leads')
     .update({ status })
@@ -434,6 +476,61 @@ export async function convertLeadToClient(leadId: string) {
 
   if (convertError) {
     console.error('convertLeadToClient: error updating lead status:', convertError)
+  }
+
+  // Create job based on service type when converting to client
+  const serviceType = lead.service_type || ''
+  const isInstallation = serviceType.toLowerCase().includes('installation')
+  const isRepair = serviceType.toLowerCase().includes('repair') || serviceType.toLowerCase().includes('freon') || serviceType.toLowerCase().includes('dismantle') || serviceType.toLowerCase().includes('relocation')
+
+  // Build notes with aircon specifications
+  let jobNotes = lead.additional_info || ''
+  if (isInstallation && lead.aircon_brand) {
+    const specs = [
+      `Brand: ${lead.aircon_brand}`,
+      lead.aircon_type ? `Type: ${lead.aircon_type}` : null,
+      lead.horsepower ? `HP: ${lead.horsepower}` : null,
+      lead.btu ? `BTU: ${lead.btu}` : null,
+    ].filter(Boolean).join(' | ')
+    jobNotes = specs + (jobNotes ? '\n' + jobNotes : '')
+  }
+
+  const jobData = {
+    title: serviceType,
+    client_name: lead.full_name,
+    location: lead.service_address,
+    technician: '',
+    date: lead.preferred_date || new Date().toISOString().split('T')[0],
+    time: lead.preferred_time || '09:00 AM - 11:00 AM',
+    cost: '',
+    notes: jobNotes,
+    type: lead.client_type || 'Standard',
+    status: 'Scheduled',
+    progress: 0
+  }
+
+  let tableName = 'maintenance'
+  if (isInstallation) {
+    tableName = 'installations'
+  } else if (isRepair) {
+    tableName = 'repairs'
+  }
+
+  const { error: jobError } = await supabase
+    .from(tableName)
+    .insert(jobData)
+
+  if (jobError) {
+    console.error('convertLeadToClient: error creating job:', jobError)
+  } else {
+    await supabase
+      .from('notifications')
+      .insert({
+        title: 'New Job Created',
+        message: `${serviceType} for ${lead.full_name} has been scheduled on ${lead.preferred_date}.`,
+        type: 'info',
+        link: '/admin'
+      })
   }
 
   await supabase

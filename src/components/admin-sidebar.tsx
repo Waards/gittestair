@@ -14,10 +14,11 @@ import {
   Bell,
   LogOut,
   Home,
+  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
+type View = 'dashboard' | 'clients' | 'corporate' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
 
 interface AdminSidebarProps {
   view: View
@@ -43,6 +44,7 @@ export function AdminSidebar({
   }[] = [
     { label: 'Dashboard', icon: <Home className="h-5 w-5" />, view: 'dashboard' },
     { label: 'Clients', icon: <Users className="h-5 w-5" />, view: 'clients' },
+    { label: 'Corporate', icon: <Building2 className="h-5 w-5" />, view: 'corporate' },
     { label: 'Installations', icon: <Wrench className="h-5 w-5" />, view: 'installations' },
     { label: 'Repairs', icon: <PenTool className="h-5 w-5" />, view: 'repairs' },
     { label: 'Maintenance', icon: <Wrench className="h-5 w-5" />, view: 'maintenance' },

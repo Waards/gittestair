@@ -29,52 +29,36 @@ export function getEstimatedDurationInMinutes(serviceType: string = '', notes: s
 }
 
 export function calculateDynamicProgress(item: { status?: string, date?: string, time?: string, service_type?: string, title?: string, notes?: string, [key: string]: any }): number {
-  const status = item.status?.toLowerCase() || ''
+  const status = (item.status || '').toLowerCase()
   
   if (status === 'completed' || status === 'finished') return 100
   if (status === 'rejected' || status === 'cancelled') return 0
   if (status === 'pending') return 10
   if (status === 'scheduled') return 20
-
   if (status === 'in progress') {
-    // If no date/time is provided, fallback to 50%
     if (!item.date || !item.time) return 50
 
     try {
-      // Parse scheduled date and time into a single Date object
       const startTimeStr = `${item.date}T${item.time}`
       const startTime = new Date(startTimeStr).getTime()
+      if (isNaN(startTime)) return 50
+
       const now = Date.now()
+      if (now < startTime) return 25
 
-      // If it's "In Progress" but the scheduled time hasn't started yet
-      if (now < startTime) {
-        return 25;
-      }
-
-      const elapsedMinutes = (now - startTime) / 60000;
-      const totalEstimatedMinutes = getEstimatedDurationInMinutes(item.service_type, item.notes, item.title);
-
-      // Calculate progress based on elapsed time
-      // For installations: ~10% per hour (every 60 min = 10%)
-      // For maintenance/repairs: proportional to their duration
-      const minutesPer10Percent = totalEstimatedMinutes / 10;
-      const progressIncrements = elapsedMinutes / minutesPer10Percent;
+      const elapsedMinutes = (now - startTime) / 60000
+      const totalEstimatedMinutes = getEstimatedDurationInMinutes(item.service_type, item.notes, item.title)
       
-      // Start at 20% when work begins, scale up to 95% over estimated duration
-      const baseProgress = 20;
-      const maxProgress = 95;
-      const progressRange = maxProgress - baseProgress;
+      const baseProgress = 20
+      const maxProgress = 95
+      const progressRange = maxProgress - baseProgress
       
-      const calculatedProgress = baseProgress + ((elapsedMinutes / totalEstimatedMinutes) * progressRange);
-
-      // Clamp between 20% and 95%
-      return Math.min(Math.max(calculatedProgress, 20), 95);
-      
+      const calculatedProgress = baseProgress + ((elapsedMinutes / totalEstimatedMinutes) * progressRange)
+      return Math.min(Math.max(calculatedProgress, 20), 95)
     } catch (e) {
-      console.error("Error calculating dynamic progress:", e);
-      return 50; // fallback if parsing fails
+      return 50
     }
   }
 
-  return 10;
+  return 10
 }

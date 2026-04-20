@@ -41,6 +41,7 @@ import { validatePHPhone, PHONE_VALIDATION_ERROR } from '@/lib/utils'
 
 const services = [
   { id: 'installation', name: 'Aircon Installation', price: '₱15,000' },
+  { id: 'inspection', name: 'Site Inspection', price: 'Free' },
   { id: 'cleaning', name: 'Aircon Cleaning', price: '₱2,500' },
   { id: 'repairs', name: 'Aircon Repairs', price: '₱1,500' },
   { id: 'dismantle', name: 'Dismantle', price: '₱2,000' },
@@ -79,8 +80,15 @@ export function BookingForm({ trigger }: BookingFormProps) {
     street: '',
     barangay: '',
     city: '',
+    province: '',
     zipCode: '',
+    buildingName: '',
+    floor: '',
     clientType: 'Residential',
+    companyName: '',
+    contactPerson: '',
+    designation: '',
+    numberOfUnits: '',
     serviceType: '',
     preferredDate: '',
     preferredTime: '',
@@ -92,6 +100,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
     btu: '',
     // Issue description (non-installation)
     issueDescription: '',
+    specialInstructions: '',
   })
 
   const getFullAddress = () => {
@@ -128,12 +137,17 @@ export function BookingForm({ trigger }: BookingFormProps) {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const nextStep = () => {
+const nextStep = () => {
     if (step === 1) {
-if (!formData.fullName || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city) {
-      toast.error('Please fill in all required fields')
-      return
-    }
+      // Validate required fields based on client type
+      const required = formData.clientType === 'Corporate' 
+        ? !formData.companyName || !formData.contactPerson || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city || !formData.province || !formData.buildingName || !formData.floor
+        : !formData.fullName || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city
+      
+      if (required) {
+        toast.error('Please fill in all required fields')
+        return
+      }
       if (!validatePHPhone(formData.phone)) {
         toast.error(PHONE_VALIDATION_ERROR)
         return
@@ -157,8 +171,8 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
     setIsSubmitting(true)
     const data = new FormData()
 
-    // Core fields
-    data.append('fullName', formData.fullName)
+    // Core fields - for Corporate, contactPerson becomes fullName
+    data.append('fullName', formData.clientType === 'Corporate' ? formData.contactPerson : formData.fullName)
     data.append('phone', formData.phone)
     data.append('email', formData.email)
     data.append('street', formData.street)
@@ -166,6 +180,27 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
     data.append('city', formData.city)
     data.append('zipCode', formData.zipCode)
     data.append('clientType', formData.clientType)
+    
+    // Corporate fields
+    if (formData.clientType === 'Corporate') {
+      data.append('companyName', formData.companyName)
+      data.append('contactPerson', formData.contactPerson)
+      data.append('designation', formData.designation || '')
+      data.append('buildingName', formData.buildingName)
+      data.append('floor', formData.floor)
+      data.append('province', formData.province)
+      data.append('numberOfUnits', formData.numberOfUnits || '')
+      data.append('specialInstructions', formData.specialInstructions || '')
+    } else {
+      data.append('companyName', '')
+      data.append('contactPerson', '')
+      data.append('designation', '')
+      data.append('buildingName', '')
+      data.append('floor', '')
+      data.append('province', '')
+      data.append('numberOfUnits', '')
+      data.append('specialInstructions', '')
+    }
     data.append('serviceType', formData.serviceType)
     data.append('preferredDate', formData.preferredDate)
     data.append('preferredTime', formData.preferredTime)
@@ -173,16 +208,13 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
     // Build serviceAddress for backward compatibility
     data.append('serviceAddress', getFullAddress())
 
-    // Build additionalInfo
+    // Aircon specifications (Installation only) - save as separate fields
     if (isInstallation) {
-      const techParts = [
-        `Brand: ${formData.airconBrand}`,
-        `Type: ${formData.airconType}`,
-        `HP: ${formData.horsepower}`,
-        formData.btu ? `BTU: ${formData.btu}` : null,
-      ].filter(Boolean).join(' | ')
-      const combined = techParts + (formData.additionalInfo ? ` | Notes: ${formData.additionalInfo}` : '')
-      data.append('additionalInfo', combined)
+      data.append('airconBrand', formData.airconBrand)
+      data.append('airconType', formData.airconType)
+      data.append('horsepower', formData.horsepower)
+      data.append('btu', formData.btu || '')
+      data.append('additionalInfo', formData.additionalInfo)
       data.append('unitBrandType', `${formData.airconBrand} ${formData.airconType}`)
     } else {
       const combined = formData.issueDescription
@@ -205,8 +237,15 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
         street: '',
         barangay: '',
         city: '',
+        province: '',
         zipCode: '',
+        buildingName: '',
+        floor: '',
         clientType: 'Residential',
+        companyName: '',
+        contactPerson: '',
+        designation: '',
+        numberOfUnits: '',
         serviceType: '',
         preferredDate: '',
         preferredTime: '',
@@ -216,6 +255,7 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
         horsepower: '',
         btu: '',
         issueDescription: '',
+        specialInstructions: '',
       })
     } else {
       toast.error(result.error || 'Failed to submit booking request')
@@ -226,7 +266,13 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
     <>
       {!mounted ? (
         // Render trigger on server to prevent hydration mismatch
-        trigger || <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>
+        <button 
+          type="button"
+          className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all duration-200 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 h-10 rounded-md px-6"
+          onClick={() => setIsOpen(true)}
+        >
+          Book a Service
+        </button>
       ) : (
         <Dialog open={isOpen} onOpenChange={(open) => {
           setIsOpen(open)
@@ -234,9 +280,16 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
             setStep(1)
           }
         }}>
-          <DialogTrigger asChild>
-            {trigger || <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>}
-          </DialogTrigger>
+          {trigger && (
+            <div onClick={() => setIsOpen(true)}>
+              {trigger}
+            </div>
+          )}
+          {!trigger && (
+            <DialogTrigger asChild>
+              <Button className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white">Book a Service</Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
             <DialogHeader className="p-6 bg-white border-b">
               <div className="flex justify-center items-center gap-8 mb-4">
@@ -258,91 +311,14 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
               </DialogTitle>
             </DialogHeader>
 
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
+<div className="p-6 max-h-[70vh] overflow-y-auto">
               {step === 1 && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-[#0062a3] mb-4">
                     <User className="w-5 h-5" />
                     <h3 className="font-semibold">Client Information</h3>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="fullName">Full Name *</Label>
-                      <Input
-                        id="fullName"
-                        name="fullName"
-                        placeholder="Full Name"
-                        value={formData.fullName}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone Number *</Label>
-                      <Input
-                        id="phone"
-                        name="phone"
-                        placeholder="Phone Number"
-                        maxLength={11}
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address *</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      placeholder="Email Address"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Service Address *</Label>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs text-gray-500">Street / House Number</Label>
-                        <Input
-                          name="street"
-                          placeholder="e.g., 123 Main Street, Unit 5B"
-                          value={formData.street}
-                          onChange={handleInputChange}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs text-gray-500">Barangay / District</Label>
-                        <Input
-                          name="barangay"
-                          placeholder="e.g., San Lorenzo"
-                          value={formData.barangay}
-                          onChange={handleInputChange}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">City / Municipality</Label>
-                          <Input
-                            name="city"
-                            placeholder="e.g., Makati City"
-                            value={formData.city}
-                            onChange={handleInputChange}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">ZIP Code</Label>
-                          <Input
-                            name="zipCode"
-                            placeholder="e.g., 1234"
-                            value={formData.zipCode}
-                            onChange={handleInputChange}
-                            maxLength={4}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  
                   <div className="space-y-3">
                     <Label>Client Type *</Label>
                     <RadioGroup
@@ -359,6 +335,85 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
                         <Label htmlFor="corporate" className="font-normal">Corporate</Label>
                       </div>
                     </RadioGroup>
+                  </div>
+
+                  {formData.clientType === 'Residential' ? (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="fullName">Full Name *</Label>
+                        <Input id="fullName" name="fullName" placeholder="Full Name" value={formData.fullName} onChange={handleInputChange} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="phone">Phone Number *</Label>
+                          <Input id="phone" name="phone" placeholder="Phone Number" maxLength={11} value={formData.phone} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="email">Email Address *</Label>
+                          <Input id="email" name="email" type="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="companyName">Company Name *</Label>
+                        <Input id="companyName" name="companyName" placeholder="Company Name" value={formData.companyName} onChange={handleInputChange} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="contactPerson">Contact Person *</Label>
+                        <Input id="contactPerson" name="contactPerson" placeholder="Contact Person Name" value={formData.contactPerson} onChange={handleInputChange} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="designation">Designation / Position <span className="text-gray-400">(Optional)</span></Label>
+                        <Input id="designation" name="designation" placeholder="e.g., Facility Manager" value={formData.designation} onChange={handleInputChange} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="numberOfUnits">Number of Units <span className="text-gray-400">(Optional)</span></Label>
+                          <Input id="numberOfUnits" name="numberOfUnits" type="number" placeholder="e.g., 5" value={formData.numberOfUnits} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-500">Province *</Label>
+                          <Input name="province" placeholder="e.g., Metro Manila" value={formData.province} onChange={handleInputChange} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="phone">Phone Number *</Label>
+                          <Input id="phone" name="phone" placeholder="Phone Number" maxLength={11} value={formData.phone} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="email">Email Address *</Label>
+                          <Input id="email" name="email" type="email" placeholder="Email Address" value={formData.email} onChange={handleInputChange} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label>Service Address *</Label>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Street / House Number</Label>
+                        <Input name="street" placeholder="e.g., 123 Main Street, Unit 5B" value={formData.street} onChange={handleInputChange} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Barangay / District</Label>
+                        <Input name="barangay" placeholder="e.g., San Lorenzo" value={formData.barangay} onChange={handleInputChange} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">City / Municipality</Label>
+                          <Input name="city" placeholder="e.g., Makati City" value={formData.city} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">ZIP Code</Label>
+                          <Input name="zipCode" placeholder="e.g., 1234" value={formData.zipCode} onChange={handleInputChange} maxLength={4} />
+                        </div>
+                      </div>
+                      
+                    </div>
                   </div>
                 </div>
               )}
@@ -521,8 +576,27 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
                     </div>
                   </div>
 
+                  {(formData.clientType === 'Corporate' && isInstallation) && (
+                    <div className="space-y-2">
+                      <Label htmlFor="specialInstructions">
+                        Special Instructions 
+                        <span className="text-gray-400 font-normal">(Access requirements, parking details, etc.)</span>
+                      </Label>
+                      <Textarea
+                        id="specialInstructions"
+                        name="specialInstructions"
+                        placeholder="e.g., Parking available at basement. Please inform guard at lobby..."
+                        className="min-h-[80px]"
+                        value={formData.specialInstructions}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                  )}
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="additionalInfo">Additional Notes</Label>
+                    <Label htmlFor="additionalInfo">
+                      {formData.clientType === 'Corporate' ? 'Additional Notes' : 'Additional Notes'}
+                    </Label>
                     <Textarea
                       id="additionalInfo"
                       name="additionalInfo"
@@ -570,6 +644,26 @@ if (!formData.fullName || !formData.phone || !formData.email || !formData.street
                           <span className="text-slate-500">Type: </span>
                           <span>{formData.clientType}</span>
                         </div>
+                        {formData.clientType === 'Corporate' && formData.companyName && (
+                          <>
+                            <div className="flex items-start gap-2 text-sm mt-2">
+                              <User className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="font-medium">{formData.companyName}</span>
+                                {formData.contactPerson && <span className="text-slate-500 text-xs">Contact: {formData.contactPerson}</span>}
+                              </div>
+                            </div>
+                            {formData.buildingName && (
+                              <div className="flex items-start gap-2 text-sm mt-1">
+                                <MapPin className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                                <div className="flex flex-col">
+                                  <span>{formData.buildingName}{formData.floor ? `, ${formData.floor}` : ''}</span>
+                                  {formData.province && <span className="text-slate-500 text-xs">{formData.province}</span>}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
 
