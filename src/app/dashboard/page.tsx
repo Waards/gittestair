@@ -87,6 +87,7 @@ export default function ClientDashboard() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [serviceType, setServiceType] = useState<string>('')
   const [airconBrand, setAirconBrand] = useState<string>('')
+  const [airconBrandOther, setAirconBrandOther] = useState<string>('')
   const [airconType, setAirconType] = useState<string>('')
   const [, setTick] = useState<number>(0)
   const [view, setView] = useState<'dashboard' | 'settings' | 'machines' | 'notifications'>('dashboard')
@@ -237,7 +238,7 @@ export default function ClientDashboard() {
       formData.append('selectedUnits', JSON.stringify(selectedUnits))
     }
     if (serviceType === 'Installation') {
-      formData.append('airconBrand', airconBrand)
+      formData.append('airconBrand', airconBrand === 'Other' ? airconBrandOther : airconBrand)
       formData.append('airconType', airconType)
     }
 
@@ -337,41 +338,14 @@ export default function ClientDashboard() {
                 <h1 className="text-3xl font-bold tracking-tight text-[#1E293B]">Client Dashboard</h1>
                 <p className="text-slate-500 mt-1">Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!</p>
               </div>
+              <Button 
+                onClick={() => setIsRequestDialogOpen(true)}
+                className="bg-[#0062a3] hover:bg-[#0062a3]/90 text-white"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Request a Service
+              </Button>
             </div>
-
-            <Card className="border-none shadow-sm bg-white">
-              <CardHeader className="flex flex-row items-center gap-4 py-5 border-b border-slate-50">
-                <div className="p-2.5 bg-[#005596]/10 rounded-xl">
-                  <User className="h-6 w-6 text-[#005596]" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl font-bold text-[#1E293B]">Your Information</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Name</Label>
-                    <p className="text-[15px] font-semibold text-[#1E293B]">{profile?.full_name}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Email</Label>
-                    <p className="text-[15px] font-semibold text-[#1E293B]">{profile?.email}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Client Type</Label>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[15px] font-semibold text-[#1E293B]">{profile?.client_type || 'Residential'}</p>
-                      {profile?.client_type === 'Corporate' ? (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700 uppercase tracking-wide">Premium</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-[#005596] uppercase tracking-wide">Standard</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card className="border-none shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
@@ -793,14 +767,25 @@ export default function ClientDashboard() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Aircon Brand *</Label>
-                    <Select value={airconBrand} onValueChange={setAirconBrand}>
+                    <Select value={airconBrand} onValueChange={(v) => {
+                      setAirconBrand(v)
+                      if (v === 'Other') setAirconBrandOther('')
+                    }}>
                       <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
                       <SelectContent>
-                        {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier'].map(b => (
+                        {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier', 'Panasonic', 'Hitachi', 'Sharp', 'Kelvinator', 'Other'].map(b => (
                           <SelectItem key={b} value={b}>{b}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {airconBrand === 'Other' && (
+                      <Input 
+                        placeholder="Enter brand name"
+                        value={airconBrandOther}
+                        onChange={(e) => setAirconBrandOther(e.target.value)}
+                        className="mt-2"
+                      />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Aircon Type *</Label>

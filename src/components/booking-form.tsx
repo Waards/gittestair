@@ -95,6 +95,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
     additionalInfo: '',
     // Technical specs (Installation only)
     airconBrand: '',
+    airconBrandOther: '',
     airconType: '',
     horsepower: '',
     btu: '',
@@ -161,6 +162,10 @@ const nextStep = () => {
         toast.error('Please complete all required Technical Specifications')
         return
       }
+      if (isInstallation && formData.airconBrand === 'Other' && !formData.airconBrandOther) {
+        toast.error('Please specify the brand name')
+        return
+      }
     }
     setStep(prev => prev + 1)
   }
@@ -209,13 +214,14 @@ const nextStep = () => {
     data.append('serviceAddress', getFullAddress())
 
     // Aircon specifications (Installation only) - save as separate fields
+    const finalBrand = formData.airconBrand === 'Other' ? formData.airconBrandOther : formData.airconBrand
     if (isInstallation) {
-      data.append('airconBrand', formData.airconBrand)
+      data.append('airconBrand', finalBrand)
       data.append('airconType', formData.airconType)
       data.append('horsepower', formData.horsepower)
       data.append('btu', formData.btu || '')
       data.append('additionalInfo', formData.additionalInfo)
-      data.append('unitBrandType', `${formData.airconBrand} ${formData.airconType}`)
+      data.append('unitBrandType', `${finalBrand} ${formData.airconType}`)
     } else {
       const combined = formData.issueDescription
         ? formData.issueDescription + (formData.additionalInfo ? `\n${formData.additionalInfo}` : '')
@@ -412,6 +418,17 @@ const nextStep = () => {
                           <Input name="zipCode" placeholder="e.g., 1234" value={formData.zipCode} onChange={handleInputChange} maxLength={4} />
                         </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="buildingName">Building Name *</Label>
+                          <Input id="buildingName" name="buildingName" placeholder="e.g., Tower 1" value={formData.buildingName} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="floor">Floor *</Label>
+                          <Input id="floor" name="floor" placeholder="e.g., 5th Floor" value={formData.floor} onChange={handleInputChange} />
+                        </div>
+                      </div>
                       
                     </div>
                   </div>
@@ -460,16 +477,29 @@ const nextStep = () => {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <Label className="text-sm">Aircon Brand *</Label>
-                          <Select value={formData.airconBrand} onValueChange={(v) => handleSelectChange('airconBrand', v)}>
+                          <Select value={formData.airconBrand} onValueChange={(v) => {
+                            handleSelectChange('airconBrand', v)
+                            if (v === 'Other') {
+                              setFormData(prev => ({ ...prev, airconBrandOther: '', airconBrand: '' }))
+                            }
+                          }}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select brand" />
                             </SelectTrigger>
                             <SelectContent>
-                              {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier', 'Panasonic', 'Hitachi', 'Sharp', 'Kelvinator'].map(b => (
+                              {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier', 'Panasonic', 'Hitachi', 'Sharp', 'Kelvinator', 'Other'].map(b => (
                                 <SelectItem key={b} value={b}>{b}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          {formData.airconBrand === 'Other' && (
+                            <Input 
+                              placeholder="Enter brand name"
+                              value={formData.airconBrandOther}
+                              onChange={(e) => setFormData(prev => ({ ...prev, airconBrandOther: e.target.value }))}
+                              className="mt-2"
+                            />
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label className="text-sm">Aircon Type *</Label>
@@ -694,7 +724,7 @@ const nextStep = () => {
                         <h4 className="font-semibold text-xs uppercase tracking-wider">Technical Specifications</h4>
                       </div>
                       <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                        <div><span className="text-slate-500">Brand: </span><span className="font-medium">{formData.airconBrand}</span></div>
+                        <div><span className="text-slate-500">Brand: </span><span className="font-medium">{formData.airconBrand === 'Other' ? formData.airconBrandOther : formData.airconBrand}</span></div>
                         <div><span className="text-slate-500">Type: </span><span className="font-medium">{formData.airconType}</span></div>
                         <div><span className="text-slate-500">Horsepower: </span><span className="font-medium">{formData.horsepower}</span></div>
                         {formData.btu && <div><span className="text-slate-500">BTU: </span><span className="font-medium">{formData.btu}</span></div>}

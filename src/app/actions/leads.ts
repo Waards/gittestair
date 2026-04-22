@@ -123,6 +123,7 @@ export async function submitLead(formData: FormData) {
       aircon_type: sanitizedAirconType || null,
       horsepower: sanitizedHorsepower || null,
       btu: sanitizedBtu || null,
+      unit_brand_type: (sanitizedAirconBrand && sanitizedAirconType) ? `${sanitizedAirconBrand} ${sanitizedAirconType}` : null,
       company_name: clientType === 'Corporate' ? sanitizedCompanyName : null,
       contact_person: sanitizedContactPerson || null,
       building_name: sanitizedBuildingName || null,
@@ -161,6 +162,23 @@ export async function getLeads() {
 
   if (error) {
     console.error('getLeads: error fetching leads:', error)
+    return []
+  }
+
+  return data || []
+}
+
+export async function getCorporateLeads() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('leads')
+    .select('*')
+    .or('client_type.eq.Corporate,inspection_required.eq.true')
+    .eq('status', 'Pending')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('getCorporateLeads: error fetching corporate leads:', error)
     return []
   }
 
