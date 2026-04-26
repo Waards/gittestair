@@ -9,6 +9,7 @@ import {
   sanitizedString,
   validateAndSanitizeLead
 } from '@/lib/security'
+import { sendFCMNotification } from '@/lib/fcm-service'
 
 export async function submitLead(formData: FormData) {
   const supabase = await createAdminClient()
@@ -149,8 +150,61 @@ export async function submitLead(formData: FormData) {
       link: '/admin'
     })
 
+  // Auto-create client account
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', sanitizedEmailAddr)
+    .single()
+
+  if (!existingProfile) {
+    const generatePassword = () => {
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+      let password = ''
+      for (let i = 0; i < 8; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
+      return password
+    }
+    const password = generatePassword()
+
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: sanitizedEmailAddr,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: sanitizedFullName,
+        role: 'client'
+      }
+    })
+
+    if (!authError && authData?.user) {
+      await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          full_name: sanitizedFullName,
+          email: sanitizedEmailAddr,
+          phone: sanitizedPhoneNum,
+          address: validation.data.service_address,
+          client_type: clientType,
+          role: 'client',
+          password
+        })
+
+      await supabase
+        .from('notifications')
+        .insert({
+          title: 'Welcome!',
+          message: `Your account has been created. Login at ${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/login with your email and password.`,
+          type: 'reminder',
+          user_id: authData.user.id
+        })
+    }
+  }
+
   // Send booking confirmation email
-  fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+  fetch(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -272,6 +326,39 @@ export async function acceptLead(leadId: string, data: {
       link: '/admin'
     })
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', lead.email)
+    .single()
+
+  if (profile?.id) {
+    const { data: fcmToken } = await supabase
+      .from('user_fcm_tokens')
+      .select('token')
+      .eq('user_id', profile.id)
+      .single()
+
+    if (fcmToken?.token) {
+      sendFCMNotification(
+        fcmToken.token,
+        'Booking Confirmed!',
+        `Your ${data.serviceType} has been scheduled for ${data.date}.`,
+        { type: 'booking', jobId: leadId }
+      ).catch(console.error)
+    }
+
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: profile.id,
+        title: 'Booking Confirmed!',
+        message: `Your ${data.serviceType} has been scheduled for ${data.date} at ${data.time}.`,
+        type: 'booking',
+        link: '/dashboard'
+      })
+  }
+
   revalidatePath('/admin')
   return { success: true }
 }
@@ -332,6 +419,39 @@ export async function acceptLeadAsRepair(leadId: string, data: {
       link: '/admin'
     })
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', lead.email)
+    .single()
+
+  if (profile?.id) {
+    const { data: fcmToken } = await supabase
+      .from('user_fcm_tokens')
+      .select('token')
+      .eq('user_id', profile.id)
+      .single()
+
+    if (fcmToken?.token) {
+      sendFCMNotification(
+        fcmToken.token,
+        'Booking Confirmed!',
+        `Your repair has been scheduled for ${data.date}.`,
+        { type: 'booking', jobId: leadId }
+      ).catch(console.error)
+    }
+
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: profile.id,
+        title: 'Booking Confirmed!',
+        message: `Your repair has been scheduled for ${data.date} at ${data.time}.`,
+        type: 'booking',
+        link: '/dashboard'
+      })
+  }
+
   revalidatePath('/admin')
   return { success: true }
 }
@@ -391,6 +511,39 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
       type: 'info',
       link: '/admin'
     })
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', lead.email)
+    .single()
+
+  if (profile?.id) {
+    const { data: fcmToken } = await supabase
+      .from('user_fcm_tokens')
+      .select('token')
+      .eq('user_id', profile.id)
+      .single()
+
+    if (fcmToken?.token) {
+      sendFCMNotification(
+        fcmToken.token,
+        'Booking Confirmed!',
+        `Your maintenance has been scheduled for ${data.date}.`,
+        { type: 'booking', jobId: leadId }
+      ).catch(console.error)
+    }
+
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: profile.id,
+        title: 'Booking Confirmed!',
+        message: `Your maintenance has been scheduled for ${data.date} at ${data.time}.`,
+        type: 'booking',
+        link: '/dashboard'
+      })
+  }
 
   revalidatePath('/admin')
   return { success: true }

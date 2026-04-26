@@ -481,8 +481,8 @@ const nextStep = () => {
                           <Label className="text-sm">Aircon Brand *</Label>
                           <Select value={formData.airconBrand} onValueChange={(v) => {
                             handleSelectChange('airconBrand', v)
-                            if (v === 'Other') {
-                              setFormData(prev => ({ ...prev, airconBrandOther: '', airconBrand: '' }))
+                            if (v !== 'Other') {
+                              setFormData(prev => ({ ...prev, airconBrandOther: '' }))
                             }
                           }}>
                             <SelectTrigger>

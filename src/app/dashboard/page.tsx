@@ -14,7 +14,8 @@ import {
   getUserMaintenanceWithItems,
   rescheduleService,
   getUserClientUnits,
-  getUserUnitServiceHistory
+  getUserUnitServiceHistory,
+  sendMessageToAdmin
 } from '@/app/actions/user'
 import { getAvailableTimeSlots } from '@/app/actions/admin'
 import { createClient } from '@/lib/supabase'
@@ -40,7 +41,8 @@ import {
   Edit3,
   Wind,
   ChevronRight,
-  Package
+  Package,
+  Mail
 } from 'lucide-react'
 import {
   Dialog,
@@ -106,6 +108,9 @@ export default function ClientDashboard() {
   const [showUnitSelector, setShowUnitSelector] = useState(false)
   const [requestDate, setRequestDate] = useState('')
   const [requestTime, setRequestTime] = useState('')
+  const [messageSubject, setMessageSubject] = useState('')
+  const [messageContent, setMessageContent] = useState('')
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
 
   const router = useRouter()
   const supabase = createClient()
@@ -730,6 +735,61 @@ export default function ClientDashboard() {
             </Card>
 
             <NotificationToggle userId={profile?.id} />
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  Contact Admin
+                </CardTitle>
+                <CardDescription>Send a message to the admin team</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Subject</Label>
+                  <Input
+                    placeholder="Enter subject"
+                    value={messageSubject}
+                    onChange={(e) => setMessageSubject(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Message</Label>
+                  <Textarea
+                    placeholder="Enter your message"
+                    className="min-h-[100px]"
+                    value={messageContent}
+                    onChange={(e) => setMessageContent(e.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={async () => {
+                    if (!messageSubject.trim() || !messageContent.trim()) {
+                      toast.error('Please fill in both subject and message')
+                      return
+                    }
+                    setIsSendingMessage(true)
+                    const result = await sendMessageToAdmin(messageSubject, messageContent)
+                    setIsSendingMessage(false)
+                    if (result.error) {
+                      toast.error(result.error)
+                    } else {
+                      toast.success('Message sent to admin!')
+                      setMessageSubject('')
+                      setMessageContent('')
+                    }
+                  }}
+                  disabled={isSendingMessage}
+                  className="bg-[#0062a3] hover:bg-[#0062a3]/90"
+                >
+                  {isSendingMessage ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Send Message'
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         )}
       </main>

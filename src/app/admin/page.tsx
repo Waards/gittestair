@@ -5066,14 +5066,16 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
               <Card className="border-none shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-lg">Notification Rules</CardTitle>
-                  <CardDescription>Configure automated SMS and in-app notification triggers</CardDescription>
+                  <CardDescription>Configure automated email and in-app notification triggers</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {[
-                    { id: 'sms-client-24h', label: 'Send SMS to Client 24 hours before appointment', defaultChecked: true },
-                    { id: 'sms-tech-assign', label: 'Send SMS to Technician on Assignment', defaultChecked: true },
-                    { id: 'sms-client-complete', label: 'Send SMS to Client when job is Completed', defaultChecked: false },
-                    { id: 'sms-client-reschedule', label: 'Notify Client on Reschedule', defaultChecked: false },
+                    { id: 'email-new-booking', label: 'Send Email when New Booking is Received', defaultChecked: true },
+                    { id: 'email-lead-accepted', label: 'Send Email to Client when Lead is Accepted', defaultChecked: true },
+                    { id: 'email-job-complete', label: 'Send Email to Client when Job is Completed', defaultChecked: true },
+                    { id: 'email-job-reschedule', label: 'Send Email to Client when Job is Rescheduled', defaultChecked: true },
+                    { id: 'inapp-new-booking', label: 'In-App Notification for New Bookings', defaultChecked: true },
+                    { id: 'inapp-client-message', label: 'In-App Notification for Client Messages', defaultChecked: true },
                   ].map((rule) => (
                     <div key={rule.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
                       <Checkbox id={rule.id} defaultChecked={rule.defaultChecked} />

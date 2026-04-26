@@ -235,3 +235,77 @@ export async function sendBookingConfirmationEmail(data: {
     return { success: false, error }
   }
 }
+
+export async function sendClientMessageEmail(data: {
+  to: string
+  clientName: string
+  clientEmail: string
+  subject: string
+  message: string
+}) {
+  const { to, clientName, clientEmail, subject, message } = data
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="${baseStyles}">
+        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="${headerStyles}">
+            <h1 style="color: white; margin: 0; font-size: 24px;">New Message from Client</h1>
+          </div>
+          
+          <div style="${contentStyles}">
+            <p style="font-size: 18px; color: #1e293b;">A client has sent you a message:</p>
+            
+            <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">From:</strong> ${clientName}</p>
+              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Email:</strong> ${clientEmail}</p>
+              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Subject:</strong> ${subject}</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
+              <p style="margin: 0; color: #64748b;"><strong style="color: #005596;">Message:</strong></p>
+              <p style="margin: 10px 0 0 0; color: #1e293b; white-space: pre-wrap;">${message}</p>
+            </div>
+            
+            <p style="color: #64748b; line-height: 1.6;">
+              Please log in to your admin dashboard to respond to this message.
+            </p>
+            
+            <p style="color: #64748b; margin-top: 30px;">
+              Best regards,<br>
+              <strong>Aircon One</strong>
+            </p>
+          </div>
+          
+          <div style="${footerStyles}">
+            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+              This is an automated message from Aircon One.
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `
+
+  try {
+    const { data: result, error } = await resend.emails.send({
+      from: 'Aircon One <onboarding@resend.dev>',
+      to: to,
+      subject: `New Message from ${clientName}: ${subject}`,
+      html: html,
+    })
+
+    if (error) {
+      console.error('Resend error:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, id: result?.id }
+  } catch (error) {
+    console.error('Email send error:', error)
+    return { success: false, error }
+  }
+}

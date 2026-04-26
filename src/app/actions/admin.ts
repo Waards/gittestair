@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { sanitizedString } from '@/lib/security'
 import { checkWarrantyStatus } from '@/lib/utils'
+import { sendFCMNotification } from '@/lib/fcm-service'
 
 const validatePHPhone = (phone: string): boolean => {
   const phRegex = /^09\d{9}$/;
@@ -28,7 +29,7 @@ async function sendCompletionEmail(table: string, id: string, serviceType: strin
       .single()
 
     if (profile?.email) {
-      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,7 +62,7 @@ async function sendDelayEmail(table: string, id: string, serviceType: string, re
       .single()
 
     if (profile?.email) {
-      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,7 +95,7 @@ async function sendCancelEmail(table: string, id: string, serviceType: string, r
       .single()
 
     if (profile?.email) {
-      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -107,6 +108,45 @@ async function sendCancelEmail(table: string, id: string, serviceType: string, r
           reason
         })
       }).catch(console.error)
+    }
+  }
+}
+
+async function sendClientPushNotification(table: string, id: string, title: string, body: string, type: string) {
+  const supabase = await createAdminClient()
+  const { data: job } = await supabase
+    .from(table as any)
+    .select('client_name, title')
+    .eq('id', id)
+    .single()
+
+  if (job) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('full_name', job.client_name)
+      .single()
+
+    if (profile?.id) {
+      const { data: fcmToken } = await supabase
+        .from('user_fcm_tokens')
+        .select('token')
+        .eq('user_id', profile.id)
+        .single()
+
+      if (fcmToken?.token) {
+        sendFCMNotification(fcmToken.token, title, body, { type, jobId: id }).catch(console.error)
+      }
+
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: profile.id,
+          title,
+          message: body,
+          type,
+          link: '/dashboard'
+        })
     }
   }
 }
@@ -575,6 +615,7 @@ export async function markInstallationComplete(id: string) {
   revalidatePath('/admin')
   
   sendCompletionEmail('installations', id, 'Installation')
+  sendClientPushNotification('installations', id, 'Service Completed!', 'Your installation has been completed successfully.', 'complete')
   
   return { success: true }
 }
@@ -612,6 +653,7 @@ export async function markRepairComplete(id: string) {
   revalidatePath('/admin')
   
   sendCompletionEmail('repairs', id, 'Repair')
+  sendClientPushNotification('repairs', id, 'Service Completed!', 'Your repair has been completed successfully.', 'complete')
   
   return { success: true }
 }
@@ -649,6 +691,13 @@ export async function updateInstallationProgress(id: string, status: string, pro
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  if (status === 'In Progress') {
+    sendClientPushNotification('installations', id, 'Service Started!', 'Our technician has started working on your installation.', 'progress')
+  } else if (status === 'Scheduled') {
+    sendClientPushNotification('installations', id, 'Service Scheduled', 'Your installation has been scheduled.', 'progress')
+  }
+  
   return { success: true }
 }
 
@@ -685,6 +734,13 @@ export async function updateRepairProgress(id: string, status: string, progress:
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  if (status === 'In Progress') {
+    sendClientPushNotification('repairs', id, 'Service Started!', 'Our technician has started working on your repair.', 'progress')
+  } else if (status === 'Scheduled') {
+    sendClientPushNotification('repairs', id, 'Service Scheduled', 'Your repair has been scheduled.', 'progress')
+  }
+  
   return { success: true }
 }
 
@@ -721,6 +777,13 @@ export async function updateMaintenanceProgress(id: string, status: string, prog
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  if (status === 'In Progress') {
+    sendClientPushNotification('maintenance', id, 'Service Started!', 'Our technician has started working on your maintenance.', 'progress')
+  } else if (status === 'Scheduled') {
+    sendClientPushNotification('maintenance', id, 'Service Scheduled', 'Your maintenance has been scheduled.', 'progress')
+  }
+  
   return { success: true }
 }
 
@@ -792,6 +855,7 @@ export async function markMaintenanceComplete(id: string) {
   revalidatePath('/admin')
   
   sendCompletionEmail('maintenance', id, 'Maintenance')
+  sendClientPushNotification('maintenance', id, 'Service Completed!', 'Your maintenance has been completed successfully.', 'complete')
   
   return { success: true }
 }
@@ -841,12 +905,14 @@ export async function getDashboardStats() {
 
 export async function getNotifications() {
   const supabase = await createAdminClient()
+  
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .is('user_id', null)           // only admin/global notifications
+    .is('user_id', null)
     .order('created_at', { ascending: false })
     .limit(50)
+  
   if (error) {
     console.error('getNotifications error:', error)
     return []

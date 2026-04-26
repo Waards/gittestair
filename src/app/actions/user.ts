@@ -749,3 +749,63 @@ export async function getUserUnitServiceHistory(unitId: string) {
     return []
   }
 }
+
+export async function sendMessageToAdmin(subject: string, message: string) {
+  const adminSupabase = await createAdminClient()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be logged in' }
+  }
+
+  const { data: profile } = await adminSupabase
+    .from('profiles')
+    .select('id, full_name, email')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    return { error: 'Profile not found' }
+  }
+
+  const { error: notifError } = await adminSupabase
+    .from('notifications')
+    .insert({
+      title: `Message from ${profile.full_name}: ${subject}`,
+      message: message,
+      type: 'message',
+      link: '/admin'
+    })
+
+  if (notifError) {
+    console.error('Notification insert error:', notifError)
+  }
+
+  const { data: adminUsers } = await adminSupabase
+    .from('profiles')
+    .select('id, email')
+    .eq('role', 'admin')
+
+  if (!adminUsers || adminUsers.length === 0) {
+    return { error: 'No admin users found' }
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+  
+  await fetch(`${siteUrl}/api/send-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client_message',
+      email: adminUsers[0].email,
+      customerName: profile.full_name,
+      subject: subject,
+      message: message,
+      clientEmail: profile.email
+    })
+  }).catch(err => console.error('Email send failed:', err))
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}

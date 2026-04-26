@@ -12,7 +12,10 @@ export async function POST(req: NextRequest) {
       date, 
       time,
       notes,
-      reason 
+      reason,
+      subject,
+      message,
+      clientEmail 
     } = await req.json()
 
     if (!email || !type) {
@@ -73,6 +76,18 @@ export async function POST(req: NextRequest) {
         serviceType: serviceType || 'Service',
         preferredDate: date || '',
         preferredTime: time || ''
+      })
+      return NextResponse.json(result)
+    }
+
+    if (type === 'client_message') {
+      const { sendClientMessageEmail } = await import('@/lib/email-service')
+      const result = await sendClientMessageEmail({
+        to: email,
+        clientName: customerName || 'Client',
+        clientEmail: clientEmail || '',
+        subject: subject || 'New Message',
+        message: message || ''
       })
       return NextResponse.json(result)
     }
