@@ -24,9 +24,21 @@ async function sendCompletionEmail(table: string, id: string, serviceType: strin
   if (job) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('email, full_name')
+      .select('id, email, full_name')
       .eq('full_name', job.client_name)
       .single()
+
+    if (profile?.id) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: profile.id,
+          title: `${job.title || serviceType} Completed!`,
+          message: `Your ${job.title || serviceType} has been completed successfully.`,
+          type: 'complete',
+          link: '/dashboard'
+        })
+    }
 
     if (profile?.email) {
       fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
@@ -57,9 +69,21 @@ async function sendDelayEmail(table: string, id: string, serviceType: string, re
   if (job) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('email, full_name')
+      .select('id, email, full_name')
       .eq('full_name', job.client_name)
       .single()
+
+    if (profile?.id) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: profile.id,
+          title: `${job.title || serviceType} Rescheduled`,
+          message: `Your ${job.title || serviceType} has been rescheduled. Reason: ${reason}`,
+          type: 'delayed',
+          link: '/dashboard'
+        })
+    }
 
     if (profile?.email) {
       fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
@@ -90,9 +114,21 @@ async function sendCancelEmail(table: string, id: string, serviceType: string, r
   if (job) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('email, full_name')
+      .select('id, email, full_name')
       .eq('full_name', job.client_name)
       .single()
+
+    if (profile?.id) {
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: profile.id,
+          title: `${job.title || serviceType} Cancelled`,
+          message: `Your ${job.title || serviceType} has been cancelled. Reason: ${reason}`,
+          type: 'cancelled',
+          link: '/dashboard'
+        })
+    }
 
     if (profile?.email) {
       fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
@@ -922,7 +958,14 @@ export async function getNotifications() {
 
 export async function sendClientReminder(clientId: string, title: string, message: string) {
   const supabase = await createAdminClient()
-  const { error } = await supabase
+  
+  const { data: clientProfile } = await supabase
+    .from('profiles')
+    .select('email, full_name')
+    .eq('id', clientId)
+    .single()
+
+  const { error: notifError } = await supabase
     .from('notifications')
     .insert({
       user_id: clientId,
@@ -932,7 +975,27 @@ export async function sendClientReminder(clientId: string, title: string, messag
       is_read: false
     })
   
-  if (error) return { error: error.message }
+  if (notifError) {
+    console.error('Notification error:', notifError)
+    return { error: notifError.message }
+  }
+
+  if (clientProfile?.email) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-domain.vercel.app'
+    
+    await fetch(`${siteUrl}/api/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client_reminder',
+        email: clientProfile.email,
+        customerName: clientProfile.full_name,
+        title: title,
+        message: message
+      })
+    }).catch(err => console.error('Reminder email error:', err))
+  }
+
   revalidatePath('/admin')
   return { success: true }
 }

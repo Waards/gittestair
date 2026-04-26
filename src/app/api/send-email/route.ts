@@ -92,6 +92,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result)
     }
 
+    if (type === 'client_reminder') {
+      const { sendClientReminderEmail } = await import('@/lib/email-service')
+      const result = await sendClientReminderEmail({
+        to: email,
+        customerName: customerName || 'Client',
+        title: subject || 'Reminder',
+        message: message || ''
+      })
+      return NextResponse.json(result)
+    }
+
     return NextResponse.json({ error: 'Unknown email type' }, { status: 400 })
 
   } catch (error) {

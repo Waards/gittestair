@@ -309,3 +309,67 @@ export async function sendClientMessageEmail(data: {
     return { success: false, error }
   }
 }
+
+export async function sendClientReminderEmail(data: {
+  to: string
+  customerName: string
+  title: string
+  message: string
+}) {
+  const { to, customerName, title, message } = data
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="${baseStyles}">
+        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <div style="${headerStyles}">
+            <h1 style="color: white; margin: 0; font-size: 24px;">${title}</h1>
+          </div>
+          
+          <div style="${contentStyles}">
+            <p style="font-size: 18px; color: #1e293b;">Hi ${customerName},</p>
+            
+            <p style="color: #64748b; line-height: 1.6;">
+              ${message}
+            </p>
+            
+            <p style="color: #64748b; margin-top: 30px;">
+              Best regards,<br>
+              <strong>Aircon One</strong>
+            </p>
+          </div>
+          
+          <div style="${footerStyles}">
+            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+              This is an automated message from Aircon One.
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `
+
+  try {
+    const { data: result, error } = await resend.emails.send({
+      from: 'Aircon One <onboarding@resend.dev>',
+      to: to,
+      subject: title,
+      html: html,
+    })
+
+    if (error) {
+      console.error('Resend error:', error)
+      return { success: false, error }
+    }
+
+    return { success: true, id: result?.id }
+  } catch (error) {
+    console.error('Email send error:', error)
+    return { success: false, error }
+  }
+}

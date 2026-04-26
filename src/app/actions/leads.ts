@@ -357,6 +357,28 @@ export async function acceptLead(leadId: string, data: {
         type: 'booking',
         link: '/dashboard'
       })
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', profile.id)
+      .single()
+
+    if (profileData?.email) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+      fetch(`${siteUrl}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'booking_confirmation',
+          email: profileData.email,
+          customerName: profileData.full_name,
+          serviceType: data.serviceType,
+          date: data.date,
+          time: data.time
+        })
+      }).catch(console.error)
+    }
   }
 
   revalidatePath('/admin')
@@ -450,6 +472,28 @@ export async function acceptLeadAsRepair(leadId: string, data: {
         type: 'booking',
         link: '/dashboard'
       })
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', profile.id)
+      .single()
+
+    if (profileData?.email) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+      fetch(`${siteUrl}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'booking_confirmation',
+          email: profileData.email,
+          customerName: profileData.full_name,
+          serviceType: data.serviceType,
+          date: data.date,
+          time: data.time
+        })
+      }).catch(console.error)
+    }
   }
 
   revalidatePath('/admin')
@@ -543,6 +587,28 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
         type: 'booking',
         link: '/dashboard'
       })
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', profile.id)
+      .single()
+
+    if (profileData?.email) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+      fetch(`${siteUrl}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'booking_confirmation',
+          email: profileData.email,
+          customerName: profileData.full_name,
+          serviceType: data.serviceType,
+          date: data.date,
+          time: data.time
+        })
+      }).catch(console.error)
+    }
   }
 
   revalidatePath('/admin')
