@@ -2,29 +2,66 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const baseStyles = `
-  font-family: Arial, sans-serif;
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 20px;
-  background-color: #f8fafc;
-`
+const brandColors = {
+  primary: '#005596',
+  secondary: '#0062a3',
+  success: '#059669',
+  warning: '#d97706',
+  error: '#dc2626',
+  light: '#f8fafc'
+}
 
-const headerStyles = `
-  background: linear-gradient(135deg, #005596 0%, #0062a3 100%);
-  padding: 30px;
-  text-align: center;
-`
+const companyName = 'Azalea Aircon Services'
 
-const contentStyles = `
-  padding: 30px;
-`
-
-const footerStyles = `
-  background: #f1f5f9;
-  padding: 20px;
-  text-align: center;
-  border-top: 1px solid #e2e8f0;
+const baseTemplate = (content: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azalea Aircon Services</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: ${brandColors.light};">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: ${brandColors.light}; padding: 20px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <!-- Header -->
+            <tr>
+              <td style="background: linear-gradient(135deg, ${brandColors.primary} 0%, ${brandColors.secondary} 100%); padding: 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Azalea Aircon Services</h1>
+                <p style="color: rgba(255,255,255,0.8); margin: 5px 0 0 0; font-size: 14px;">Professional Aircon Services</p>
+              </td>
+            </tr>
+            
+            <!-- Content -->
+            <tr>
+              <td style="padding: 30px;">
+                ${content}
+              </td>
+            </tr>
+            
+            <!-- Footer -->
+            <tr>
+              <td style="background-color: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                  This is an automated message from <strong style="color: ${brandColors.primary};">Azalea Aircon Services</strong>
+                </p>
+                <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 11px;">
+                  For inquiries, contact us at support@airconone.com
+                </p>
+              </td>
+            </tr>
+          </table>
+          
+          <p style="margin: 20px 0 0 0; color: #94a3b8; font-size: 12px;">
+            © ${new Date().getFullYear()} Azalea Aircon Services. All rights reserved.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
 `
 
 export async function sendServiceEmail(data: {
@@ -46,118 +83,74 @@ export async function sendServiceEmail(data: {
   let icon = ''
   let color = ''
   let message = ''
-  let detailsBg = '#f1f5f9'
-  let detailsBorder = '#e2e8f0'
 
   if (type === 'complete') {
-    subject = `Your ${serviceType} Service is Complete!`
+    subject = `✅ Your ${serviceType} is Complete!`
     title = 'Service Completed!'
     icon = '✅'
-    color = '#059669'
-    message = `Great news! Your <strong>${serviceType}</strong> service has been completed successfully.`
+    color = brandColors.success
+    message = `Great news! Your <strong>${serviceType}</strong> has been completed successfully. Our technician has finished the work.`
   } else if (type === 'delayed') {
-    subject = `Your ${serviceType} Service Has Been Rescheduled`
+    subject = `📅 Your ${serviceType} Has Been Rescheduled`
     title = 'Service Rescheduled'
-    icon = '⏰'
-    color = '#d97706'
-    detailsBg = '#fef3c7'
-    detailsBorder = '#fcd34d'
-    message = `Your <strong>${serviceType}</strong> service has been rescheduled.`
+    icon = '📅'
+    color = brandColors.warning
+    message = `Your <strong>${serviceType}</strong> has been rescheduled. Please check the new schedule below.`
   } else if (type === 'cancelled') {
-    subject = `Your ${serviceType} Service Has Been Cancelled`
+    subject = `❌ Your ${serviceType} Has Been Cancelled`
     title = 'Service Cancelled'
     icon = '❌'
-    color = '#dc2626'
-    detailsBg = '#fee2e2'
-    detailsBorder = '#fca5a5'
-    message = `Your <strong>${serviceType}</strong> service has been cancelled.`
+    color = brandColors.error
+    message = `Your <strong>${serviceType}</strong> has been cancelled. We apologize for any inconvenience.`
   }
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="${baseStyles}">
-        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <div style="${headerStyles}">
-            <h1 style="color: white; margin: 0; font-size: 24px;">${title}</h1>
-          </div>
-          
-          <div style="${contentStyles}">
-            <p style="font-size: 18px; color: #1e293b;">Hi ${customerName},</p>
-            
-            <p style="color: #64748b; line-height: 1.6;">
-              ${message}
-            </p>
-            
-            <div style="background: ${detailsBg}; border: 1px solid ${detailsBorder}; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <p style="margin: 0 0 10px 0; color: ${color}; font-size: 16px; font-weight: bold;">${icon} ${serviceType}</p>
-              ${unitName ? `<p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Unit:</strong> ${brand ? brand + ' ' : ''}${unitName}</p>` : ''}
-              ${date ? `<p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Date:</strong> ${date}</p>` : ''}
-              ${time ? `<p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Time:</strong> ${time}</p>` : ''}
-              ${reason ? `<p style="margin: 0; color: #92400e;"><strong>Reason:</strong> ${reason}</p>` : ''}
-            </div>
-            
-            ${notes && type === 'complete' ? `
-              <div style="background: #ecfdf5; border-radius: 8px; padding: 15px; margin: 20px 0;">
-                <p style="margin: 0; color: #065f46;"><strong>Service Notes:</strong> ${notes}</p>
-              </div>
-            ` : ''}
-            
-            ${type === 'cancelled' ? `
-              <p style="color: #64748b; line-height: 1.6;">
-                We apologize for any inconvenience. If you would like to reschedule or have any questions, please contact us.
-              </p>
-            ` : ''}
-            
-            ${type === 'delayed' ? `
-              <p style="color: #64748b; line-height: 1.6;">
-                Our team will arrive at the rescheduled time. Please ensure someone is available at the location.
-              </p>
-            ` : ''}
-            
-            ${type === 'complete' ? `
-              <p style="color: #64748b; line-height: 1.6;">
-                If you have any questions or need follow-up services, feel free to contact us.
-              </p>
-            ` : ''}
-            
-            <p style="color: #64748b; margin-top: 30px;">
-              Thank you for choosing our service!<br>
-              <strong>Aircon One</strong>
-            </p>
-          </div>
-          
-          <div style="${footerStyles}">
-            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-              This is an automated message from Aircon One. Please do not reply to this email.
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">Hi ${customerName}! ${icon}</h2>
+    
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">${message}</p>
+    
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; border-radius: 8px; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px;">Service</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${serviceType}</td>
+            </tr>
+            ${date ? `<tr><td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Date</td><td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${date}</td></tr>` : ''}
+            ${time ? `<tr><td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Time</td><td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${time}</td></tr>` : ''}
+            ${reason ? `<tr><td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Reason</td><td style="padding: 8px 0; color: #92400e; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${reason}</td></tr>` : ''}
+            ${notes ? `<tr><td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Notes</td><td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${notes}</td></tr>` : ''}
+          </table>
+        </td>
+      </tr>
+    </table>
+    
+    ${type === 'complete' ? `
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Thank you for choosing <strong>Azalea Aircon Services</strong>! If you have any questions or need follow-up services, please don't hesitate to contact us.
+    </p>
+    ` : type === 'delayed' ? `
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Our team will arrive at the rescheduled time. Please ensure someone is available at the service location.
+    </p>
+    ` : `
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      We apologize for any inconvenience. If you'd like to reschedule or have any questions, please contact us.
+    </p>
+    `}
+  `)
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <onboarding@resend.dev>',
       to: to,
       subject: subject,
       html: html,
-      text: `${title}\n\nHi ${customerName},\n\n${message.replace(/<[^>]*>/g, '')}\n\nService: ${serviceType}\n${unitName ? 'Unit: ' + (brand ? brand + ' ' : '') + unitName : ''}\n${date ? 'Date: ' + date : ''}\n${time ? 'Time: ' + time : ''}\n${reason ? 'Reason: ' + reason : ''}\n${notes ? 'Notes: ' + notes : ''}\n\nThank you!\nAircon One`,
     })
-
-    if (error) {
-      console.error('Resend error:', error)
-      return { success: false, error }
-    }
-
+    if (error) return { success: false, error }
     return { success: true, id: result?.id }
   } catch (error) {
-    console.error('Email send error:', error)
     return { success: false, error }
   }
 }
@@ -171,67 +164,49 @@ export async function sendBookingConfirmationEmail(data: {
 }) {
   const { to, customerName, serviceType, preferredDate, preferredTime } = data
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="${baseStyles}">
-        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <div style="${headerStyles}">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Booking Confirmed!</h1>
-          </div>
-          
-          <div style="${contentStyles}">
-            <p style="font-size: 18px; color: #1e293b;">Hi ${customerName},</p>
-            
-            <p style="color: #64748b; line-height: 1.6;">
-              Your <strong>${serviceType}</strong> has been scheduled.
-            </p>
-            
-            <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Date:</strong> ${preferredDate}</p>
-              <p style="margin: 0;"><strong style="color: #005596;">Time:</strong> ${preferredTime}</p>
-            </div>
-            
-            <p style="color: #64748b; line-height: 1.6;">
-              Our technician will arrive during your scheduled time slot. Please ensure someone is available at the location.
-            </p>
-            
-            <p style="color: #64748b; margin-top: 30px;">
-              Thank you!<br>
-              <strong>Aircon One</strong>
-            </p>
-          </div>
-          
-          <div style="${footerStyles}">
-            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-              This is an automated message from Aircon One.
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">🎉 Booking Confirmed!</h2>
+    
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      Hi <strong>${customerName}</strong>, your <strong>${serviceType}</strong> has been scheduled!
+    </p>
+    
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #ecfdf5; border-radius: 8px; border: 1px solid #a7f3d0; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.success}; font-weight: 600; font-size: 14px;">📅 Date</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; font-weight: 600;">${preferredDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.success}; font-weight: 600; font-size: 14px; border-top: 1px solid #a7f3d0;">⏰ Time</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #a7f3d0; font-weight: 600;">${preferredTime}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Our technician will arrive during your scheduled time slot. Please ensure someone is available at the service location.
+    </p>
+    
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px;">
+      Need to reschedule? Contact us at least 24 hours before your appointment.
+    </p>
+  `)
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <onboarding@resend.dev>',
       to: to,
-      subject: `Booking Confirmed: ${serviceType} on ${preferredDate}`,
+      subject: `🎉 Booking Confirmed: ${serviceType} on ${preferredDate}`,
       html: html,
     })
-
-    if (error) {
-      console.error('Resend error:', error)
-      return { success: false, error }
-    }
-
+    if (error) return { success: false, error }
     return { success: true, id: result?.id }
   } catch (error) {
-    console.error('Email send error:', error)
     return { success: false, error }
   }
 }
@@ -245,67 +220,53 @@ export async function sendClientMessageEmail(data: {
 }) {
   const { to, clientName, clientEmail, subject, message } = data
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="${baseStyles}">
-        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <div style="${headerStyles}">
-            <h1 style="color: white; margin: 0; font-size: 24px;">New Message from Client</h1>
-          </div>
-          
-          <div style="${contentStyles}">
-            <p style="font-size: 18px; color: #1e293b;">A client has sent you a message:</p>
-            
-            <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">From:</strong> ${clientName}</p>
-              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Email:</strong> ${clientEmail}</p>
-              <p style="margin: 0 0 10px 0;"><strong style="color: #005596;">Subject:</strong> ${subject}</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 15px 0;">
-              <p style="margin: 0; color: #64748b;"><strong style="color: #005596;">Message:</strong></p>
-              <p style="margin: 10px 0 0 0; color: #1e293b; white-space: pre-wrap;">${message}</p>
-            </div>
-            
-            <p style="color: #64748b; line-height: 1.6;">
-              Please log in to your admin dashboard to respond to this message.
-            </p>
-            
-            <p style="color: #64748b; margin-top: 30px;">
-              Best regards,<br>
-              <strong>Aircon One</strong>
-            </p>
-          </div>
-          
-          <div style="${footerStyles}">
-            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-              This is an automated message from Aircon One.
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">💬 New Message from Client</h2>
+    
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      A client has sent you a message:
+    </p>
+    
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; border-radius: 8px; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px;">From</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${clientName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Email</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${clientEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Subject</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0;">${subject}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0; vertical-align: top;">Message</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0; white-space: pre-wrap;">${message}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Please log in to your admin dashboard to respond to this message.
+    </p>
+  `)
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <onboarding@resend.dev>',
       to: to,
-      subject: `New Message from ${clientName}: ${subject}`,
+      subject: `💬 New Message from ${clientName}: ${subject}`,
       html: html,
     })
-
-    if (error) {
-      console.error('Resend error:', error)
-      return { success: false, error }
-    }
-
+    if (error) return { success: false, error }
     return { success: true, id: result?.id }
   } catch (error) {
-    console.error('Email send error:', error)
     return { success: false, error }
   }
 }
@@ -318,58 +279,36 @@ export async function sendClientReminderEmail(data: {
 }) {
   const { to, customerName, title, message } = data
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="${baseStyles}">
-        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <div style="${headerStyles}">
-            <h1 style="color: white; margin: 0; font-size: 24px;">${title}</h1>
-          </div>
-          
-          <div style="${contentStyles}">
-            <p style="font-size: 18px; color: #1e293b;">Hi ${customerName},</p>
-            
-            <p style="color: #64748b; line-height: 1.6;">
-              ${message}
-            </p>
-            
-            <p style="color: #64748b; margin-top: 30px;">
-              Best regards,<br>
-              <strong>Aircon One</strong>
-            </p>
-          </div>
-          
-          <div style="${footerStyles}">
-            <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-              This is an automated message from Aircon One.
-            </p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">📢 ${title}</h2>
+    
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      Hi <strong>${customerName}</strong>,
+    </p>
+    
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef3c7; border-radius: 8px; border: 1px solid #fcd34d; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px; color: #92400e; font-size: 15px; line-height: 1.6;">
+          ${message}
+        </td>
+      </tr>
+    </table>
+    
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Log in to your dashboard to view details and take action.
+    </p>
+  `)
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <onboarding@resend.dev>',
       to: to,
       subject: title,
       html: html,
     })
-
-    if (error) {
-      console.error('Resend error:', error)
-      return { success: false, error }
-    }
-
+    if (error) return { success: false, error }
     return { success: true, id: result?.id }
   } catch (error) {
-    console.error('Email send error:', error)
     return { success: false, error }
   }
 }
