@@ -141,16 +141,20 @@ export async function sendServiceEmail(data: {
     `}
   `)
 
-  try {
+try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Azalea Aircon Services <onboarding@resend.dev>',
+      from: 'Aircon One <onboarding@resend.dev>',
       to: to,
       subject: subject,
       html: html,
     })
-    if (error) return { success: false, error }
+    if (error) {
+      console.error('Resend error:', error)
+      return { success: false, error }
+    }
     return { success: true, id: result?.id }
   } catch (error) {
+    console.error('Email send exception:', error)
     return { success: false, error }
   }
 }
@@ -197,16 +201,21 @@ export async function sendBookingConfirmationEmail(data: {
     </p>
   `)
 
-  try {
+try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Azalea Aircon Services <onboarding@resend.dev>',
+      from: 'Aircon One <onboarding@resend.dev>',
       to: to,
-      subject: `🎉 Booking Confirmed: ${serviceType} on ${preferredDate}`,
+      subject: subject,
       html: html,
     })
-    if (error) return { success: false, error }
+    console.log('Booking confirmation email result:', { result, error })
+    if (error) {
+      console.error('Resend booking error:', error)
+      return { success: false, error }
+    }
     return { success: true, id: result?.id }
   } catch (error) {
+    console.error('Booking email exception:', error)
     return { success: false, error }
   }
 }

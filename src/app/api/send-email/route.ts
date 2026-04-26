@@ -107,6 +107,6 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Email API error:', error)
-    return NextResponse.json({ error: String(error) }, { status: 500 })
+    return NextResponse.json({ error: String(error), details: process.env.RESEND_API_KEY ? 'RESEND_API_KEY is set' : 'RESEND_API_KEY is NOT set' }, { status: 500 })
   }
 }
