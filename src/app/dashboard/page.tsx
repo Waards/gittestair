@@ -61,6 +61,7 @@ import { Progress } from "@/components/ui/progress"
 import { validatePHPhone, PHONE_VALIDATION_ERROR } from "@/lib/utils"
 import { calculateDynamicProgress } from "@/lib/progress"
 import { ClientSidebar } from '@/components/client-sidebar'
+import { NotificationToggle } from '@/components/notification-toggle'
 
 const allTimeSlots = [
   '08:00 AM - 10:00 AM',
@@ -727,6 +728,8 @@ export default function ClientDashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            <NotificationToggle userId={profile?.id} />
           </div>
         )}
       </main>

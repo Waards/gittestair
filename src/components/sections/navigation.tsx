@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Phone, Menu, X, User, Shield } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { BookingForm } from "@/components/booking-form";
 
@@ -86,14 +87,14 @@ const Navigation = () => {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo Section */}
-          <a href="/" className="flex items-center space-x-2 shrink-0">
+          <Link href="/" className="flex items-center space-x-2 shrink-0">
             <div className="w-12 h-12 flex items-center justify-center transition-transform hover:scale-105">
               <img src="/logo.png" alt="Azelea Logo" className="w-full h-full object-contain rounded-full" />
             </div>
             <span className="font-bold text-xl text-[#020617] tracking-tight">
               Azelea
             </span>
-          </a>
+          </Link>
 
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">

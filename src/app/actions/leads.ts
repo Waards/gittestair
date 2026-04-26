@@ -149,6 +149,20 @@ export async function submitLead(formData: FormData) {
       link: '/admin'
     })
 
+  // Send booking confirmation email
+  fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'booking_confirmation',
+      email: sanitizedEmailAddr,
+      customerName: sanitizedFullName,
+      serviceType: sanitizedServiceType,
+      date: preferredDate,
+      time: preferredTime
+    })
+  }).catch(console.error)
+
   revalidatePath('/admin')
   return { success: true }
 }

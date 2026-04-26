@@ -12,6 +12,105 @@ const validatePHPhone = (phone: string): boolean => {
 
 const PHONE_VALIDATION_ERROR = "Phone number must be a valid Philippines number (e.g., 09123456789) and maximum 11 digits.";
 
+async function sendCompletionEmail(table: string, id: string, serviceType: string) {
+  const supabase = await createAdminClient()
+  const { data: job } = await supabase
+    .from(table as any)
+    .select('client_name, title, date, time, notes')
+    .eq('id', id)
+    .single()
+
+  if (job) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('full_name', job.client_name)
+      .single()
+
+    if (profile?.email) {
+      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'complete',
+          email: profile.email,
+          customerName: profile.full_name || job.client_name,
+          serviceType: job.title || serviceType,
+          date: job.date,
+          time: job.time,
+          notes: job.notes
+        })
+      }).catch(console.error)
+    }
+  }
+}
+
+async function sendDelayEmail(table: string, id: string, serviceType: string, reason: string) {
+  const supabase = await createAdminClient()
+  const { data: job } = await supabase
+    .from(table as any)
+    .select('client_name, title, date, time')
+    .eq('id', id)
+    .single()
+
+  if (job) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('full_name', job.client_name)
+      .single()
+
+    if (profile?.email) {
+      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'delayed',
+          email: profile.email,
+          customerName: profile.full_name || job.client_name,
+          serviceType: job.title || serviceType,
+          date: job.date,
+          time: job.time,
+          reason
+        })
+      }).catch(console.error)
+    }
+  }
+}
+
+async function sendCancelEmail(table: string, id: string, serviceType: string, reason: string) {
+  const supabase = await createAdminClient()
+  const { data: job } = await supabase
+    .from(table as any)
+    .select('client_name, title, date, time')
+    .eq('id', id)
+    .single()
+
+  if (job) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('full_name', job.client_name)
+      .single()
+
+    if (profile?.email) {
+      fetch(process.env.NEXT_PUBLIC_SITE_URL + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'cancelled',
+          email: profile.email,
+          customerName: profile.full_name || job.client_name,
+          serviceType: job.title || serviceType,
+          date: job.date,
+          time: job.time,
+          reason
+        })
+      }).catch(console.error)
+    }
+  }
+}
+
 export async function createClientUser(formData: FormData) {
   const email = formData.get('email') as string
   const fullName = formData.get('fullName') as string
@@ -474,6 +573,9 @@ export async function markInstallationComplete(id: string) {
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  sendCompletionEmail('installations', id, 'Installation')
+  
   return { success: true }
 }
 
@@ -508,6 +610,9 @@ export async function markRepairComplete(id: string) {
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  sendCompletionEmail('repairs', id, 'Repair')
+  
   return { success: true }
 }
 
@@ -685,6 +790,9 @@ export async function markMaintenanceComplete(id: string) {
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
+  
+  sendCompletionEmail('maintenance', id, 'Maintenance')
+  
   return { success: true }
 }
 

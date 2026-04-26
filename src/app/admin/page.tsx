@@ -5144,21 +5144,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       onCheckedChange={(val) => setNotifSettings({ ...notifSettings, email_notifications: val })}
                     />
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border">
-                        <Phone className="h-5 w-5 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-[#005596]">SMS Notifications</p>
-                        <p className="text-sm text-gray-500">Receive notifications via SMS</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={notifSettings.sms_notifications}
-                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, sms_notifications: val })}
-                    />
-                  </div>
+                  
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border">
@@ -5203,16 +5189,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                       onCheckedChange={(val) => setNotifSettings({ ...notifSettings, booking_update_alert: val })}
                     />
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-[#005596]">Payment Alerts</p>
-                      <p className="text-sm text-gray-500">Get notified on payment status changes</p>
-                    </div>
-                    <Switch
-                      checked={notifSettings.payment_alert}
-                      onCheckedChange={(val) => setNotifSettings({ ...notifSettings, payment_alert: val })}
-                    />
-                  </div>
+                  
                 </CardContent>
               </Card>
 

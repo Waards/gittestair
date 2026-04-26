@@ -234,6 +234,7 @@ const nextStep = () => {
 
     if (result.success) {
       toast.success('Booking request submitted successfully!')
+      toast.info('Please check your email (or spam folder) for booking confirmation.')
       setIsOpen(false)
       setStep(1)
       setFormData({
@@ -257,6 +258,7 @@ const nextStep = () => {
         preferredTime: '',
         additionalInfo: '',
         airconBrand: '',
+        airconBrandOther: '',
         airconType: '',
         horsepower: '',
         btu: '',
