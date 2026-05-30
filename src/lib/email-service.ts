@@ -143,7 +143,7 @@ export async function sendServiceEmail(data: {
 
 try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
       to: to,
       subject: subject,
       html: html,
@@ -167,6 +167,8 @@ export async function sendBookingConfirmationEmail(data: {
   preferredTime: string
 }) {
   const { to, customerName, serviceType, preferredDate, preferredTime } = data
+
+  const subject = `🎉 Booking Confirmed - ${serviceType}`
 
   const html = baseTemplate(`
     <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">🎉 Booking Confirmed!</h2>
@@ -203,7 +205,7 @@ export async function sendBookingConfirmationEmail(data: {
 
 try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Aircon One <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
       to: to,
       subject: subject,
       html: html,
@@ -268,7 +270,7 @@ export async function sendClientMessageEmail(data: {
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Azalea Aircon Services <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
       to: to,
       subject: `💬 New Message from ${clientName}: ${subject}`,
       html: html,
@@ -310,9 +312,167 @@ export async function sendClientReminderEmail(data: {
 
   try {
     const { data: result, error } = await resend.emails.send({
-      from: 'Azalea Aircon Services <onboarding@resend.dev>',
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
       to: to,
       subject: title,
+      html: html,
+    })
+    if (error) return { success: false, error }
+    return { success: true, id: result?.id }
+  } catch (error) {
+    return { success: false, error }
+  }
+}
+
+export async function sendWelcomeEmail(data: {
+  to: string
+  customerName: string
+  password: string
+}) {
+  const { to, customerName, password } = data
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">Welcome to Azalea Aircon Services!</h2>
+
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      Hi <strong>${customerName}</strong>, your account has been created. Here are your login credentials:
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; border-radius: 8px; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px;">Email</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${to}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #e2e8f0;">Password</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #e2e8f0; font-family: monospace; font-weight: 700;">${password}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Click below to log in and access your dashboard.
+    </p>
+
+    <a href="${siteUrl}/login" style="display: inline-block; background-color: ${brandColors.primary}; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; margin-top: 16px;">Log In Now</a>
+  `)
+
+  try {
+    const { data: result, error } = await resend.emails.send({
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
+      to: to,
+      subject: `Welcome to ${companyName}!`,
+      html: html,
+    })
+    if (error) return { success: false, error }
+    return { success: true, id: result?.id }
+  } catch (error) {
+    return { success: false, error }
+  }
+}
+
+export async function sendWarrantyExpiryEmail(data: {
+  to: string
+  customerName: string
+  unitName: string
+  brand: string
+  warrantyEndDate: string
+  daysLeft: number
+}) {
+  const { to, customerName, unitName, brand, warrantyEndDate, daysLeft } = data
+
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">Warranty Expiring Soon</h2>
+
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      Hi <strong>${customerName}</strong>, the warranty for your aircon unit is expiring soon.
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef3c7; border-radius: 8px; border: 1px solid #fcd34d; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: #92400e; font-weight: 600; font-size: 14px;">Unit</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${brand} ${unitName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #92400e; font-weight: 600; font-size: 14px; border-top: 1px solid #fcd34d;">Expires</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #fcd34d;">${warrantyEndDate} (${daysLeft} day${daysLeft !== 1 ? 's' : ''} left)</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Please contact us to renew or extend your warranty before it expires. Repairs after warranty expiration may be chargeable.
+    </p>
+  `)
+
+  try {
+    const { data: result, error } = await resend.emails.send({
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
+      to: to,
+      subject: `Warranty Expiring: ${brand} ${unitName}`,
+      html: html,
+    })
+    if (error) return { success: false, error }
+    return { success: true, id: result?.id }
+  } catch (error) {
+    return { success: false, error }
+  }
+}
+
+export async function sendMaintenanceReminderEmail(data: {
+  to: string
+  customerName: string
+  unitName: string
+  brand: string
+  serviceType: string
+}) {
+  const { to, customerName, unitName, brand, serviceType } = data
+
+  const html = baseTemplate(`
+    <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">Maintenance Reminder</h2>
+
+    <p style="margin: 0 0 20px 0; color: #64748b; font-size: 16px; line-height: 1.6;">
+      Hi <strong>${customerName}</strong>, it's time to schedule maintenance for your aircon unit.
+    </p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe; margin: 20px 0;">
+      <tr>
+        <td style="padding: 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px;">Unit</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${brand} ${unitName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${brandColors.primary}; font-weight: 600; font-size: 14px; border-top: 1px solid #bfdbfe;">Service</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; border-top: 1px solid #bfdbfe;">${serviceType}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 20px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+      Regular maintenance helps prevent breakdowns and extends the lifespan of your unit. Please log in to schedule a maintenance appointment.
+    </p>
+  `)
+
+  try {
+    const { data: result, error } = await resend.emails.send({
+      from: 'Azalea Aircon Services <noreply@airconone.com>',
+      to: to,
+      subject: `Maintenance Reminder: ${brand} ${unitName}`,
       html: html,
     })
     if (error) return { success: false, error }

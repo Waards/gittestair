@@ -233,6 +233,17 @@ export async function createClientUser(formData: FormData) {
     return { error: profileError.message }
   }
 
+  fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'welcome',
+      email,
+      customerName: fullName,
+      message: password
+    })
+  }).catch(console.error)
+
   revalidatePath('/admin')
   return { success: true, password }
 }
@@ -410,6 +421,8 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
   if (updateError) {
     return { error: updateError.message }
   }
+
+  sendDelayEmail('appointments', id, appointment.service_type || 'Appointment', 'Rescheduled by admin')
 
   revalidatePath('/admin')
   return { success: true }
@@ -732,6 +745,8 @@ export async function updateInstallationProgress(id: string, status: string, pro
     sendClientPushNotification('installations', id, 'Service Started!', 'Our technician has started working on your installation.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('installations', id, 'Service Scheduled', 'Your installation has been scheduled.', 'progress')
+  } else if (status === 'Cancelled') {
+    sendCancelEmail('installations', id, 'Installation', notes || 'Cancelled by admin')
   }
   
   return { success: true }
@@ -775,6 +790,8 @@ export async function updateRepairProgress(id: string, status: string, progress:
     sendClientPushNotification('repairs', id, 'Service Started!', 'Our technician has started working on your repair.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('repairs', id, 'Service Scheduled', 'Your repair has been scheduled.', 'progress')
+  } else if (status === 'Cancelled') {
+    sendCancelEmail('repairs', id, 'Repair', notes || 'Cancelled by admin')
   }
   
   return { success: true }
@@ -818,6 +835,8 @@ export async function updateMaintenanceProgress(id: string, status: string, prog
     sendClientPushNotification('maintenance', id, 'Service Started!', 'Our technician has started working on your maintenance.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('maintenance', id, 'Service Scheduled', 'Your maintenance has been scheduled.', 'progress')
+  } else if (status === 'Cancelled') {
+    sendCancelEmail('maintenance', id, 'Maintenance', notes || 'Cancelled by admin')
   }
   
   return { success: true }
@@ -1900,6 +1919,17 @@ export async function convertLeadToClient(leadId: string) {
       type: 'update',
       link: '/dashboard'
     })
+
+  fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'welcome',
+      email: lead.email,
+      customerName: lead.full_name,
+      message: tempPassword
+    })
+  }).catch(console.error)
   
   revalidatePath('/admin')
   return { 
@@ -1961,9 +1991,21 @@ export async function checkExpiringWarranties() {
         link: '/dashboard'
       })
 
-      // Send email if email exists (requires email service)
+      // Send email if email exists
       if (client.email) {
-        console.log(`Would send expiry email to ${client.email} for unit ${unit.unit_name}`)
+        fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'warranty_expiry',
+            email: client.email,
+            customerName: client.full_name,
+            unitName: unit.unit_name,
+            brand: unit.brand,
+            date: unit.warranty_end_date,
+            message: String(daysLeft)
+          })
+        }).catch(console.error)
       }
 
       notifiedCount++
@@ -2085,6 +2127,28 @@ export async function triggerMaintenanceReminders() {
         type: 'reminder',
         link: '/dashboard'
       })
+
+    // Send maintenance reminder email
+    const { data: clientProfile } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', clientId)
+      .single()
+
+    if (clientProfile?.email) {
+      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'maintenance_reminder',
+          email: clientProfile.email,
+          customerName: clientProfile.full_name,
+          unitName,
+          brand,
+          serviceType: item.service_type || 'Maintenance'
+        })
+      }).catch(console.error)
+    }
 
     notifiedCount++
   }

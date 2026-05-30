@@ -561,6 +561,30 @@ export async function rescheduleService(appointmentId: string, newDate: string, 
       user_id: user.id
     })
 
+  // Send rescheduled email
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+  const { data: profileData } = await adminSupabase
+    .from('profiles')
+    .select('email, full_name')
+    .eq('id', user.id)
+    .single()
+
+  if (profileData?.email) {
+    fetch(`${siteUrl}/api/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'delayed',
+        email: profileData.email,
+        customerName: profileData.full_name,
+        serviceType: serviceType,
+        date: newDate,
+        time: newTime,
+        reason: 'Rescheduled by client'
+      })
+    }).catch(console.error)
+  }
+
   revalidatePath('/dashboard')
   return { success: true }
 }

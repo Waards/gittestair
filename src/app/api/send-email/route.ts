@@ -103,6 +103,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result)
     }
 
+    if (type === 'welcome') {
+      const { sendWelcomeEmail } = await import('@/lib/email-service')
+      const result = await sendWelcomeEmail({
+        to: email,
+        customerName: customerName || email.split('@')[0],
+        password: message || ''
+      })
+      return NextResponse.json(result)
+    }
+
+    if (type === 'warranty_expiry') {
+      const { sendWarrantyExpiryEmail } = await import('@/lib/email-service')
+      const result = await sendWarrantyExpiryEmail({
+        to: email,
+        customerName: customerName || email.split('@')[0],
+        unitName: unitName || 'Unit',
+        brand: brand || '',
+        warrantyEndDate: date || '',
+        daysLeft: parseInt(message || '0')
+      })
+      return NextResponse.json(result)
+    }
+
+    if (type === 'maintenance_reminder') {
+      const { sendMaintenanceReminderEmail } = await import('@/lib/email-service')
+      const result = await sendMaintenanceReminderEmail({
+        to: email,
+        customerName: customerName || email.split('@')[0],
+        unitName: unitName || 'Unit',
+        brand: brand || '',
+        serviceType: serviceType || 'Maintenance'
+      })
+      return NextResponse.json(result)
+    }
+
     return NextResponse.json({ error: 'Unknown email type' }, { status: 400 })
 
   } catch (error) {

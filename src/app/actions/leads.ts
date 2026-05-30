@@ -200,11 +200,24 @@ export async function submitLead(formData: FormData) {
           type: 'reminder',
           user_id: authData.user.id
         })
+
+      const siteUrl2 = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+      fetch(`${siteUrl2}/api/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'welcome',
+          email: sanitizedEmailAddr,
+          customerName: sanitizedFullName,
+          message: password
+        })
+      }).catch(console.error)
     }
   }
 
   // Send booking confirmation email
-  fetch(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001', {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+  fetch(`${siteUrl}/api/send-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -796,11 +809,23 @@ export async function convertLeadToClient(leadId: string) {
   await supabase
     .from('notifications')
     .insert({
-      title: 'Welcome to Aircon Pro Services!',
+      title: 'Welcome to Azalea Aircon Services!',
       message: `Your account has been created. Login at ${clientUrl} with password: ${password}`,
       type: 'reminder',
       user_id: authData.user.id
     })
+
+  const siteUrl3 = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+  fetch(`${siteUrl3}/api/send-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'welcome',
+      email: lead.email,
+      customerName: lead.full_name,
+      message: password
+    })
+  }).catch(console.error)
 
   revalidatePath('/admin')
   return { success: true, password, email: lead.email }

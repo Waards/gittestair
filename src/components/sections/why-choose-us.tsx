@@ -12,7 +12,7 @@ import { CircleCheckBig } from 'lucide-react';
 const WhyChooseUs = () => {
   const checkmarks = [
     "Licensed and insured technicians",
-    "24/7 emergency service available",
+    "Same-day service available",
     "Competitive pricing with transparent quotes",
     "Quality parts and workmanship guarantee",
     "Serving both residential and corporate clients"

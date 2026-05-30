@@ -58,7 +58,7 @@ import {
   acceptRequestAsMaintenance,
   rejectRequest
 } from '@/app/actions/admin'
-import { getLeads, getCorporateLeads, updateLeadStatus, convertLeadToClient, deleteLead, acceptLead, acceptLeadAsRepair, acceptLeadAsMaintenance, rejectLead } from '@/app/actions/leads'
+import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead, acceptLead, acceptLeadAsRepair, acceptLeadAsMaintenance, rejectLead } from '@/app/actions/leads'
 import {
   startOfMonth,
   endOfMonth,
@@ -141,7 +141,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { AdminSidebar } from '@/components/admin-sidebar'
 
-type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians' | 'corporate'
+type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
 
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
@@ -160,7 +160,6 @@ export default function AdminDashboard() {
   const [appointments, setAppointments] = useState<any[]>([])
   const [requests, setRequests] = useState<any[]>([])
   const [leads, setLeads] = useState<any[]>([])
-  const [corporateLeads, setCorporateLeads] = useState<any[]>([])
   const [technicians, setTechnicians] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [settings, setSettings] = useState<any>(null)
@@ -270,8 +269,6 @@ export default function AdminDashboard() {
       getAllPendingRequests().then(setRequests)
     } else if (view === 'leads' && leads.length === 0) {
       getLeads().then(setLeads)
-    } else if (view === 'corporate' && corporateLeads.length === 0) {
-      getCorporateLeads().then(setCorporateLeads)
     } else if (view === 'technicians' && technicians.length === 0) {
       getTechnicians().then(setTechnicians)
     }
@@ -312,9 +309,6 @@ export default function AdminDashboard() {
         break
       case 'leads':
         getLeads().then(setLeads)
-        break
-      case 'corporate':
-        getCorporateLeads().then(setCorporateLeads)
         break
       case 'technicians':
         getTechnicians().then(setTechnicians)
@@ -618,14 +612,6 @@ export default function AdminDashboard() {
             onBack={() => setView('dashboard')}
             fetchClients={refreshData}
             onGoToLeads={() => setView('leads')}
-          />
-        )}
-
-        {view === 'corporate' && (
-          <CorporateQueueView
-            leads={corporateLeads}
-            onBack={() => setView('dashboard')}
-            fetchLeads={refreshData}
           />
         )}
 
@@ -2292,149 +2278,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
   )
 }
 
-function CorporateQueueView({ leads, onBack, fetchLeads }: any) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
 
-  const filteredLeads = leads.filter((lead: any) => {
-    const searchLower = searchQuery.toLowerCase()
-    return !searchQuery ||
-      lead.full_name?.toLowerCase().includes(searchLower) ||
-      lead.company_name?.toLowerCase().includes(searchLower) ||
-      lead.phone_number?.toLowerCase().includes(searchLower) ||
-      lead.email?.toLowerCase().includes(searchLower) ||
-      lead.service_address?.toLowerCase().includes(searchLower)
-  })
-
-  const handleStatusUpdate = async (id: string, status: string) => {
-    setIsLoading(true)
-    const result = await updateLeadStatus(id, status)
-    if (result.error) toast.error(result.error)
-    else {
-      toast.success(`Lead marked as ${status.toLowerCase()}`)
-      fetchLeads()
-    }
-    setIsLoading(false)
-  }
-
-  const handleAddClient = async (id: string) => {
-    setIsLoading(true)
-    const result = await convertLeadToClient(id)
-    if (result.error) toast.error(result.error)
-    else {
-      toast.success('Lead converted to client successfully')
-      fetchLeads()
-    }
-    setIsLoading(false)
-  }
-
-  return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
-          <div>
-            <h1 className="text-xl font-bold text-[#005596]">Corporate Queue</h1>
-            <p className="text-sm text-gray-500">High priority corporate clients and leads</p>
-          </div>
-        </div>
-      </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
-        <Card className="border-none shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-sm text-gray-500">
-              Showing pending leads where client_type = 'Corporate' or inspection_required = true
-            </p>
-          </CardContent>
-        </Card>
-
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            className="pl-10"
-            placeholder="Search corporate leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4">
-          {filteredLeads.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
-              <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No pending corporate leads</p>
-            </div>
-          ) : (
-            filteredLeads.map((lead: any) => (
-              <Card key={lead.id} className="border-none shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <Badge className="bg-yellow-100 text-yellow-700">
-                          {lead.status}
-                        </Badge>
-                        {lead.client_type === 'Corporate' && (
-                          <Badge className="bg-[#0062a3] text-white">Corporate</Badge>
-                        )}
-                        {lead.inspection_required && (
-                          <Badge className="bg-[#0062a3]/80 text-white">
-                            <Eye className="h-3 w-3 mr-1" /> Inspection
-                          </Badge>
-                        )}
-                        <h3 className="font-bold text-lg text-[#005596]">
-                          {lead.client_type === 'Corporate' ? lead.company_name : lead.full_name}
-                        </h3>
-                        {lead.client_type === 'Corporate' && lead.contact_person && (
-                          <span className="text-sm text-gray-500">({lead.contact_person})</span>
-                        )}
-                        <span className="text-sm text-gray-400">• {format(parseISO(lead.created_at), 'MMM d, yyyy')}</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div className="space-y-1">
-                          <p className="text-gray-500 font-medium">Service Requested</p>
-                          <p className="text-[#005596] flex items-center gap-2"><Wrench className="h-4 w-4" /> {lead.service_type}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-gray-500 font-medium">Contact Info</p>
-                          <p className="text-[#005596] flex items-center gap-2"><Phone className="h-4 w-4" /> {lead.phone_number}</p>
-                          <p className="text-[#005596] flex items-center gap-2"><Mail className="h-4 w-4" /> {lead.email}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-gray-500 font-medium">Type</p>
-                          <p className="text-[#005596] flex items-center gap-2"><Building2 className="h-4 w-4" /> {lead.client_type}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 ml-6">
-                      <Button
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700"
-                        onClick={() => handleStatusUpdate(lead.id, 'Contacted')}
-                        disabled={isLoading}
-                      >
-                        Mark Contacted
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={() => handleAddClient(lead.id)}
-                        disabled={isLoading}
-                      >
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Add Client
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-      </main>
-    </div>
-  )
-}
 
 function InstallationsView({ installations, total, page, setPage, clients, clientUnits, onBack, fetchInstallations, onViewDetails, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)

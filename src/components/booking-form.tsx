@@ -450,7 +450,7 @@ const nextStep = () => {
                     <Select value={formData.serviceType} onValueChange={(v) => {
                       handleSelectChange('serviceType', v)
                       // Reset tech specs when service type changes
-                      setFormData(prev => ({ ...prev, airconBrand: '', airconType: '', horsepower: '', btu: '', issueDescription: '' }))
+                      setFormData(prev => ({ ...prev, airconBrand: '', airconType: '', horsepower: '', issueDescription: '' }))
                     }}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a service" />
@@ -531,15 +531,6 @@ const nextStep = () => {
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm">BTU</Label>
-                          <Input
-                            name="btu"
-                            placeholder="e.g. 12000"
-                            value={formData.btu || ''}
-                            onChange={handleInputChange}
-                          />
                         </div>
                       </div>
                     </div>
@@ -729,7 +720,6 @@ const nextStep = () => {
                         <div><span className="text-slate-500">Brand: </span><span className="font-medium">{formData.airconBrand === 'Other' ? formData.airconBrandOther : formData.airconBrand}</span></div>
                         <div><span className="text-slate-500">Type: </span><span className="font-medium">{formData.airconType}</span></div>
                         <div><span className="text-slate-500">Horsepower: </span><span className="font-medium">{formData.horsepower}</span></div>
-                        {formData.btu && <div><span className="text-slate-500">BTU: </span><span className="font-medium">{formData.btu}</span></div>}
                       </div>
                     </div>
                   )}
