@@ -313,6 +313,12 @@ export default function AdminDashboard() {
       case 'technicians':
         getTechnicians().then(setTechnicians)
         break
+      case 'schedule':
+        getAppointments().then(setAppointments)
+        getDashboardInstallations().then(r => setInstallations(r || []))
+        getDashboardRepairs().then(r => setRepairs(r || []))
+        getDashboardMaintenance().then(r => setMaintenance(r || []))
+        break
       default:
         fetchDashboardData()
     }
@@ -3945,12 +3951,16 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
                     {/* Quick Actions */}
                     <div className="pt-2 border-t flex gap-2 flex-wrap">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-full">Quick Actions</p>
-                      <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setSelectedStatus(apt.status || 'Scheduled'); setStatusModalOpen(true) }}>
-                        Update Status
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setRescheduleDate(apt.date || ''); setRescheduleTime(apt.time || ''); setRescheduleModalOpen(true) }}>
-                        Reschedule
-                      </Button>
+                      {apt.status !== 'Completed' && apt.status !== 'Cancelled' && (
+                        <>
+                          <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setSelectedStatus(apt.status || 'Scheduled'); setStatusModalOpen(true) }}>
+                            Update Status
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setRescheduleDate(apt.date || ''); setRescheduleTime(apt.time || ''); setRescheduleModalOpen(true) }}>
+                            Reschedule
+                          </Button>
+                        </>
+                      )}
                       <Button size="sm" className="bg-[#005596] hover:bg-[#00447a] text-white h-8 text-xs" onClick={() => { setSelectedApt(apt); setWorkOrderModalOpen(true) }}>
                         View Full Work Order
                       </Button>

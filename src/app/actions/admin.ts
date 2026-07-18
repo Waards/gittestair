@@ -1415,6 +1415,13 @@ export async function deleteTechnician(id: string) {
 
 export async function updateAppointmentStatus(id: string, status: string, table: string = 'appointments') {
   const supabase = await createAdminClient()
+
+  // Prevent re-updating completed/cancelled items
+  const { data: current } = await supabase.from(table as any).select('status').eq('id', id).single()
+  if (current && ['Completed', 'Cancelled'].includes(current.status)) {
+    return { error: 'Cannot update status — this booking is already ' + current.status.toLowerCase() }
+  }
+
   const { error } = await supabase
     .from(table as any)
     .update({ status })
