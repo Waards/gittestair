@@ -275,31 +275,6 @@ export async function updateLeadStatus(leadId: string, status: string) {
     return { error: error.message }
   }
 
-  // When marking as Contacted, send welcome email with credentials to client
-  if (status === 'Contacted') {
-    const { data: lead } = await supabase
-      .from('leads')
-      .select('email, full_name')
-      .eq('id', leadId)
-      .single()
-
-    if (lead?.email) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('password')
-        .eq('email', lead.email)
-        .single()
-
-      if (profile?.password) {
-        sendWelcomeEmail({
-          to: lead.email,
-          customerName: lead.full_name,
-          password: profile.password
-        }).catch(console.error)
-      }
-    }
-  }
-
   revalidatePath('/admin')
   return { success: true }
 }
