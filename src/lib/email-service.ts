@@ -261,7 +261,6 @@ export async function sendWelcomeEmail(data: {
   password: string
 }) {
   const { to, customerName, password } = data
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
 
   const content = `
     <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 22px;">Welcome to Azalea Aircon Services!</h2>
