@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase-server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
 export async function POST(request: Request) {
   try {
@@ -16,40 +17,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing Supabase config in Vercel env vars' }, { status: 500 })
     }
 
-    const targetUrl = `${supabaseUrl.replace(/\/+$/, '')}/auth/v1/token?grant_type=password`
+    const cookieStore = await cookies()
 
-    if (targetUrl.includes('azelea') || targetUrl.includes('vercel') || targetUrl.includes('localhost')) {
-      return NextResponse.json({
-        error: `WRONG SUPABASE URL in Vercel env: ${supabaseUrl}`,
-        siteUrl: process.env.NEXT_PUBLIC_SITE_URL || '(not set)'
-      }, { status: 500 })
-    }
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
+    const supabase = createServerClient(supabaseUrl, anonKey, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set(name, value, options)
+            } catch { }
+          })
+        },
       },
-      body: JSON.stringify({ email, password })
     })
 
-    const bodyText = await response.text()
-    let authData
-    try {
-      authData = JSON.parse(bodyText)
-    } catch {
-      return NextResponse.json({
-        error: `Supabase returned HTTP ${response.status}: ${bodyText.substring(0, 300)}`
-      }, { status: 502 })
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (authError || !authData.user) {
+      return NextResponse.json({ error: authError?.message || 'Invalid credentials' }, { status: 401 })
     }
 
-    if (!response.ok) {
-      return NextResponse.json({ error: authData.msg || authData.error_description || 'Invalid credentials' }, { status: 401 })
-    }
-
-    const adminSupabase = await createAdminClient()
-    const { data: profile } = await adminSupabase
+    const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', authData.user.id)
@@ -58,7 +52,7 @@ export async function POST(request: Request) {
     let userRole = profile?.role
 
     if (!profile) {
-      const { error: profileError } = await adminSupabase
+      const { error: profileError } = await supabase
         .from('profiles')
         .insert({
           id: authData.user.id,
@@ -68,7 +62,7 @@ export async function POST(request: Request) {
         })
 
       if (!profileError) {
-        const { data: newProfile } = await adminSupabase
+        const { data: newProfile } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', authData.user.id)
@@ -77,11 +71,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, role: userRole }, {
-      headers: {
-        'Set-Cookie': `sb-access-token=${authData.access_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`
-      }
-    })
+    return NextResponse.json({ success: true, role: userRole })
   } catch (err: any) {
     console.error('Login API error:', err)
     return NextResponse.json({ error: `Server error: ${err?.message || 'Unknown'}` }, { status: 500 })
