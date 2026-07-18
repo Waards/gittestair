@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase-server'
-import { cookies } from 'next/headers'
+import { createAdminClient } from '@/lib/supabase-server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +10,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
@@ -18,7 +27,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
+    const adminSupabase = await createAdminClient()
+    const { data: profile } = await adminSupabase
       .from('profiles')
       .select('role')
       .eq('id', data.user.id)
@@ -27,7 +37,6 @@ export async function POST(request: Request) {
     let userRole = profile?.role
 
     if (!profile) {
-      const adminSupabase = await createAdminClient()
       const { error: profileError } = await adminSupabase
         .from('profiles')
         .insert({
