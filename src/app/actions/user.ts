@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { validatePHPhone, PHONE_VALIDATION_ERROR } from '@/lib/utils'
+import { sendBookingConfirmationEmail, sendServiceEmail, sendClientMessageEmail } from '@/lib/email-service'
 
 export async function signIn(prevState: any, formData: FormData) {
   const email = formData.get('email') as string
@@ -482,6 +483,29 @@ export async function requestService(formData: FormData) {
     console.error('Failed to create notification:', notifError)
   }
 
+  // Send booking confirmation email to client
+  if (user.email) {
+    sendBookingConfirmationEmail({
+      to: user.email,
+      customerName: clientName,
+      serviceType: serviceType,
+      preferredDate: date,
+      preferredTime: time
+    }).catch(console.error)
+  }
+
+  // Send notification to admin
+  const adminEmail = process.env.ADMIN_EMAIL
+  if (adminEmail) {
+    sendClientMessageEmail({
+      to: adminEmail,
+      clientName: clientName,
+      clientEmail: user.email || '',
+      subject: `New ${serviceType} Service Request`,
+      message: `Client: ${clientName}\nEmail: ${user.email}\nPhone: ${phone}\nService: ${serviceType}\nDate: ${date}\nTime: ${time}\nAddress: ${address || 'Not specified'}\nNotes: ${notes || 'None'}`
+    }).catch(console.error)
+  }
+
   revalidatePath('/dashboard')
   revalidatePath('/admin')
   return { success: true }
@@ -561,8 +585,7 @@ export async function rescheduleService(appointmentId: string, newDate: string, 
       user_id: user.id
     })
 
-  // Send rescheduled email
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
+  // Send rescheduled email directly (no fetch-to-self)
   const { data: profileData } = await adminSupabase
     .from('profiles')
     .select('email, full_name')
@@ -570,18 +593,14 @@ export async function rescheduleService(appointmentId: string, newDate: string, 
     .single()
 
   if (profileData?.email) {
-    fetch(`${siteUrl}/api/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'delayed',
-        email: profileData.email,
-        customerName: profileData.full_name,
-        serviceType: serviceType,
-        date: newDate,
-        time: newTime,
-        reason: 'Rescheduled by client'
-      })
+    sendServiceEmail({
+      type: 'delayed',
+      to: profileData.email,
+      customerName: profileData.full_name || 'Client',
+      serviceType: serviceType,
+      date: newDate,
+      time: newTime,
+      reason: 'Rescheduled by client'
     }).catch(console.error)
   }
 
@@ -815,19 +834,12 @@ export async function sendMessageToAdmin(subject: string, message: string) {
     return { error: 'No admin users found' }
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-  
-  await fetch(`${siteUrl}/api/send-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'client_message',
-      email: adminUsers[0].email,
-      customerName: profile.full_name,
-      subject: subject,
-      message: message,
-      clientEmail: profile.email
-    })
+  sendClientMessageEmail({
+    to: adminUsers[0].email,
+    clientName: profile.full_name,
+    clientEmail: profile.email,
+    subject,
+    message
   }).catch(err => console.error('Email send failed:', err))
 
   revalidatePath('/dashboard')

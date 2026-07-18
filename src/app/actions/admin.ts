@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { sanitizedString } from '@/lib/security'
 import { checkWarrantyStatus } from '@/lib/utils'
 import { sendFCMNotification } from '@/lib/fcm-service'
+import { sendServiceEmail, sendWelcomeEmail, sendClientReminderEmail, sendWarrantyExpiryEmail, sendMaintenanceReminderEmail } from '@/lib/email-service'
 
 const validatePHPhone = (phone: string): boolean => {
   const phRegex = /^09\d{9}$/;
@@ -41,18 +42,14 @@ async function sendCompletionEmail(table: string, id: string, serviceType: strin
     }
 
     if (profile?.email) {
-      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'complete',
-          email: profile.email,
-          customerName: profile.full_name || job.client_name,
-          serviceType: job.title || serviceType,
-          date: job.date,
-          time: job.time,
-          notes: job.notes
-        })
+      sendServiceEmail({
+        type: 'complete',
+        to: profile.email,
+        customerName: profile.full_name || job.client_name,
+        serviceType: job.title || serviceType,
+        date: job.date,
+        time: job.time,
+        notes: job.notes
       }).catch(console.error)
     }
   }
@@ -86,18 +83,14 @@ async function sendDelayEmail(table: string, id: string, serviceType: string, re
     }
 
     if (profile?.email) {
-      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'delayed',
-          email: profile.email,
-          customerName: profile.full_name || job.client_name,
-          serviceType: job.title || serviceType,
-          date: job.date,
-          time: job.time,
-          reason
-        })
+      sendServiceEmail({
+        type: 'delayed',
+        to: profile.email,
+        customerName: profile.full_name || job.client_name,
+        serviceType: job.title || serviceType,
+        date: job.date,
+        time: job.time,
+        reason
       }).catch(console.error)
     }
   }
@@ -131,18 +124,14 @@ async function sendCancelEmail(table: string, id: string, serviceType: string, r
     }
 
     if (profile?.email) {
-      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'cancelled',
-          email: profile.email,
-          customerName: profile.full_name || job.client_name,
-          serviceType: job.title || serviceType,
-          date: job.date,
-          time: job.time,
-          reason
-        })
+      sendServiceEmail({
+        type: 'cancelled',
+        to: profile.email,
+        customerName: profile.full_name || job.client_name,
+        serviceType: job.title || serviceType,
+        date: job.date,
+        time: job.time,
+        reason
       }).catch(console.error)
     }
   }
@@ -233,15 +222,10 @@ export async function createClientUser(formData: FormData) {
     return { error: profileError.message }
   }
 
-  fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'welcome',
-      email,
-      customerName: fullName,
-      message: password
-    })
+  sendWelcomeEmail({
+    to: email,
+    customerName: fullName,
+    password
   }).catch(console.error)
 
   revalidatePath('/admin')
@@ -1000,18 +984,11 @@ export async function sendClientReminder(clientId: string, title: string, messag
   }
 
   if (clientProfile?.email) {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-domain.vercel.app'
-    
-    await fetch(`${siteUrl}/api/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'client_reminder',
-        email: clientProfile.email,
-        customerName: clientProfile.full_name,
-        title: title,
-        message: message
-      })
+    sendClientReminderEmail({
+      to: clientProfile.email,
+      customerName: clientProfile.full_name,
+      title: title,
+      message: message
     }).catch(err => console.error('Reminder email error:', err))
   }
 
@@ -1920,15 +1897,10 @@ export async function convertLeadToClient(leadId: string) {
       link: '/dashboard'
     })
 
-  fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'welcome',
-      email: lead.email,
-      customerName: lead.full_name,
-      message: tempPassword
-    })
+  sendWelcomeEmail({
+    to: lead.email,
+    customerName: lead.full_name,
+    password: tempPassword
   }).catch(console.error)
   
   revalidatePath('/admin')
@@ -1993,18 +1965,13 @@ export async function checkExpiringWarranties() {
 
       // Send email if email exists
       if (client.email) {
-        fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'warranty_expiry',
-            email: client.email,
-            customerName: client.full_name,
-            unitName: unit.unit_name,
-            brand: unit.brand,
-            date: unit.warranty_end_date,
-            message: String(daysLeft)
-          })
+        sendWarrantyExpiryEmail({
+          to: client.email,
+          customerName: client.full_name,
+          unitName: unit.unit_name,
+          brand: unit.brand,
+          warrantyEndDate: unit.warranty_end_date,
+          daysLeft
         }).catch(console.error)
       }
 
@@ -2136,17 +2103,12 @@ export async function triggerMaintenanceReminders() {
       .single()
 
     if (clientProfile?.email) {
-      fetch((process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001') + '/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'maintenance_reminder',
-          email: clientProfile.email,
-          customerName: clientProfile.full_name,
-          unitName,
-          brand,
-          serviceType: item.service_type || 'Maintenance'
-        })
+      sendMaintenanceReminderEmail({
+        to: clientProfile.email,
+        customerName: clientProfile.full_name,
+        unitName,
+        brand,
+        serviceType: item.service_type || 'Maintenance'
       }).catch(console.error)
     }
 

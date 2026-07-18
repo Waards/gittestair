@@ -12,6 +12,7 @@
     },
     "dependencies": {
         "@babel/parser": "^7.28.5",
+        "@emailjs/nodejs": "^5.0.2",
         "@headlessui/react": "^2.2.9",
         "@heroicons/react": "^2.2.0",
         "@hookform/resolvers": "^5.1.1",
@@ -94,7 +95,6 @@
         "react-syntax-highlighter": "^15.6.1",
         "react-wrap-balancer": "^1.1.1",
         "recharts": "^3.0.2",
-        "resend": "^6.12.2",
         "simplex-noise": "^4.0.3",
         "sonner": "^2.0.6",
         "stripe": "^19.2.0",

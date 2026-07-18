@@ -10,6 +10,7 @@ import {
   validateAndSanitizeLead
 } from '@/lib/security'
 import { sendFCMNotification } from '@/lib/fcm-service'
+import { sendWelcomeEmail, sendBookingConfirmationEmail } from '@/lib/email-service'
 
 export async function submitLead(formData: FormData) {
   const supabase = await createAdminClient()
@@ -201,33 +202,21 @@ export async function submitLead(formData: FormData) {
           user_id: authData.user.id
         })
 
-      const siteUrl2 = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-      fetch(`${siteUrl2}/api/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'welcome',
-          email: sanitizedEmailAddr,
-          customerName: sanitizedFullName,
-          message: password
-        })
+      sendWelcomeEmail({
+        to: sanitizedEmailAddr,
+        customerName: sanitizedFullName,
+        password
       }).catch(console.error)
     }
   }
 
-  // Send booking confirmation email
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-  fetch(`${siteUrl}/api/send-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'booking_confirmation',
-      email: sanitizedEmailAddr,
-      customerName: sanitizedFullName,
-      serviceType: sanitizedServiceType,
-      date: preferredDate,
-      time: preferredTime
-    })
+  // Send booking confirmation email directly (no fetch-to-self)
+  sendBookingConfirmationEmail({
+    to: sanitizedEmailAddr,
+    customerName: sanitizedFullName,
+    serviceType: sanitizedServiceType,
+    preferredDate,
+    preferredTime
   }).catch(console.error)
 
   revalidatePath('/admin')
@@ -378,18 +367,12 @@ export async function acceptLead(leadId: string, data: {
       .single()
 
     if (profileData?.email) {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-      fetch(`${siteUrl}/api/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'booking_confirmation',
-          email: profileData.email,
-          customerName: profileData.full_name,
-          serviceType: data.serviceType,
-          date: data.date,
-          time: data.time
-        })
+      sendBookingConfirmationEmail({
+        to: profileData.email,
+        customerName: profileData.full_name,
+        serviceType: data.serviceType,
+        preferredDate: data.date,
+        preferredTime: data.time
       }).catch(console.error)
     }
   }
@@ -493,18 +476,12 @@ export async function acceptLeadAsRepair(leadId: string, data: {
       .single()
 
     if (profileData?.email) {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-      fetch(`${siteUrl}/api/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'booking_confirmation',
-          email: profileData.email,
-          customerName: profileData.full_name,
-          serviceType: data.serviceType,
-          date: data.date,
-          time: data.time
-        })
+      sendBookingConfirmationEmail({
+        to: profileData.email,
+        customerName: profileData.full_name,
+        serviceType: data.serviceType,
+        preferredDate: data.date,
+        preferredTime: data.time
       }).catch(console.error)
     }
   }
@@ -608,18 +585,12 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
       .single()
 
     if (profileData?.email) {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-      fetch(`${siteUrl}/api/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'booking_confirmation',
-          email: profileData.email,
-          customerName: profileData.full_name,
-          serviceType: data.serviceType,
-          date: data.date,
-          time: data.time
-        })
+      sendBookingConfirmationEmail({
+        to: profileData.email,
+        customerName: profileData.full_name,
+        serviceType: data.serviceType,
+        preferredDate: data.date,
+        preferredTime: data.time
       }).catch(console.error)
     }
   }
@@ -815,16 +786,10 @@ export async function convertLeadToClient(leadId: string) {
       user_id: authData.user.id
     })
 
-  const siteUrl3 = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-  fetch(`${siteUrl3}/api/send-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'welcome',
-      email: lead.email,
-      customerName: lead.full_name,
-      message: password
-    })
+  sendWelcomeEmail({
+    to: lead.email,
+    customerName: lead.full_name,
+    password
   }).catch(console.error)
 
   revalidatePath('/admin')
