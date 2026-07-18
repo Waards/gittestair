@@ -867,7 +867,7 @@ export async function getMaintenance(page: number = 1, limit: number = 20) {
   
   const { data, error, count } = await supabase
     .from('maintenance')
-    .select('*', { count: 'exact' })
+    .select('*, client_units(unit_name, brand, unit_type, technology, horsepower)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 

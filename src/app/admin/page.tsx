@@ -347,7 +347,6 @@ export default function AdminDashboard() {
       'In Progress': 50,
       'Delayed': 25,
       'Issue': 50,
-      'Success': 100,
       'Completed': 100,
       'Failed': 0
     }
@@ -363,7 +362,6 @@ export default function AdminDashboard() {
       'In Progress': 50,
       'Delayed': 25,
       'Issue': 50,
-      'Success': 100,
       'Completed': 100,
       'Failed': 0
     }
@@ -379,7 +377,6 @@ export default function AdminDashboard() {
       'In Progress': 50,
       'Delayed': 25,
       'Issue': 50,
-      'Success': 100,
       'Completed': 100,
       'Failed': 0
     }
@@ -413,7 +410,6 @@ export default function AdminDashboard() {
       'In Progress': 50,
       'Delayed': 25,
       'Issue': 50,
-      'Success': 100,
       'Completed': 100,
       'Failed': 100
     }
@@ -1015,6 +1011,18 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-500 font-medium">Location</p>
                   <p className="text-sm">{selectedInstallation.location}</p>
                 </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Aircon Brand</p>
+                  <p className="text-sm font-bold">{selectedInstallation.aircon_brand || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Aircon Type</p>
+                  <p className="text-sm font-bold">{selectedInstallation.aircon_type || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Horsepower</p>
+                  <p className="text-sm font-bold">{selectedInstallation.horsepower || 'N/A'}</p>
+                </div>
               </div>
 
               {/* Progress Update Section */}
@@ -1029,7 +1037,6 @@ export default function AdminDashboard() {
                       <SelectItem value="Scheduled">Scheduled</SelectItem>
                       <SelectItem value="In Progress">In Progress</SelectItem>
                       <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="Success">Success</SelectItem>
                       <SelectItem value="Delayed">Delayed</SelectItem>
                       <SelectItem value="Failed">Failed</SelectItem>
                       <SelectItem value="Issue">Has Issue</SelectItem>
@@ -1110,6 +1117,18 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-500 font-medium">Location</p>
                   <p className="text-sm">{selectedRepair.location}</p>
                 </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Unit Brand</p>
+                  <p className="text-sm font-bold">{selectedRepair.client_units?.brand || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Unit Type</p>
+                  <p className="text-sm font-bold">{selectedRepair.client_units?.unit_type || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Horsepower</p>
+                  <p className="text-sm font-bold">{selectedRepair.client_units?.horsepower ? `${selectedRepair.client_units.horsepower} HP` : 'N/A'}</p>
+                </div>
               </div>
 
               {/* Progress Update Section */}
@@ -1124,7 +1143,6 @@ export default function AdminDashboard() {
                       <SelectItem value="Scheduled">Scheduled</SelectItem>
                       <SelectItem value="In Progress">In Progress</SelectItem>
                       <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="Success">Success</SelectItem>
                       <SelectItem value="Delayed">Delayed</SelectItem>
                       <SelectItem value="Failed">Failed</SelectItem>
                       <SelectItem value="Issue">Has Issue</SelectItem>
@@ -1206,6 +1224,18 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-500 font-medium">Location</p>
                   <p className="text-sm">{selectedMaintenance.location}</p>
                 </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Unit Brand</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.brand || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Unit Type</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.unit_type || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500 font-medium">Horsepower</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.horsepower ? `${selectedMaintenance.client_units.horsepower} HP` : 'N/A'}</p>
+                </div>
               </div>
 
               {/* Progress Update Section */}
@@ -1220,7 +1250,6 @@ export default function AdminDashboard() {
                       <SelectItem value="Scheduled">Scheduled</SelectItem>
                       <SelectItem value="In Progress">In Progress</SelectItem>
                       <SelectItem value="Completed">Completed</SelectItem>
-                      <SelectItem value="Success">Success</SelectItem>
                       <SelectItem value="Delayed">Delayed</SelectItem>
                       <SelectItem value="Failed">Failed</SelectItem>
                       <SelectItem value="Issue">Has Issue</SelectItem>
