@@ -190,6 +190,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchDashboardData()
+    getTechnicians().then(setTechnicians)
     const interval = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(interval)
   }, [])
@@ -629,6 +630,7 @@ export default function AdminDashboard() {
             setPage={setInstallationsPage}
             clients={clients}
             clientUnits={clientUnits}
+            technicians={technicians}
             onBack={() => setView('dashboard')}
             fetchInstallations={refreshData}
             onViewDetails={handleViewInstallationDetails}
@@ -643,6 +645,7 @@ export default function AdminDashboard() {
             setPage={setRepairsPage}
             clients={clients}
             clientUnits={clientUnits}
+            technicians={technicians}
             repairJobs={repairJobs}
             onBack={() => setView('dashboard')}
             fetchRepairs={refreshData}
@@ -658,6 +661,7 @@ export default function AdminDashboard() {
             setPage={setMaintenancePage}
             clients={clients}
             clientUnits={clientUnits}
+            technicians={technicians}
             onBack={() => setView('dashboard')}
             fetchMaintenance={refreshData}
             onViewDetails={handleViewMaintenanceDetails}
@@ -2286,7 +2290,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
 
 
 
-function InstallationsView({ installations, total, page, setPage, clients, clientUnits, onBack, fetchInstallations, onViewDetails, onUpdateProgress }: any) {
+function InstallationsView({ installations, total, page, setPage, clients, clientUnits, technicians, onBack, fetchInstallations, onViewDetails, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [showRegisterUnit, setShowRegisterUnit] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -2728,12 +2732,12 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 <Select name="technician" required>
                   <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                   <SelectContent>
-                    {clients.map ? null : null}
-                    <SelectItem value="Chris">Chris</SelectItem>
-                    <SelectItem value="Emman">Emman</SelectItem>
-                    <SelectItem value="Carlos">Carlos</SelectItem>
-                    <SelectItem value="Arnold">Arnold</SelectItem>
-                    <SelectItem value="Bobby">Bobby</SelectItem>
+                    {technicians.map((t: any) => (
+                      <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                    ))}
+                    {technicians.length === 0 && (
+                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -2907,7 +2911,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   )
 }
 
-function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repairJobs, onBack, fetchRepairs, onViewDetails, onUpdateProgress }: any) {
+function RepairsView({ repairs, total, page, setPage, clients, clientUnits, technicians, repairJobs, onBack, fetchRepairs, onViewDetails, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [showLogRepair, setShowLogRepair] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -3353,9 +3357,12 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, repa
               <div className="space-y-1"><Label>Technician *</Label>
                 <Select name="technician" required><SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Chris">Chris</SelectItem><SelectItem value="Emman">Emman</SelectItem>
-                    <SelectItem value="Carlos">Carlos</SelectItem><SelectItem value="Arnold">Arnold</SelectItem>
-                    <SelectItem value="Bobby">Bobby</SelectItem>
+                    {technicians.map((t: any) => (
+                      <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                    ))}
+                    {technicians.length === 0 && (
+                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -5804,11 +5811,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                           <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
                         {technicians.filter((t: any) => t.status === 'Active').length === 0 && (
-                          <>
-                            <SelectItem value="Chris">Chris</SelectItem>
-                            <SelectItem value="Emman">Emman</SelectItem>
-                            <SelectItem value="Carlos">Carlos</SelectItem>
-                          </>
+                          <SelectItem value="" disabled>No active technicians available. Add one in Technician Management.</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -5869,7 +5872,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   )
 }
 
-function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, fetchMaintenance, onViewDetails, clientUnits: propClientUnits, onUpdateProgress }: any) {
+function MaintenanceView({ maintenance, total, page, setPage, clients, technicians, onBack, fetchMaintenance, onViewDetails, clientUnits: propClientUnits, onUpdateProgress }: any) {
   const [showAdd, setShowAdd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [type, setType] = useState('Real-Time')
@@ -6296,8 +6299,18 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, onBack, f
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Technician</Label>
-                <Input name="technician" placeholder="Technician name" required />
+                <Label>Technician *</Label>
+                <Select name="technician" required>
+                  <SelectTrigger><SelectValue placeholder="Select technician" /></SelectTrigger>
+                  <SelectContent>
+                    {technicians.map((t: any) => (
+                      <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                    ))}
+                    {technicians.length === 0 && (
+                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Date</Label>
