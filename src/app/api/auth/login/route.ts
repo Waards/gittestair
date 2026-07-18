@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
@@ -10,28 +9,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
+    // Sign in using the Admin API directly to avoid client-side JSON parsing issues
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    if (!supabaseUrl || !anonKey) {
+      return NextResponse.json({ error: 'Missing Supabase config' }, { status: 500 })
     }
 
-    const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({ email, password })
     })
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const bodyText = await response.text()
+    let authData
+    try {
+      authData = JSON.parse(bodyText)
+    } catch {
+      return NextResponse.json({
+        error: 'Supabase returned non-JSON response',
+        statusCode: response.status,
+        bodyPreview: bodyText.substring(0, 200)
+      }, { status: 502 })
+    }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 401 })
+    if (!response.ok) {
+      return NextResponse.json({ error: authData.msg || authData.error_description || 'Invalid credentials' }, { status: 401 })
     }
 
     const adminSupabase = await createAdminClient()
     const { data: profile } = await adminSupabase
       .from('profiles')
       .select('role')
-      .eq('id', data.user.id)
+      .eq('id', authData.user.id)
       .single()
 
     let userRole = profile?.role
@@ -40,9 +55,9 @@ export async function POST(request: Request) {
       const { error: profileError } = await adminSupabase
         .from('profiles')
         .insert({
-          id: data.user.id,
-          email: data.user.email,
-          full_name: data.user.email?.split('@')[0] || 'User',
+          id: authData.user.id,
+          email: authData.user.email,
+          full_name: authData.user.email?.split('@')[0] || 'User',
           role: 'client'
         })
 
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
         const { data: newProfile } = await adminSupabase
           .from('profiles')
           .select('role')
-          .eq('id', data.user.id)
+          .eq('id', authData.user.id)
           .single()
         if (newProfile) userRole = newProfile.role
       }
