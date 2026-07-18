@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useActionState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { signIn } from '@/app/actions/user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
@@ -12,22 +11,48 @@ import { Loader2, Mail, Lock, Eye, EyeOff, Home, AlertCircle } from 'lucide-reac
 import Link from 'next/link'
 
 export default function LoginPage() {
-  const [state, formAction, isPending] = useActionState(signIn, null)
   const [isMounted, setIsMounted] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [isPending, setIsPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  useEffect(() => {
-    if (state?.error) {
-      toast.error(state.error)
-    } else if (state?.success) {
-      router.push(state.role === 'admin' ? '/admin' : '/dashboard')
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsPending(true)
+    setError(null)
+
+    const formData = new FormData(e.currentTarget)
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+
+      const data = await res.json()
+
+      if (data.error) {
+        setError(data.error)
+        toast.error(data.error)
+      } else if (data.success) {
+        router.push(data.role === 'admin' ? '/admin' : '/dashboard')
+      }
+    } catch (err) {
+      const msg = 'Connection error. Please try again.'
+      setError(msg)
+      toast.error(msg)
+    } finally {
+      setIsPending(false)
     }
-  }, [state])
+  }
 
   if (!isMounted) {
     return null
@@ -50,12 +75,12 @@ export default function LoginPage() {
             <CardTitle className="text-lg font-semibold">Sign In</CardTitle>
           </div>
         </CardHeader>
-        <form action={formAction}>
+        <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6 pt-6">
-            {state?.error && (
+            {error && (
               <div className="flex items-center gap-2 rounded-lg bg-red-50 p-4 text-sm text-red-600 border border-red-100">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <p className="font-medium">{state.error}</p>
+                <p className="font-medium">{error}</p>
               </div>
             )}
             <div className="space-y-2">
