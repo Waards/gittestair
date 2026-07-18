@@ -24,6 +24,8 @@ export default function LoginPage() {
   useEffect(() => {
     if (state?.error) {
       toast.error(state.error)
+    } else if (state?.success) {
+      router.push(state.role === 'admin' ? '/admin' : '/dashboard')
     }
   }, [state])
 

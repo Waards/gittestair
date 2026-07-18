@@ -2,7 +2,6 @@
 
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { validatePHPhone, PHONE_VALIDATION_ERROR } from '@/lib/utils'
 import { sendBookingConfirmationEmail, sendServiceEmail, sendClientMessageEmail } from '@/lib/email-service'
 
@@ -65,11 +64,7 @@ export async function signIn(prevState: any, formData: FormData) {
 
   revalidatePath('/', 'layout')
   
-  if (userRole === 'admin') {
-    redirect('/admin')
-  } else {
-    redirect('/dashboard')
-  }
+  return { success: true, role: userRole }
 }
 
 export async function changePassword(formData: FormData) {
