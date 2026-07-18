@@ -1,35 +1,43 @@
-# Azalea Aircon Services - Aircon One Website
+# Azalea Aircon Services
 
-A full-stack Next.js application for aircon service booking and management.
+Aircon service booking and management platform built with Next.js 16.
 
-## Changelog — July 17, 2026
+## What We Built — July 18, 2026
 
-### Email system: Resend → Brevo → EmailJS
-- Switched from `resend` to `nodemailer` (Brevo SMTP), then to `@emailjs/nodejs`
-- EmailJS sends through your connected Gmail — proper DKIM/SPF, no domain needed
-- Free tier: 200 emails/month
-- New env vars:
-  - `EMAILJS_SERVICE_ID` — from EmailJS dashboard
-  - `EMAILJS_TEMPLATE_ID` — from EmailJS dashboard
-  - `EMAILJS_PUBLIC_KEY` — from EmailJS dashboard
-  - `EMAILJS_PRIVATE_KEY` — from EmailJS dashboard
+Overhauled the email notification system and added several features:
+
+### Email System (Resend → Brevo → EmailJS)
+- Started with **Resend** (domain verification required — blocked by DKIM)
+- Switched to **Brevo SMTP** (free tier — blocked by Gmail/Yahoo sender requirements for free domains)
+- Settled on **EmailJS** (free tier: 200 emails/month) — sends through your connected Gmail with full DKIM/SPF, no domain needed
 - Removed `src/app/api/send-email/route.ts` and `src/app/api/test-email/route.ts`
+- Removed `resend`, `nodemailer`, `@types/nodemailer` packages
+- Installed `@emailjs/nodejs`
 
-### Removed fetch-to-self email pattern
-All server actions (`user.ts`, `leads.ts`, `admin.ts`) now import and call email functions directly instead of doing `fetch('/api/send-email')`. This eliminates the `NEXT_PUBLIC_SITE_URL` dependency — emails work on localhost and production without environment-specific config.
+### Email Template Setup (EmailJS)
+- Created a single "Generic HTML Email" template with professional branding:
+  - **Blue gradient header**: Azalea Aircon Services
+  - **White content card**: renders dynamic HTML from server
+  - **Footer**: automated message + contact info
+- Template body: full HTML structure with `{{{html_content}}}` placeholder
+- All email types (booking confirmation, welcome, service updates, reminders, admin notifications) use the same template — the server generates the specific content
 
-### Added booking confirmation email to dashboard
-When a logged-in client requests a service from the dashboard (`requestService`), they now receive a booking confirmation email (same as the public booking form).
+### Fetch-to-Self Email Pattern Removed
+Previously, server actions called `fetch('/api/send-email')` which depended on `NEXT_PUBLIC_SITE_URL`. This broke on localhost or production if the env var was wrong. Now all actions import and call email functions directly:
+- `src/app/actions/leads.ts` — `submitLead`, `acceptLead`, `acceptLeadAsRepair`, `acceptLeadAsMaintenance`, `convertLeadToClient`
+- `src/app/actions/admin.ts` — `sendCompleteEmail`, `sendDelayEmail`, `sendCancelEmail`, `addClient`, `sendReminder`, `convertLead`, warranty expiry, maintenance reminders
+- `src/app/actions/user.ts` — `requestService`, `rescheduleService`, `sendMessageToAdmin`
 
-### Deleted dead code
+### Booking Confirmation Email for Dashboard
+When a logged-in client requests a service from the dashboard (`requestService`), they now receive a booking confirmation email (previously only the public booking form sent one).
+
+### Admin Email Notifications
+When a client requests a service via the dashboard, the admin (`azaleaairconsystem@gmail.com`) also gets notified with full details (client name, email, phone, service type, date, time).
+
+### Removed Dead Code
 - Removed unused `getCorporateLeads()` function from `src/app/actions/leads.ts`
-- Corporate leads are still visible via the "Corporate" filter dropdown in the admin Leads view
-
-### To revert
-```bash
-git log --oneline -5          # find the commits before changes
-git checkout <commit-hash>    # restore to that state
-```
+- Corporate leads remain visible via the "Corporate" filter dropdown in the admin Leads view
+- Removed `src/app/api/send-email/route.ts` and `src/app/api/test-email/route.ts`
 
 ## Setup
 
@@ -42,49 +50,70 @@ Open [http://localhost:3001](http://localhost:3001).
 
 ## Env Variables
 
-Copy `.env` to `.env.local` and fill in real values:
+All env vars are in `.env` (committed) and override in `.env.local` (gitignored).
 
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `DATABASE_URL` | Supabase database URL |
 | `EMAILJS_SERVICE_ID` | EmailJS service ID (free at emailjs.com) |
 | `EMAILJS_TEMPLATE_ID` | EmailJS template ID |
 | `EMAILJS_PUBLIC_KEY` | EmailJS public API key |
 | `EMAILJS_PRIVATE_KEY` | EmailJS private API key |
-| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` locally, your Vercel URL in production |
+| `ADMIN_EMAIL` | Email address for admin notifications |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` locally, production URL live |
 
-### Getting EmailJS credentials (free)
-1. Sign up at https://www.emailjs.com (free tier: 200 emails/month)
-2. **Add Email Service** → Select Gmail → authorize with your Google account → note the **Service ID** (e.g. `service_xxx`)
-3. **Create Email Template**:
-   - Template name: "Generic HTML Email"
+### Getting EmailJS Credentials (Free)
+1. Sign up at [emailjs.com](https://www.emailjs.com) (free tier: 200 emails/month)
+2. **Email Services** → Add New Service → Gmail → authorize with Google → copy **Service ID**
+3. **Email Templates** → Create New Template:
    - Subject: `{{subject}}`
-   - Body (check "Render as HTML"):
-     ```
-     {{{html_content}}}
-     ```
-   - Save → note the **Template ID** (e.g. `template_xxx`)
-4. **Account → API Keys** → copy your **Public Key** and **Private Key**
+   - Toggle **"Render as HTML"** ON
+   - Body: paste the professional HTML template (blue header, white card, footer) with `{{{html_content}}}` in the content area
+   - Save → copy **Template ID**
+4. **Account → API Keys** → copy **Public Key** and **Private Key**
 
-> The template uses `{{{html_content}}}` (triple braces) to render raw HTML without escaping. All email designs are generated server-side by `email-service.ts`.
+## Email Types (All Server-Generated)
+
+| Type | Trigger | Sent To |
+|------|---------|---------|
+| Booking confirmation | Booking form or dashboard "Request Service" | Client |
+| Welcome + password | New account created via booking form or admin | Client |
+| Service complete | Admin marks job done | Client |
+| Service rescheduled | Admin or client reschedules | Client |
+| Service cancelled | Admin cancels job | Client |
+| Client message | Client sends message from dashboard | Admin |
+| Reminder | Admin sends custom reminder | Client |
+| Warranty expiry | Auto-cron when warranty expires in 7 days | Client |
+| Maintenance reminder | Auto-cron when maintenance is due | Client |
+| New service request | Client requests service from dashboard | Admin |
 
 ## Password Reset
 
-The forgot password flow uses **Supabase Auth's built-in email** (free). To make it work:
-
-1. Go to **Supabase Dashboard → Authentication → Settings**
-2. Under **URL Configuration**, add your site URLs:
-   - Site URL: `https://your-domain.vercel.app` (production) or `http://localhost:3001` (local)
-   - Redirect URLs: add `https://your-domain.vercel.app/reset-password` and `http://localhost:3001/reset-password`
-3. Ensure **Enable email confirmations** is on
-
-Supabase sends password resets via its built-in email service (no custom SMTP needed).
+Uses **Supabase Auth's built-in email** (free). Configure in Supabase Dashboard:
+1. **Authentication → Settings → URL Configuration**
+2. Site URL: `https://azelea.vercel.app`
+3. Redirect URLs: add `https://azelea.vercel.app/reset-password`
+4. Ensure "Enable email confirmations" is ON
 
 ## Deploy to Vercel
 
-Add these env vars in **Vercel → Project Settings → Environment Variables**:
+Project auto-deploys from `main` branch via GitHub integration.
+
+Required env vars in **Vercel → Settings → Environment Variables**:
 - All Supabase keys
 - `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY`, `EMAILJS_PRIVATE_KEY`
-- `NEXT_PUBLIC_SITE_URL` = your Vercel domain (e.g. `https://azelea.vercel.app`)
+- `ADMIN_EMAIL`
+- `NEXT_PUBLIC_SITE_URL` = https://azelea.vercel.app
+
+### Live Site
+https://azelea.vercel.app
+
+## Reverting
+
+```bash
+git log --oneline -10
+git checkout <commit-hash>
+```
