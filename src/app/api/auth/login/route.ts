@@ -18,6 +18,13 @@ export async function POST(request: Request) {
 
     const targetUrl = `${supabaseUrl.replace(/\/+$/, '')}/auth/v1/token?grant_type=password`
 
+    if (targetUrl.includes('azelea') || targetUrl.includes('vercel') || targetUrl.includes('localhost')) {
+      return NextResponse.json({
+        error: `WRONG SUPABASE URL in Vercel env: ${supabaseUrl}`,
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL || '(not set)'
+      }, { status: 500 })
+    }
+
     const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
