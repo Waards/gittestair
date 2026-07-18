@@ -1765,6 +1765,9 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
   const [showDetails, setShowDetails] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [showUnitsDialog, setShowUnitsDialog] = useState(false)
+  const [selectedClientUnits, setSelectedClientUnits] = useState<any[]>([])
+  const [isLoadingUnits, setIsLoadingUnits] = useState(false)
   const itemsPerPage = 20
 
   const totalPages = Math.ceil(total / itemsPerPage)
@@ -1813,6 +1816,15 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
       fetchClients()
     }
     setIsLoading(false)
+  }
+
+  const handleViewUnits = async (client: any) => {
+    setIsLoadingUnits(true)
+    setSelectedClient(client)
+    const units = await getClientUnits(client.id)
+    setSelectedClientUnits(units)
+    setIsLoadingUnits(false)
+    setShowUnitsDialog(true)
   }
 
   const handleExportCSV = () => {
@@ -2062,6 +2074,14 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
                     >
                       View Details
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-[#005596] border-[#005596]/30 hover:bg-blue-50"
+                      onClick={() => handleViewUnits(client)}
+                    >
+                      View Units
+                    </Button>
                     {showArchived ? (
                       <Button
                         variant="outline"
@@ -2211,6 +2231,55 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Client Units Dialog */}
+      <Dialog open={showUnitsDialog} onOpenChange={setShowUnitsDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Client Units</DialogTitle>
+            <DialogDescription>
+              {selectedClient?.full_name ? `${selectedClient.full_name}'s registered units` : 'Registered units'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {isLoadingUnits ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : selectedClientUnits.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                <p>No units registered for this client</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {selectedClientUnits.map((unit: any) => (
+                  <div key={unit.id} className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-all">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Thermometer className="h-4 w-4 text-[#005596]" />
+                          <span className="font-bold text-[#005596]">{unit.brand} {unit.unit_name}</span>
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">{unit.unit_type}</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
+                          <span>Technology: <strong>{unit.technology}</strong></span>
+                          <span>Horsepower: <strong>{unit.horsepower} HP</strong></span>
+                          {unit.indoor_serial && <span>Indoor Serial: <strong>{unit.indoor_serial}</strong></span>}
+                          {unit.outdoor_serial && <span>Outdoor Serial: <strong>{unit.outdoor_serial}</strong></span>}
+                          {unit.installation_date && <span>Installed: <strong>{unit.installation_date}</strong></span>}
+                          <span>Warranty: <strong>{unit.warranty_months || 0} months{unit.warranty_type ? ` (${unit.warranty_type})` : ''}</strong></span>
+                          {unit.warranty_end_date && <span>Warranty Ends: <strong>{unit.warranty_end_date}</strong></span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
