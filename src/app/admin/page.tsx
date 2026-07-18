@@ -3570,10 +3570,18 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   appointments.forEach((a: any) => { if (a.service_type) serviceTypesSet.add(a.service_type as string) })
   const serviceTypes = Array.from(serviceTypesSet)
 
+  const tableMap: Record<string, string> = {
+    appointment: 'appointments',
+    installation: 'installations',
+    repair: 'repairs',
+    maintenance: 'maintenance'
+  }
+
   const handleUpdateStatus = async () => {
     if (!selectedApt) return
     setIsLoading(true)
-    const res = await updateAppointmentStatus(selectedApt.id, selectedStatus)
+    const table = tableMap[selectedApt.jobType] || 'appointments'
+    const res = await updateAppointmentStatus(selectedApt.id, selectedStatus, table)
     if (res.error) toast.error(res.error)
     else {
       toast.success('Status updated')
@@ -3586,7 +3594,8 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   const handleReschedule = async () => {
     if (!selectedApt || !rescheduleDate || !rescheduleTime) return
     setIsLoading(true)
-    const res = await rescheduleAppointment(selectedApt.id, rescheduleDate, rescheduleTime)
+    const table = tableMap[selectedApt.jobType] || 'appointments'
+    const res = await rescheduleAppointment(selectedApt.id, rescheduleDate, rescheduleTime, table)
     if (res.error) toast.error(res.error)
     else {
       toast.success('Appointment rescheduled')

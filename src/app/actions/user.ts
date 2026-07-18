@@ -292,6 +292,19 @@ export async function requestService(formData: FormData) {
     return { error: 'Please fill in all required fields (Service Type, Phone, Date, and Time)' }
   }
 
+  // Check max 3 bookings per day
+  const activeStatuses = ['pending', 'Scheduled', 'In Progress', 'Rescheduled']
+  const [apptCount, instCount, repCount, maintCount] = await Promise.all([
+    adminSupabase.from('appointments').select('id', { count: 'exact', head: true }).eq('date', date).in('status', activeStatuses),
+    adminSupabase.from('installations').select('id', { count: 'exact', head: true }).eq('date', date).in('status', activeStatuses),
+    adminSupabase.from('repairs').select('id', { count: 'exact', head: true }).eq('date', date).in('status', activeStatuses),
+    adminSupabase.from('maintenance').select('id', { count: 'exact', head: true }).eq('date', date).in('status', activeStatuses),
+  ])
+  const totalCount = (apptCount.count || 0) + (instCount.count || 0) + (repCount.count || 0) + (maintCount.count || 0)
+  if (totalCount >= 3) {
+    return { error: 'This date is fully booked. Please select another date.' }
+  }
+
   // Get user profile for name
   const { data: profile } = await supabase
     .from('profiles')

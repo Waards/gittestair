@@ -356,12 +356,16 @@ export async function getAvailableTimeSlots(date: string) {
   return allSlots.filter(slot => !bookedSlots.includes(slot))
 }
 
-export async function rescheduleAppointment(id: string, newDate: string, newTime: string) {
+export async function rescheduleAppointment(id: string, newDate: string, newTime: string, table: string = 'appointments') {
   const supabase = await createAdminClient()
   
+  const selectQuery = table === 'appointments'
+    ? '*, leads!inner(*)'
+    : '*'
+
   const { data: appointment, error: fetchError } = await supabase
-    .from('appointments')
-    .select('*, leads!inner(*)')
+    .from(table as any)
+    .select(selectQuery)
     .eq('id', id)
     .single()
 
@@ -369,7 +373,12 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
     return { error: 'Appointment not found' }
   }
 
-  const originalDateTime = new Date(`${appointment.date}T${appointment.time.split(' - ')[0]}`)
+  const timePart = appointment.time?.split(' - ')[0]
+  if (!appointment.date || !timePart) {
+    return { error: 'Appointment has no date or time' }
+  }
+
+  const originalDateTime = new Date(`${appointment.date}T${timePart}`)
   const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
   const now = new Date()
 
@@ -378,7 +387,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
   }
 
   const { data: existingBooking } = await supabase
-    .from('appointments')
+    .from(table as any)
     .select('id')
     .eq('date', newDate)
     .eq('time', newTime)
@@ -393,7 +402,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
   const newRescheduleCount = (appointment.reschedule_count || 0) + 1
 
   const { error: updateError } = await supabase
-    .from('appointments')
+    .from(table as any)
     .update({ 
       date: newDate, 
       time: newTime,
@@ -406,7 +415,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
     return { error: updateError.message }
   }
 
-  sendDelayEmail('appointments', id, appointment.service_type || 'Appointment', 'Rescheduled by admin')
+  sendDelayEmail(table, id, appointment.service_type || appointment.title || 'Service', 'Rescheduled by admin')
 
   revalidatePath('/admin')
   return { success: true }
@@ -1404,26 +1413,41 @@ export async function deleteTechnician(id: string) {
   return { success: true }
 }
 
-export async function updateAppointmentStatus(id: string, status: string) {
+export async function updateAppointmentStatus(id: string, status: string, table: string = 'appointments') {
   const supabase = await createAdminClient()
   const { error } = await supabase
-    .from('appointments')
+    .from(table as any)
     .update({ status })
     .eq('id', id)
   if (error) return { error: error.message }
 
   // Notify client if reachable
-  const { data: apt } = await supabase.from('appointments').select('*').eq('id', id).single()
-  if (apt?.email) {
-    const { data: client } = await supabase.from('profiles').select('id').eq('email', apt.email).single()
-    if (client?.id) {
-      await supabase.from('notifications').insert({
-        user_id: client.id,
-        title: 'Appointment Status Updated',
-        message: `Your appointment status is now: ${status}.`,
-        type: 'update',
-        link: '/dashboard'
-      })
+  const { data: apt } = await supabase.from(table as any).select('*').eq('id', id).single()
+  if (apt) {
+    const email = apt.email
+    if (email) {
+      const { data: client } = await supabase.from('profiles').select('id').eq('email', email).single()
+      if (client?.id) {
+        await supabase.from('notifications').insert({
+          user_id: client.id,
+          title: 'Service Status Updated',
+          message: `Your ${apt.title || apt.service_type || 'service'} status is now: ${status}.`,
+          type: 'update',
+          link: '/dashboard'
+        })
+      }
+    } else if (apt.client_name) {
+      // Fallback: look up profile by full_name
+      const { data: client } = await supabase.from('profiles').select('id').eq('full_name', apt.client_name).single()
+      if (client?.id) {
+        await supabase.from('notifications').insert({
+          user_id: client.id,
+          title: 'Service Status Updated',
+          message: `Your ${apt.title || apt.service_type || 'service'} status is now: ${status}.`,
+          type: 'update',
+          link: '/dashboard'
+        })
+      }
     }
   }
   revalidatePath('/admin')
