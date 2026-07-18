@@ -3801,14 +3801,33 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
           <Card className="border-none shadow-sm">
             <CardHeader><CardTitle className="text-base">This Month ({format(currentMonth, 'MMMM')})</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex justify-between text-sm">
-                <span>Total Bookings</span>
-                <span className="font-bold">{appointments.filter((apt: any) => isSameMonth(parseISO(apt.date), currentMonth)).length}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Completed</span>
-                <span className="font-bold">0</span>
-              </div>
+              {(() => {
+                const monthJobs = allJobs.filter((j: any) => j.date && isSameMonth(parseISO(j.date), currentMonth))
+                const total = monthJobs.length
+                const completed = monthJobs.filter((j: any) => j.status === 'Completed').length
+                const cancelled = monthJobs.filter((j: any) => j.status === 'Cancelled').length
+                const rescheduled = monthJobs.filter((j: any) => j.status === 'Rescheduled').length
+                return (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span>Total Bookings</span>
+                      <span className="font-bold">{total}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-green-600 font-medium">Completed</span>
+                      <span className="font-bold text-green-600">{completed}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-600 font-medium">Cancelled</span>
+                      <span className="font-bold text-red-600">{cancelled}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-orange-600 font-medium">Rescheduled</span>
+                      <span className="font-bold text-orange-600">{rescheduled}</span>
+                    </div>
+                  </>
+                )
+              })()}
             </CardContent>
           </Card>
         </div>
@@ -3872,7 +3891,12 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
               selectedDay && getDayAppointments(selectedDay).map((apt: any) => (
                 <div key={apt.id} className="border rounded-xl overflow-hidden">
                   {/* Job Header */}
-                  <div className={`px-4 py-2 flex items-center justify-between ${apt.status === 'Completed' ? 'bg-green-600' : 'bg-blue-600'} text-white`}>
+                  <div className={`px-4 py-2 flex items-center justify-between ${
+                      apt.status === 'Completed' ? 'bg-green-600' :
+                      apt.status === 'Cancelled' ? 'bg-red-600' :
+                      apt.status === 'Rescheduled' ? 'bg-orange-600' :
+                      'bg-blue-600'
+                    } text-white`}>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold uppercase tracking-wide">
                         {apt.status === 'Completed' ? 'Completed' : 'Scheduled'}
@@ -3951,7 +3975,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
                     {/* Quick Actions */}
                     <div className="pt-2 border-t flex gap-2 flex-wrap">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-full">Quick Actions</p>
-                      {apt.status !== 'Completed' && apt.status !== 'Cancelled' && (
+                      {apt.status === 'Scheduled' && (
                         <>
                           <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs" onClick={() => { setSelectedApt(apt); setSelectedStatus(apt.status || 'Scheduled'); setStatusModalOpen(true) }}>
                             Update Status
