@@ -9,15 +9,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    // Sign in using the Admin API directly to avoid client-side JSON parsing issues
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
     if (!supabaseUrl || !anonKey) {
-      return NextResponse.json({ error: 'Missing Supabase config' }, { status: 500 })
+      return NextResponse.json({ error: 'Missing Supabase config in Vercel env vars' }, { status: 500 })
     }
 
-    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    const targetUrl = `${supabaseUrl.replace(/\/+$/, '')}/auth/v1/token?grant_type=password`
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -32,9 +33,7 @@ export async function POST(request: Request) {
       authData = JSON.parse(bodyText)
     } catch {
       return NextResponse.json({
-        error: 'Supabase returned non-JSON response',
-        statusCode: response.status,
-        bodyPreview: bodyText.substring(0, 200)
+        error: `Supabase returned HTTP ${response.status}: ${bodyText.substring(0, 300)}`
       }, { status: 502 })
     }
 
@@ -71,9 +70,13 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, role: userRole })
+    return NextResponse.json({ success: true, role: userRole }, {
+      headers: {
+        'Set-Cookie': `sb-access-token=${authData.access_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`
+      }
+    })
   } catch (err: any) {
     console.error('Login API error:', err)
-    return NextResponse.json({ error: err?.message || 'An unexpected error occurred' }, { status: 500 })
+    return NextResponse.json({ error: `Server error: ${err?.message || 'Unknown'}` }, { status: 500 })
   }
 }
