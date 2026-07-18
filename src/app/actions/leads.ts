@@ -10,7 +10,7 @@ import {
   validateAndSanitizeLead
 } from '@/lib/security'
 import { sendFCMNotification } from '@/lib/fcm-service'
-import { sendWelcomeEmail, sendBookingConfirmationEmail } from '@/lib/email-service'
+import { sendWelcomeEmail, sendBookingConfirmationEmail, sendClientMessageEmail } from '@/lib/email-service'
 
 export async function submitLead(formData: FormData) {
   const supabase = await createAdminClient()
@@ -202,15 +202,10 @@ export async function submitLead(formData: FormData) {
           user_id: authData.user.id
         })
 
-      sendWelcomeEmail({
-        to: sanitizedEmailAddr,
-        customerName: sanitizedFullName,
-        password
-      }).catch(console.error)
     }
   }
 
-  // Send booking confirmation email directly (no fetch-to-self)
+  // Send booking confirmation email to client
   sendBookingConfirmationEmail({
     to: sanitizedEmailAddr,
     customerName: sanitizedFullName,
@@ -218,6 +213,18 @@ export async function submitLead(formData: FormData) {
     preferredDate,
     preferredTime
   }).catch(console.error)
+
+  // Notify admin
+  const adminEmail = process.env.ADMIN_EMAIL
+  if (adminEmail) {
+    sendClientMessageEmail({
+      to: adminEmail,
+      clientName: sanitizedFullName,
+      clientEmail: sanitizedEmailAddr,
+      subject: `New ${sanitizedServiceType} Booking Request (Lead)`,
+      message: `Client: ${sanitizedFullName}\nEmail: ${sanitizedEmailAddr}\nPhone: ${sanitizedPhoneNum}\nService: ${sanitizedServiceType}\nDate: ${preferredDate}\nTime: ${preferredTime}\nAddress: ${validation.data.service_address || 'Not specified'}\nNotes: ${sanitizedAdditionalInfo || 'None'}`
+    }).catch(console.error)
+  }
 
   revalidatePath('/admin')
   return { success: true }
@@ -266,6 +273,31 @@ export async function updateLeadStatus(leadId: string, status: string) {
   if (error) {
     console.error('updateLeadStatus: error updating lead:', error)
     return { error: error.message }
+  }
+
+  // When marking as Contacted, send welcome email with credentials to client
+  if (status === 'Contacted') {
+    const { data: lead } = await supabase
+      .from('leads')
+      .select('email, full_name')
+      .eq('id', leadId)
+      .single()
+
+    if (lead?.email) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('password')
+        .eq('email', lead.email)
+        .single()
+
+      if (profile?.password) {
+        sendWelcomeEmail({
+          to: lead.email,
+          customerName: lead.full_name,
+          password: profile.password
+        }).catch(console.error)
+      }
+    }
   }
 
   revalidatePath('/admin')
