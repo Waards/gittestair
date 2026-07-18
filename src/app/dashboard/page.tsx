@@ -13,6 +13,7 @@ import {
   updateProfile,
   getUserMaintenanceWithItems,
   rescheduleService,
+  cancelService,
   getUserClientUnits,
   getUserUnitServiceHistory,
   sendMessageToAdmin
@@ -42,7 +43,8 @@ import {
   Wind,
   ChevronRight,
   Package,
-  Mail
+  Mail,
+  AlertTriangle
 } from 'lucide-react'
 import {
   Dialog,
@@ -100,6 +102,9 @@ export default function ClientDashboard() {
   const [rescheduleTime, setRescheduleTime] = useState('')
   const [availableSlots, setAvailableSlots] = useState<string[]>(allTimeSlots)
   const [isRescheduling, setIsRescheduling] = useState(false)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [itemToCancel, setItemToCancel] = useState<any>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
   const [clientUnits, setClientUnits] = useState<any[]>([])
   const [selectedUnit, setSelectedUnit] = useState<any>(null)
   const [unitHistory, setUnitHistory] = useState<any[]>([])
@@ -270,8 +275,13 @@ export default function ClientDashboard() {
     setIsLoading(false)
   }
 
+  const isActiveStatus = (status: string) => {
+    return !['Completed', 'Cancelled', 'completed', 'cancelled'].includes(status)
+  }
+
   const canReschedule = (item: any) => {
     if (!item.date || !item.time) return false
+    if (!isActiveStatus(item.status)) return false
     const timePart = item.time.split(' - ')[0]
     const dateTime = new Date(`${item.date}T${timePart}`)
     const threeHoursBefore = new Date(dateTime.getTime() - (3 * 60 * 60 * 1000))
@@ -309,6 +319,35 @@ export default function ClientDashboard() {
       fetchData()
     }
     setIsRescheduling(false)
+  }
+
+  const canCancel = (item: any) => {
+    if (!item.date || !item.time) return false
+    if (!isActiveStatus(item.status)) return false
+    const timePart = item.time.split(' - ')[0]
+    const dateTime = new Date(`${item.date}T${timePart}`)
+    const threeHoursBefore = new Date(dateTime.getTime() - (3 * 60 * 60 * 1000))
+    return new Date() < threeHoursBefore
+  }
+
+  const handleCancelClick = (item: any) => {
+    setItemToCancel(item)
+    setShowCancelDialog(true)
+  }
+
+  const handleCancelSubmit = async () => {
+    if (!itemToCancel) return
+    setIsCancelling(true)
+    const result = await cancelService(itemToCancel.id, itemToCancel.service_type || itemToCancel.title)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Service cancelled successfully')
+      setShowCancelDialog(false)
+      setItemToCancel(null)
+      fetchData()
+    }
+    setIsCancelling(false)
   }
 
   const handleLogout = async () => {
@@ -450,7 +489,15 @@ export default function ClientDashboard() {
                         </div>
                       )}
                       {canReschedule(activity) && (
-                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end gap-3">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleCancelClick(activity)}
+                            className="text-red-600 border-red-300 hover:bg-red-50"
+                          >
+                            Cancel Service
+                          </Button>
                           <Button 
                             variant="outline" 
                             size="sm" 
@@ -501,7 +548,15 @@ export default function ClientDashboard() {
                         </div>
                       )}
                       {canReschedule(maint) && (
-                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end gap-3">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleCancelClick(maint)}
+                            className="text-red-600 border-red-300 hover:bg-red-50"
+                          >
+                            Cancel Service
+                          </Button>
                           <Button 
                             variant="outline" 
                             size="sm" 
@@ -1046,6 +1101,35 @@ export default function ClientDashboard() {
             >
               {isRescheduling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Reschedule
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Service Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Cancel Service
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel your {itemToCancel?.service_type || itemToCancel?.title} service scheduled on {itemToCancel?.date} at {itemToCancel?.time}?
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-slate-500">
+            This action cannot be undone. Cancellation is only allowed up to 3 hours before the scheduled time.
+          </p>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>Keep Booking</Button>
+            <Button 
+              className="bg-red-600 hover:bg-red-700" 
+              onClick={handleCancelSubmit}
+              disabled={isCancelling}
+            >
+              {isCancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Yes, Cancel Service
             </Button>
           </div>
         </DialogContent>

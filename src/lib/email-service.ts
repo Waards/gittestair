@@ -5,6 +5,22 @@ const emailjsTemplateId = process.env.EMAILJS_TEMPLATE_ID || ''
 const emailjsPublicKey = process.env.EMAILJS_PUBLIC_KEY || ''
 const emailjsPrivateKey = process.env.EMAILJS_PRIVATE_KEY || ''
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://azelea.vercel.app'
+
+function dashboardLink() {
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+      <tr>
+        <td style="text-align: center;">
+          <p style="margin: 0 0 12px 0; color: #64748b; font-size: 13px;">To manage your appointment, log in to your dashboard.</p>
+          <a href="${siteUrl}/login" style="display: inline-block; background-color: #005596; color: #ffffff; text-decoration: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px;">Login to Dashboard</a>
+          <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 11px;">${siteUrl}/login</p>
+        </td>
+      </tr>
+    </table>
+  `
+}
+
 async function sendEmail(to: string, subject: string, innerContent: string) {
   try {
     const result = await emailjs.send(
@@ -119,7 +135,7 @@ export async function sendServiceEmail(data: {
     `
   }
 
-  return sendEmail(to, subject, content)
+  return sendEmail(to, subject, content + dashboardLink())
 }
 
 export async function sendBookingConfirmationEmail(data: {
@@ -162,7 +178,7 @@ export async function sendBookingConfirmationEmail(data: {
     </p>
   `
 
-  return sendEmail(to, subject, content)
+  return sendEmail(to, subject, content + dashboardLink())
 }
 
 export async function sendClientMessageEmail(data: {
@@ -236,7 +252,7 @@ export async function sendClientReminderEmail(data: {
     </p>
   `
 
-  return sendEmail(to, title, content)
+  return sendEmail(to, title, content + dashboardLink())
 }
 
 export async function sendWelcomeEmail(data: {
@@ -313,7 +329,7 @@ export async function sendWarrantyExpiryEmail(data: {
     </p>
   `
 
-  return sendEmail(to, `Warranty Expiring: ${brand} ${unitName}`, content)
+  return sendEmail(to, `Warranty Expiring: ${brand} ${unitName}`, content + dashboardLink())
 }
 
 export async function sendMaintenanceReminderEmail(data: {
@@ -351,5 +367,5 @@ export async function sendMaintenanceReminderEmail(data: {
     </p>
   `
 
-  return sendEmail(to, `Maintenance Reminder: ${brand} ${unitName}`, content)
+  return sendEmail(to, `Maintenance Reminder: ${brand} ${unitName}`, content + dashboardLink())
 }

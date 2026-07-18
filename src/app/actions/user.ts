@@ -604,6 +604,112 @@ export async function rescheduleService(appointmentId: string, newDate: string, 
     }).catch(console.error)
   }
 
+  // Notify admin
+  const adminEmail = process.env.ADMIN_EMAIL
+  if (adminEmail) {
+    sendServiceEmail({
+      type: 'delayed',
+      to: adminEmail,
+      customerName: `Admin Notification — ${profileData?.full_name || 'Client'} rescheduled`,
+      serviceType: serviceType,
+      date: newDate,
+      time: newTime,
+      reason: 'Rescheduled by client'
+    }).catch(console.error)
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function cancelService(appointmentId: string, serviceType: string) {
+  const adminSupabase = await createAdminClient()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'Not authenticated' }
+  }
+
+  const tableMap: Record<string, string> = {
+    'Installation': 'installations',
+    'Repair': 'repairs',
+    'Maintenance': 'maintenance',
+    'Cleaning': 'maintenance',
+    'Inspection': 'maintenance'
+  }
+
+  const table = tableMap[serviceType] || 'appointments'
+
+  const { data: appointment, error: fetchError } = await adminSupabase
+    .from(table)
+    .select('*')
+    .eq('id', appointmentId)
+    .single()
+
+  if (fetchError || !appointment) {
+    return { error: 'Appointment not found' }
+  }
+
+  const originalDateTime = new Date(`${appointment.date}T${appointment.time?.split(' - ')[0] || '12:00'}`)
+  const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
+  const now = new Date()
+
+  if (now >= threeHoursBefore) {
+    return { error: 'Cancellation is only allowed up to 3 hours before the scheduled time' }
+  }
+
+  const { error: updateError } = await adminSupabase
+    .from(table)
+    .update({ status: 'Cancelled' })
+    .eq('id', appointmentId)
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  await adminSupabase
+    .from('notifications')
+    .insert({
+      title: 'Service Cancelled',
+      message: `Your ${serviceType} has been cancelled.`,
+      type: 'cancelled',
+      user_id: user.id
+    })
+
+  // Notify client
+  const { data: profileData } = await adminSupabase
+    .from('profiles')
+    .select('email, full_name')
+    .eq('id', user.id)
+    .single()
+
+  if (profileData?.email) {
+    sendServiceEmail({
+      type: 'cancelled',
+      to: profileData.email,
+      customerName: profileData.full_name || 'Client',
+      serviceType: serviceType,
+      date: appointment.date,
+      time: appointment.time,
+      reason: 'Cancelled by client'
+    }).catch(console.error)
+  }
+
+  // Notify admin
+  const adminEmail = process.env.ADMIN_EMAIL
+  if (adminEmail) {
+    sendServiceEmail({
+      type: 'cancelled',
+      to: adminEmail,
+      customerName: `Cancellation Alert — ${profileData?.full_name || 'Client'} cancelled`,
+      serviceType: serviceType,
+      date: appointment.date,
+      time: appointment.time,
+      reason: 'Cancelled by client'
+    }).catch(console.error)
+  }
+
   revalidatePath('/dashboard')
   return { success: true }
 }
