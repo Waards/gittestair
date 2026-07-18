@@ -6,65 +6,64 @@ import { validatePHPhone, PHONE_VALIDATION_ERROR } from '@/lib/utils'
 import { sendBookingConfirmationEmail, sendServiceEmail, sendClientMessageEmail } from '@/lib/email-service'
 
 export async function signIn(prevState: any, formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
+  try {
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
 
-  console.log('signIn action started for:', email)
+    if (!email || !password) {
+      return { error: 'Email and password are required' }
+    }
 
-  if (!email || !password) {
-    return { error: 'Email and password are required' }
-  }
+    const supabase = await createClient()
 
-  const supabase = await createClient()
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+    if (error) {
+      return { error: error.message }
+    }
 
-  console.log('signIn: auth result:', !!data.user, error?.message)
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', data.user.id)
-    .single()
-
-  console.log('signIn: profile result:', !!profile, profile?.role)
-
-  let userRole = profile?.role
-
-  if (!profile) {
-    const { error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
-      .insert({
-        id: data.user.id,
-        email: data.user.email,
-        full_name: data.user.email?.split('@')[0] || 'User',
-        role: 'client'
-      })
+      .select('role')
+      .eq('id', data.user.id)
+      .single()
 
-    if (profileError) {
-      console.error('signIn: error creating profile:', profileError)
-    } else {
-      const { data: newProfile } = await supabase
+    let userRole = profile?.role
+
+    if (!profile) {
+      const { error: profileError } = await supabase
         .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
-      if (newProfile) {
-        userRole = newProfile.role
+        .insert({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: data.user.email?.split('@')[0] || 'User',
+          role: 'client'
+        })
+
+      if (profileError) {
+        console.error('signIn: error creating profile:', profileError)
+      } else {
+        const { data: newProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single()
+        if (newProfile) {
+          userRole = newProfile.role
+        }
       }
     }
-  }
 
-  revalidatePath('/', 'layout')
-  
-  return { success: true, role: userRole }
+    revalidatePath('/', 'layout')
+    
+    return { success: true, role: userRole }
+  } catch (err: any) {
+    console.error('signIn: unhandled error:', err)
+    return { error: err?.message || 'An unexpected error occurred' }
+  }
 }
 
 export async function changePassword(formData: FormData) {
