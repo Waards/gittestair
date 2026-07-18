@@ -101,7 +101,6 @@ export function BookingForm({ trigger }: BookingFormProps) {
     airconBrandOther: '',
     airconType: '',
     horsepower: '',
-    btu: '',
     // Issue description (non-installation)
     issueDescription: '',
     specialInstructions: '',
@@ -230,7 +229,6 @@ const nextStep = () => {
       data.append('airconBrand', finalBrand)
       data.append('airconType', formData.airconType)
       data.append('horsepower', formData.horsepower)
-      data.append('btu', formData.btu || '')
       data.append('additionalInfo', formData.additionalInfo)
       data.append('unitBrandType', `${finalBrand} ${formData.airconType}`)
     } else {
@@ -275,7 +273,6 @@ const nextStep = () => {
         airconBrandOther: '',
         airconType: '',
         horsepower: '',
-        btu: '',
         issueDescription: '',
         specialInstructions: '',
       })
@@ -503,10 +500,7 @@ const nextStep = () => {
                       <SelectContent>
                         {services.map((s) => (
                           <SelectItem key={s.id} value={s.name}>
-                            <div className="flex flex-col">
-                              <span>{s.name}</span>
-                              <span className="text-xs text-muted-foreground">Starting from {s.price}</span>
-                            </div>
+                            {s.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

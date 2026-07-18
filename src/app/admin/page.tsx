@@ -931,10 +931,6 @@ export default function AdminDashboard() {
                     {selectedBooking.status}
                   </Badge>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-blue-600">{selectedBooking.cost || 'N/A'}</p>
-                  <p className="text-xs text-gray-500">Service Fee</p>
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -995,10 +991,6 @@ export default function AdminDashboard() {
                   <Badge className={selectedInstallation.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
                     {selectedInstallation.status}
                   </Badge>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-blue-600">{selectedInstallation.cost || 'N/A'}</p>
-                  <p className="text-xs text-gray-500">Service Fee</p>
                 </div>
               </div>
 
@@ -1095,10 +1087,6 @@ export default function AdminDashboard() {
                     {selectedRepair.status}
                   </Badge>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-blue-600">{selectedRepair.cost || 'N/A'}</p>
-                  <p className="text-xs text-gray-500">Service Fee</p>
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1194,10 +1182,6 @@ export default function AdminDashboard() {
                     <Badge className={selectedMaintenance.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>
                       {selectedMaintenance.status}
                     </Badge>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-blue-600">{selectedMaintenance.cost || 'N/A'}</p>
-                    <p className="text-xs text-gray-500">Service Fee</p>
                   </div>
                 </div>
 
@@ -1656,39 +1640,7 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
                 </div>
               </div>
 
-              {/* Sales Intelligence */}
-              <div className="space-y-3 pt-3 border-t">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sales Intelligence</p>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Lead Temperature</p>
-                    <Badge className={
-                      selectedLead.lead_temperature === 'Hot' ? 'bg-red-100 text-red-700' :
-                        selectedLead.lead_temperature === 'Warm' ? 'bg-orange-100 text-orange-700' :
-                          'bg-blue-100 text-blue-700'
-                    }>
-                      {selectedLead.lead_temperature || 'Cold'}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Potential Deal Value</p>
-                    <p className="text-sm font-bold text-green-700">
-                      {selectedLead.potential_deal_value ? `₱${Number(selectedLead.potential_deal_value).toLocaleString()}` : 'TBD'}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-medium">Follow-up Status</p>
-                    <Badge className={
-                      selectedLead.status === 'Converted' ? 'bg-green-100 text-green-700' :
-                        selectedLead.status === 'Contacted' ? 'bg-blue-100 text-blue-700' :
-                          selectedLead.status === 'Lost' ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
-                    }>
-                      {selectedLead.status === 'Pending' ? 'Inquiry' : selectedLead.status}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
+              
 
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowDetails(false)}>Close</Button>
@@ -3966,12 +3918,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
                           <p className="text-[10px] text-gray-400 font-medium">Est. Completion</p>
                           <p className="font-semibold text-gray-700">{apt.estimated_completion || '2 Hours'}</p>
                         </div>
-                        {apt.cost && (
-                          <div className="bg-white rounded-lg border border-gray-100 p-2">
-                            <p className="text-[10px] text-gray-400 font-medium">Service Fee</p>
-                            <p className="font-semibold text-green-700">{apt.cost}</p>
-                          </div>
-                        )}
+                        
                       </div>
                     </div>
 
@@ -4080,10 +4027,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
   const [serviceTypeFilter, setServiceTypeFilter] = useState('all')
   const [technicianFilter, setTechnicianFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('')
-  const [showReceiptDialog, setShowReceiptDialog] = useState(false)
-  const [selectedReceiptItem, setSelectedReceiptItem] = useState<any>(null)
-  const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false)
-
   // Additional filters
   const [showInstallation, setShowInstallation] = useState(true)
   const [showRepair, setShowRepair] = useState(true)
@@ -4159,9 +4102,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
   })
 
   const completedItems = filteredItems.filter((i: any) => i.status === 'Completed')
-  const calculateTotal = (items: any[]) =>
-    items.reduce((acc, item) => acc + parseInt(item.cost?.replace(/[^0-9]/g, '') || '0'), 0)
-  const totalRevenue = calculateTotal(completedItems)
   const completionRate = filteredItems.length > 0
     ? Math.round((completedItems.length / filteredItems.length) * 100)
     : 0
@@ -4181,31 +4121,25 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
   const technicianStats = uniqueTechnicians.map((tech: string) => {
     const techItems = filteredItems.filter((i: any) => i.technician === tech)
     const completed = techItems.filter((i: any) => i.status === 'Completed')
-    const totalRevenue = completed.reduce((acc: number, item: any) => 
-      acc + parseInt(item.cost?.replace(/[^0-9]/g, '') || '0'), 0)
     return {
       name: tech,
       total: techItems.length,
       completed: completed.length,
-      revenue: totalRevenue,
       rate: techItems.length > 0 ? Math.round((completed.length / techItems.length) * 100) : 0
     }
-  }).sort((a, b) => b.revenue - a.revenue)
+  }).sort((a, b) => b.completed - a.completed)
 
-  const monthlyData: Record<string, { count: number; revenue: number }> = {}
+  const monthlyData: Record<string, number> = {}
   filteredItems.forEach((item: any) => {
     if (item.date) {
       const monthKey = item.date.substring(0, 7)
       if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { count: 0, revenue: 0 }
+        monthlyData[monthKey] = 0
       }
-      monthlyData[monthKey].count++
-      if (item.status === 'Completed') {
-        monthlyData[monthKey].revenue += parseInt(item.cost?.replace(/[^0-9]/g, '') || '0')
-      }
+      monthlyData[monthKey]++
     }
   })
-  const sortedMonths = Object.entries(monthlyData).sort((a, b) => a[0].localeCompare(b[0]))
+  const sortedMonths = Object.entries(monthlyData).sort((a, b) => a[0].localeCompare(b[0])) as [string, number][]
 
   const serviceTypeCounts = {
     Installation: filteredItems.filter((i: any) => i.serviceType === 'Installation').length,
@@ -4217,7 +4151,7 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
 
   const handleExportCSV = () => {
     const dateRange = dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : new Date().toISOString().split('T')[0]
-    const headers = ['Service Type', 'Title', 'Client', 'Date', 'Time', 'Technician', 'Cost', 'Status', 'Location']
+    const headers = ['Service Type', 'Title', 'Client', 'Date', 'Time', 'Technician', 'Status', 'Location']
     const csvContent = [
       headers.join(','),
       ...filteredItems.map((item: any) => [
@@ -4227,7 +4161,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
         `"${item.date || ''}"`,
         `"${item.time || ''}"`,
         `"${item.technician || ''}"`,
-        `"${item.cost || ''}"`,
         `"${item.status || ''}"`,
         `"${item.location || item.address || ''}"`,
       ].join(','))
@@ -4253,19 +4186,17 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
     doc.text(`Date Range: ${dateRange}`, 14, 30)
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 36)
     doc.text(`Total Records: ${filteredItems.length}`, 14, 42)
-    doc.text(`Total Revenue: ₱${totalRevenue.toLocaleString()}`, 14, 48)
     
     const tableData = filteredItems.map((item: any) => [
       item.title || '',
       item.client_name || '',
       item.date || '',
       item.technician || 'N/A',
-      item.cost || '₱0',
       item.status || ''
     ])
     
     autoTable(doc, {
-      head: [['Service', 'Client', 'Date', 'Technician', 'Cost', 'Status']],
+      head: [['Service', 'Client', 'Date', 'Technician', 'Status']],
       body: tableData,
       startY: 55,
       styles: { fontSize: 8 },
@@ -4278,137 +4209,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
     link.download = `report_${dateFrom || dateTo || new Date().toISOString().split('T')[0]}.pdf`
     link.click()
     toast.success(`PDF exported successfully (${filteredItems.length} records)`)
-  }
-
-  const generateOfficialReceipt = (item: any) => {
-    const receiptWindow = window.open('', '_blank', 'width=600,height=800')
-    if (!receiptWindow) return
-    
-    const receiptNumber = `OR-${Date.now().toString().slice(-8)}`
-    const cost = item.cost ? parseFloat(item.cost.replace(/[^0-9.]/g, '')) : 0
-    const vat = cost * 0.12
-    const total = cost
-    
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Official Receipt - ${receiptNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Courier New', monospace; padding: 40px; max-width: 600px; margin: 0 auto; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-          .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-          .company-details { font-size: 12px; color: #666; }
-          .receipt-title { font-size: 18px; font-weight: bold; margin: 20px 0 10px; text-align: center; }
-          .receipt-number { text-align: center; font-size: 14px; margin-bottom: 20px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
-          .info-label { font-weight: bold; }
-          .items-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .items-table th, .items-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-          .items-table th { background: #f5f5f5; }
-          .totals { margin-top: 20px; text-align: right; }
-          .total-row { font-size: 16px; margin: 5px 0; }
-          .grand-total { font-size: 20px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
-          .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #666; }
-          .signature { margin-top: 40px; display: flex; justify-content: space-between; }
-          .sig-line { text-align: center; width: 200px; }
-          .sig-line .line { border-top: 1px solid #000; margin-top: 40px; }
-          @media print { body { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-name">AIRCON SERVICES</div>
-          <div class="company-details">
-            123 Service Street, Manila City<br>
-            Phone: (02) 1234-5678 | Email: info@airconservices.com
-          </div>
-        </div>
-        
-        <div class="receipt-title">OFFICIAL RECEIPT</div>
-        <div class="receipt-number">Receipt No: ${receiptNumber}</div>
-        
-        <div class="info-row">
-          <span class="info-label">Date:</span>
-          <span>${new Date().toLocaleDateString()}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Client:</span>
-          <span>${item.client_name || 'N/A'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Service:</span>
-          <span>${item.title || item.service_type || 'N/A'}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Address:</span>
-          <span>${item.location || item.address || 'N/A'}</span>
-        </div>
-        
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th>Qty</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${item.title || item.service_type || 'Service'} - ${item.technician || 'Technician'}</td>
-              <td>1</td>
-              <td>₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <div class="totals">
-          <div class="total-row">Subtotal: ₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
-          <div class="total-row">VAT (12%): ₱${vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
-          <div class="total-row grand-total">TOTAL: ₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
-        </div>
-        
-        <div class="signature">
-          <div class="sig-line">
-            <div>Received By</div>
-            <div class="line"></div>
-          </div>
-          <div class="sig-line">
-            <div>Authorized Signature</div>
-            <div class="line"></div>
-          </div>
-        </div>
-        
-        <div class="footer">
-          <p>Thank you for your business!</p>
-          <p>This serve as your official receipt.</p>
-          <p>Please keep this for your records.</p>
-        </div>
-        
-        <div style="text-align: center; margin-top: 20px;">
-          <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">Print Receipt</button>
-        </div>
-      </body>
-      </html>
-    `
-    
-    receiptWindow.document.write(receiptHTML)
-    receiptWindow.document.close()
-    toast.success('Official receipt generated')
-  }
-
-  const handleGenerateReceipt = (item: any) => {
-    setSelectedReceiptItem(item)
-    setShowReceiptDialog(true)
-  }
-
-  const confirmGenerateReceipt = () => {
-    if (selectedReceiptItem) {
-      generateOfficialReceipt(selectedReceiptItem)
-      setShowReceiptDialog(false)
-      setSelectedReceiptItem(null)
-    }
   }
 
   return (
@@ -4549,12 +4349,12 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Revenue</p>
-                  <p className="text-3xl font-bold text-green-700 mt-1">₱{totalRevenue.toLocaleString()}</p>
-                  <p className="text-xs text-gray-400 mt-1">From {completedItems.length} completed jobs</p>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Completed Jobs</p>
+                  <p className="text-3xl font-bold text-green-700 mt-1">{completedItems.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">Out of {filteredItems.length} total</p>
                 </div>
                 <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center">
-                  <TrendingUp className="h-6 w-6 text-green-500" />
+                  <CheckCircle className="h-6 w-6 text-green-500" />
                 </div>
               </div>
             </CardContent>
@@ -4634,13 +4434,12 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-                {sortedMonths.slice(-6).map(([month, data]) => (
-                  <div key={month} className="text-center p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-500 font-medium">{month}</p>
-                    <p className="text-lg font-bold text-[#005596]">{data.count}</p>
-                    <p className="text-xs text-green-600">₱{data.revenue.toLocaleString()}</p>
-                  </div>
-                ))}
+                  {sortedMonths.slice(-6).map(([month, count]) => (
+                    <div key={month} className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs text-gray-500 font-medium">{month}</p>
+                      <p className="text-lg font-bold text-[#005596]">{count}</p>
+                    </div>
+                  ))}
               </div>
             </CardContent>
           </Card>
@@ -4661,7 +4460,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
                       <th className="text-right py-2 font-medium text-gray-500">Total Jobs</th>
                       <th className="text-right py-2 font-medium text-gray-500">Completed</th>
                       <th className="text-right py-2 font-medium text-gray-500">Rate</th>
-                      <th className="text-right py-2 font-medium text-gray-500">Revenue</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4675,7 +4473,6 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
                             {tech.rate}%
                           </span>
                         </td>
-                        <td className="text-right font-medium text-green-600">₱{tech.revenue.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -4698,11 +4495,7 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
               <Button variant="outline" onClick={handleExportPDF} className="gap-2">
                 <FileText className="h-4 w-4" />Export as PDF ({filteredItems.length} records)
               </Button>
-              {filteredItems.length === 1 && (
-                <Button variant="outline" onClick={() => generateOfficialReceipt(filteredItems[0])} className="gap-2 border-green-200 text-green-700 hover:bg-green-50">
-                  <FileText className="h-4 w-4" />Generate Official Receipt
-                </Button>
-              )}
+              
             </div>
           </CardContent>
         </Card>
@@ -4720,12 +4513,8 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
                       <p className="font-bold text-[#005596] capitalize">{item.title}</p>
                       <p className="text-xs text-gray-400">{item.date} - {item.time || '09:00'} • {item.technician || 'Unassigned'}</p>
                     </div>
-                    <div className="flex items-center gap-8">
-                      <div className="text-right">
-                        <p className="font-bold">{item.cost || '₱0'}</p>
-                        <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : 'text-blue-500'}`}>{item.status}</p>
-                      </div>
-                      <Button variant="outline" size="sm" className="h-8" onClick={() => handleGenerateReceipt(item)}><FileText className="h-3 w-3 mr-2" />Receipt</Button>
+                    <div className="text-right">
+                      <p className={`text-[10px] font-bold uppercase ${item.status === 'Completed' ? 'text-green-500' : item.status === 'Cancelled' ? 'text-red-500' : item.status === 'Rescheduled' ? 'text-orange-500' : 'text-blue-500'}`}>{item.status}</p>
                     </div>
                   </div>
                 ))
@@ -4734,31 +4523,7 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
         </Card>
       </main>
 
-      {/* Receipt Generation Dialog */}
-      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Generate Official Receipt</DialogTitle>
-          </DialogHeader>
-          {selectedReceiptItem && (
-            <div className="py-4 space-y-4">
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <p className="text-sm"><span className="font-medium">Client:</span> {selectedReceiptItem.client_name}</p>
-                <p className="text-sm"><span className="font-medium">Service:</span> {selectedReceiptItem.title}</p>
-                <p className="text-sm"><span className="font-medium">Date:</span> {selectedReceiptItem.date}</p>
-                <p className="text-sm"><span className="font-medium">Cost:</span> {selectedReceiptItem.cost || '₱0'}</p>
-              </div>
-              <p className="text-sm text-gray-600">This will generate an official receipt that can be printed.</p>
-            </div>
-          )}
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="outline" onClick={() => setShowReceiptDialog(false)}>Cancel</Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={confirmGenerateReceipt}>
-              Generate Receipt
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      
     </div>
   )
 }

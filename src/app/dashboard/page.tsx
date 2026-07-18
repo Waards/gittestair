@@ -11,7 +11,6 @@ import {
   getUserNotifications,
   markUserNotificationAsRead,
   updateProfile,
-  getUserMaintenanceWithItems,
   rescheduleService,
   cancelService,
   getUserClientUnits,
@@ -84,7 +83,6 @@ export default function ClientDashboard() {
     completedServices: 0
   })
   const [activities, setActivities] = useState<any[]>([])
-  const [maintenanceData, setMaintenanceData] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
@@ -148,12 +146,11 @@ export default function ClientDashboard() {
 
   const fetchData = async () => {
     try {
-      const [profileData, statsData, activityData, notifData, maintenanceItems] = await Promise.all([
+      const [profileData, statsData, activityData, notifData] = await Promise.all([
         getProfile(),
         getDashboardStats(),
         getUserActivity(),
-        getUserNotifications(),
-        getUserMaintenanceWithItems()
+        getUserNotifications()
       ])
 
       if (!profileData) {
@@ -163,7 +160,6 @@ export default function ClientDashboard() {
       setProfile(profileData)
       setStats(statsData)
       setActivities(activityData || [])
-      setMaintenanceData(maintenanceItems || [])
       setNotifications(notifData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -441,7 +437,7 @@ export default function ClientDashboard() {
 
             <div className="bg-white p-6 rounded-xl border border-slate-100">
               <h2 className="font-bold text-[#1E293B] mb-4">Your Recent Services</h2>
-              {activities.length === 0 && maintenanceData.length === 0 ? (
+               {activities.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 space-y-4">
                   <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
                     <Activity className="h-8 w-8 text-slate-300" />
@@ -512,64 +508,7 @@ export default function ClientDashboard() {
                     </div>
                   ))}
 
-                  {maintenanceData.map((maint) => (
-                    <div key={maint.id} className="p-5 rounded-xl border border-slate-100 bg-white hover:border-[#005596]/20 hover:shadow-md transition-all">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-3">
-                            <span className="font-extrabold text-[15px] text-[#1E293B] tracking-tight">{maint.title}</span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase text-white tracking-wider ${getStatusColor(maint.status)}`}>
-                              {maint.status}
-                            </span>
-                            {maint.is_multi_unit && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
-                                Multi-Unit
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5" />
-                            Scheduled on {maint.date} at {maint.time}
-                          </p>
-                        </div>
-                        <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
-                          <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{maint.progress || 0}% Complete</span>
-                          <div className="w-full">
-                            <Progress value={maint.progress || 0} status={getStatusType(maint.status)} className="h-2 rounded-full" />
-                          </div>
-                        </div>
-                      </div>
-                      {maint.notes && (
-                        <div className="mt-4 pt-4 border-t border-slate-50">
-                          <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
-                            <span className="font-bold text-[10px] uppercase tracking-widest text-[#005596] block mb-1 opacity-80">Reference Notes:</span>
-                            {maint.notes}
-                          </p>
-                        </div>
-                      )}
-                      {canReschedule(maint) && (
-                        <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end gap-3">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleCancelClick(maint)}
-                            className="text-red-600 border-red-300 hover:bg-red-50"
-                          >
-                            Cancel Service
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleRescheduleClick(maint)}
-                            className="text-[#005596] border-[#005596]"
-                          >
-                            <Edit3 className="h-3 w-3 mr-2" />
-                            Reschedule
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  
                 </div>
               )}
             </div>

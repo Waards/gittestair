@@ -36,8 +36,6 @@ export async function submitLead(formData: FormData) {
   const airconBrand = formData.get('airconBrand') as string
   const airconType = formData.get('airconType') as string
   const horsepower = formData.get('horsepower') as string
-  const btu = formData.get('btu') as string
-
   if (!phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
     return { error: 'Please fill in all required fields' }
   }
@@ -62,8 +60,6 @@ export async function submitLead(formData: FormData) {
   const sanitizedAirconBrand = sanitizedString(airconBrand || '')
   const sanitizedAirconType = sanitizedString(airconType || '')
   const sanitizedHorsepower = sanitizedString(horsepower || '')
-  const sanitizedBtu = sanitizedString(btu || '')
-
   if (!sanitizedFullName || !sanitizedEmailAddr || !sanitizedStreet || !sanitizedBarangay || !sanitizedCity) {
     return { error: 'Invalid input detected. Please check your entries.' }
   }
@@ -137,7 +133,6 @@ export async function submitLead(formData: FormData) {
       aircon_brand: sanitizedAirconBrand || null,
       aircon_type: sanitizedAirconType || null,
       horsepower: sanitizedHorsepower || null,
-      btu: sanitizedBtu || null,
       unit_brand_type: (sanitizedAirconBrand && sanitizedAirconType) ? `${sanitizedAirconBrand} ${sanitizedAirconType}` : null,
       first_name: sanitizedFirstName || null,
       middle_name: sanitizedMiddleName || null,
@@ -691,19 +686,8 @@ export async function convertLeadToClient(leadId: string) {
   const isInstallation = serviceType.toLowerCase().includes('installation')
   const isRepair = serviceType.toLowerCase().includes('repair') || serviceType.toLowerCase().includes('freon') || serviceType.toLowerCase().includes('dismantle') || serviceType.toLowerCase().includes('relocation')
 
-  // Build notes with aircon specifications
-  let jobNotes = lead.additional_info || ''
-  if (isInstallation && lead.aircon_brand) {
-    const specs = [
-      `Brand: ${lead.aircon_brand}`,
-      lead.aircon_type ? `Type: ${lead.aircon_type}` : null,
-      lead.horsepower ? `HP: ${lead.horsepower}` : null,
-      lead.btu ? `BTU: ${lead.btu}` : null,
-    ].filter(Boolean).join(' | ')
-    jobNotes = specs + (jobNotes ? '\n' + jobNotes : '')
-  }
-
-  const jobData = {
+  // Build job data
+  const jobData: any = {
     title: serviceType,
     client_name: lead.full_name,
     location: lead.service_address,
@@ -711,10 +695,16 @@ export async function convertLeadToClient(leadId: string) {
     date: lead.preferred_date || new Date().toISOString().split('T')[0],
     time: lead.preferred_time || '09:00 AM - 11:00 AM',
     cost: '',
-    notes: jobNotes,
+    notes: lead.additional_info || '',
     type: lead.client_type || 'Standard',
     status: 'Scheduled',
     progress: 0
+  }
+
+  if (isInstallation) {
+    jobData.aircon_brand = lead.aircon_brand || null
+    jobData.aircon_type = lead.aircon_type || null
+    jobData.horsepower = lead.horsepower || null
   }
 
   let tableName = 'maintenance'
