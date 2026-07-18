@@ -16,6 +16,10 @@ export async function submitLead(formData: FormData) {
   const supabase = await createAdminClient()
 
   const fullName = formData.get('fullName') as string
+  const firstName = formData.get('firstName') as string
+  const middleName = formData.get('middleName') as string
+  const lastName = formData.get('lastName') as string
+  const suffix = formData.get('suffix') as string
   const phone = formData.get('phone') as string
   const email = formData.get('email') as string
   const street = formData.get('street') as string
@@ -34,11 +38,19 @@ export async function submitLead(formData: FormData) {
   const horsepower = formData.get('horsepower') as string
   const btu = formData.get('btu') as string
 
-  if (!fullName || !phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
+  if (!phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
     return { error: 'Please fill in all required fields' }
   }
 
+  if (clientType !== 'Corporate' && (!firstName || !lastName)) {
+    return { error: 'Please fill in first name and last name' }
+  }
+
   const sanitizedFullName = sanitizedName(fullName)
+  const sanitizedFirstName = sanitizedName(firstName)
+  const sanitizedMiddleName = sanitizedName(middleName)
+  const sanitizedLastName = sanitizedName(lastName)
+  const sanitizedSuffix = sanitizedName(suffix)
   const sanitizedPhoneNum = sanitizedPhone(phone)
   const sanitizedEmailAddr = sanitizedEmail(email)
   const sanitizedStreet = sanitizedString(street)
@@ -121,16 +133,20 @@ export async function submitLead(formData: FormData) {
       barangay: sanitizedBarangay,
       city: sanitizedCity,
       zip_code: sanitizedZipCode || null,
+      province: sanitizedProvince || null,
       aircon_brand: sanitizedAirconBrand || null,
       aircon_type: sanitizedAirconType || null,
       horsepower: sanitizedHorsepower || null,
       btu: sanitizedBtu || null,
       unit_brand_type: (sanitizedAirconBrand && sanitizedAirconType) ? `${sanitizedAirconBrand} ${sanitizedAirconType}` : null,
+      first_name: sanitizedFirstName || null,
+      middle_name: sanitizedMiddleName || null,
+      last_name: sanitizedLastName || null,
+      suffix: sanitizedSuffix || null,
       company_name: clientType === 'Corporate' ? sanitizedCompanyName : null,
       contact_person: sanitizedContactPerson || null,
       building_name: sanitizedBuildingName || null,
       floor: sanitizedFloor || null,
-      province: sanitizedProvince || null,
       designation: sanitizedDesignation || null,
       number_of_units: sanitizedNumberOfUnits,
       special_instructions: sanitizedSpecialInstructions || null,
@@ -644,6 +660,10 @@ export async function convertLeadToClient(leadId: string) {
     .insert({
       id: authData.user.id,
       full_name: lead.full_name,
+      first_name: lead.first_name,
+      middle_name: lead.middle_name,
+      last_name: lead.last_name,
+      suffix: lead.suffix,
       email: lead.email,
       phone: lead.phone_number,
       address: lead.service_address,

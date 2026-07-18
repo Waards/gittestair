@@ -74,7 +74,10 @@ export function BookingForm({ trigger }: BookingFormProps) {
   }, [])
 
   const [formData, setFormData] = useState({
-    fullName: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    suffix: '',
     phone: '',
     email: '',
     street: '',
@@ -109,6 +112,7 @@ export function BookingForm({ trigger }: BookingFormProps) {
       formData.street,
       formData.barangay,
       formData.city,
+      formData.province,
       formData.zipCode
     ].filter(Boolean)
     return parts.join(', ')
@@ -143,7 +147,7 @@ const nextStep = () => {
       // Validate required fields based on client type
       const required = formData.clientType === 'Corporate' 
         ? !formData.companyName || !formData.contactPerson || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city || !formData.province || !formData.buildingName || !formData.floor
-        : !formData.fullName || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city
+        : !formData.firstName || !formData.lastName || !formData.phone || !formData.email || !formData.street || !formData.barangay || !formData.city
       
       if (required) {
         toast.error('Please fill in all required fields')
@@ -176,13 +180,20 @@ const nextStep = () => {
     setIsSubmitting(true)
     const data = new FormData()
 
-    // Core fields - for Corporate, contactPerson becomes fullName
-    data.append('fullName', formData.clientType === 'Corporate' ? formData.contactPerson : formData.fullName)
+    const fullName = formData.clientType === 'Corporate'
+      ? formData.contactPerson
+      : [formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ')
+    data.append('fullName', fullName)
+    data.append('firstName', formData.firstName)
+    data.append('middleName', formData.middleName)
+    data.append('lastName', formData.lastName)
+    data.append('suffix', formData.suffix)
     data.append('phone', formData.phone)
     data.append('email', formData.email)
     data.append('street', formData.street)
     data.append('barangay', formData.barangay)
     data.append('city', formData.city)
+    data.append('province', formData.province)
     data.append('zipCode', formData.zipCode)
     data.append('clientType', formData.clientType)
     
@@ -238,7 +249,10 @@ const nextStep = () => {
       setIsOpen(false)
       setStep(1)
       setFormData({
-        fullName: '',
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        suffix: '',
         phone: '',
         email: '',
         street: '',
@@ -347,9 +361,36 @@ const nextStep = () => {
 
                   {formData.clientType === 'Residential' ? (
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="fullName">Full Name *</Label>
-                        <Input id="fullName" name="fullName" placeholder="Full Name" value={formData.fullName} onChange={handleInputChange} />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="firstName">First Name *</Label>
+                          <Input id="firstName" name="firstName" placeholder="First Name" value={formData.firstName} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="middleName">Middle Name <span className="text-gray-400">(Optional)</span></Label>
+                          <Input id="middleName" name="middleName" placeholder="Middle Name" value={formData.middleName} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lastName">Last Name *</Label>
+                          <Input id="lastName" name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="suffix">Suffix <span className="text-gray-400">(Optional)</span></Label>
+                          <select
+                            id="suffix"
+                            name="suffix"
+                            value={formData.suffix}
+                            onChange={(e) => handleInputChange(e as any)}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="">None</option>
+                            <option value="Jr.">Jr.</option>
+                            <option value="Sr.">Sr.</option>
+                            <option value="II">II</option>
+                            <option value="III">III</option>
+                            <option value="IV">IV</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -410,10 +451,14 @@ const nextStep = () => {
                         <Label className="text-xs text-gray-500">Barangay / District</Label>
                         <Input name="barangay" placeholder="e.g., San Lorenzo" value={formData.barangay} onChange={handleInputChange} />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs text-gray-500">City / Municipality</Label>
                           <Input name="city" placeholder="e.g., Makati City" value={formData.city} onChange={handleInputChange} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Province</Label>
+                          <Input name="province" placeholder="e.g., Metro Manila" value={formData.province} onChange={handleInputChange} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-gray-500">ZIP Code</Label>
@@ -645,7 +690,7 @@ const nextStep = () => {
                       <div className="space-y-2">
                         <div className="flex items-start gap-2 text-sm">
                           <User className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
-                          <span>{formData.fullName}</span>
+                          <span>{[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ')}{formData.suffix ? `, ${formData.suffix}` : ''}</span>
                         </div>
                         <div className="flex items-start gap-2 text-sm">
                           <Phone className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
@@ -660,6 +705,7 @@ const nextStep = () => {
                           <div className="flex flex-col">
                             {formData.street && <span>{formData.street}</span>}
                             {formData.barangay && <span>{formData.barangay}, {formData.city}</span>}
+                            {formData.province && <span className="text-slate-500">{formData.province}</span>}
                             {formData.zipCode && <span className="text-slate-500">{formData.zipCode}</span>}
                           </div>
                         </div>

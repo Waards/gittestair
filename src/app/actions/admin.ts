@@ -1882,6 +1882,10 @@ export async function convertLeadToClient(leadId: string) {
     .insert({
       id: userId,
       full_name: lead.client_type === 'Corporate' ? lead.company_name : lead.full_name,
+      first_name: lead.first_name,
+      middle_name: lead.middle_name,
+      last_name: lead.last_name,
+      suffix: lead.suffix,
       email: lead.email,
       phone: lead.phone_number,
       role: 'client',
@@ -1890,12 +1894,12 @@ export async function convertLeadToClient(leadId: string) {
       barangay: lead.barangay,
       city: lead.city,
       zip_code: lead.zip_code,
+      province: lead.province,
       // Corporate fields
       company_name: lead.company_name,
       contact_person: lead.contact_person,
       building_name: lead.building_name,
       floor: lead.floor,
-      province: lead.province,
     })
   
   if (profileError) {
