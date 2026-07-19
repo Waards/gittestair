@@ -692,7 +692,8 @@ export async function convertLeadToClient(leadId: string) {
       preferred_date: lead.preferred_date || null,
       preferred_time: lead.preferred_time || null,
       service_address: lead.service_address || null,
-      phone_number: lead.phone_number || null
+      phone_number: lead.phone_number || null,
+      status: 'Pending'
     })
 
   await supabase

@@ -361,7 +361,8 @@ export async function requestService(formData: FormData) {
       preferred_date: date,
       preferred_time: time,
       service_address: address || null,
-      phone_number: phone || null
+      phone_number: phone || null,
+      status: 'Pending'
     })
 
   // Create notification for admin with detailed information
