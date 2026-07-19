@@ -159,7 +159,26 @@ export default function ClientDashboard() {
       }
       setProfile(profileData)
       setStats(statsData)
-      setActivities(activityData || [])
+      // Deduplicate: skip appointments that have a matching job record
+      const jobsMap = new Map()
+      ;(activityData || []).filter((a: any) => a.table !== 'appointments').forEach((a: any) => {
+        jobsMap.set(`${a.client_name}|${a.date}`, true)
+      })
+      const deduped = (activityData || []).filter((a: any) =>
+        a.table !== 'appointments' || !jobsMap.has(`${a.client_name}|${a.date}`)
+      )
+      // Sort by status priority: In Progress > Pending > Scheduled/Rescheduled > others, then by date
+      const statusPrio: Record<string, number> = {
+        'In Progress': 0, 'Pending': 1, 'Scheduled': 2, 'Rescheduled': 3,
+        'Delayed': 4, 'Issue': 5, 'Completed': 6, 'Success': 7, 'Failed': 8, 'Cancelled': 9,
+      }
+      deduped.sort((a: any, b: any) => {
+        const aPrio = statusPrio[a.status] ?? 99
+        const bPrio = statusPrio[b.status] ?? 99
+        if (aPrio !== bPrio) return aPrio - bPrio
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      })
+      setActivities(deduped)
       setNotifications(notifData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -277,11 +296,11 @@ export default function ClientDashboard() {
 
   const canReschedule = (item: any) => {
     if (!item.date || !item.time) return false
-    if (!isActiveStatus(item.status)) return false
+    if (!['Pending', 'Scheduled', 'Rescheduled'].includes(item.status)) return false
     const timePart = item.time.split(' - ')[0]
     const dateTime = new Date(`${item.date}T${timePart}`)
-    const threeHoursBefore = new Date(dateTime.getTime() - (3 * 60 * 60 * 1000))
-    return new Date() < threeHoursBefore
+    const twoHoursBefore = new Date(dateTime.getTime() - (2 * 60 * 60 * 1000))
+    return new Date() < twoHoursBefore
   }
 
   const handleRescheduleClick = (item: any) => {
@@ -319,11 +338,11 @@ export default function ClientDashboard() {
 
   const canCancel = (item: any) => {
     if (!item.date || !item.time) return false
-    if (!isActiveStatus(item.status)) return false
+    if (!['Pending', 'Scheduled', 'Rescheduled'].includes(item.status)) return false
     const timePart = item.time.split(' - ')[0]
     const dateTime = new Date(`${item.date}T${timePart}`)
-    const threeHoursBefore = new Date(dateTime.getTime() - (3 * 60 * 60 * 1000))
-    return new Date() < threeHoursBefore
+    const twoHoursBefore = new Date(dateTime.getTime() - (2 * 60 * 60 * 1000))
+    return new Date() < twoHoursBefore
   }
 
   const handleCancelClick = (item: any) => {
