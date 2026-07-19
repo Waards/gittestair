@@ -16,3 +16,10 @@ CREATE TABLE IF NOT EXISTS client_requests (
 -- Ensure status column exists (safe to run even if already exists)
 ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Pending';
 ALTER TABLE client_requests ALTER COLUMN status SET DEFAULT 'Pending';
+
+-- Enable Row Level Security
+ALTER TABLE client_requests ENABLE ROW LEVEL SECURITY;
+
+-- Allow service_role full access (server actions)
+CREATE POLICY "Service role has full access" ON client_requests
+  FOR ALL USING (true) WITH CHECK (true);
