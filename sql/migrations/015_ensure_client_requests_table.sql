@@ -13,7 +13,11 @@ CREATE TABLE IF NOT EXISTS client_requests (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Ensure status column exists (safe to run even if already exists)
+-- Ensure all columns exist (safe to run even if already exists)
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS phone_number TEXT;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS service_address TEXT;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS preferred_date TEXT;
+ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS preferred_time TEXT;
 ALTER TABLE client_requests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Pending';
 ALTER TABLE client_requests ALTER COLUMN status SET DEFAULT 'Pending';
 
