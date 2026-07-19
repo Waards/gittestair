@@ -3600,6 +3600,9 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
+  const [todayPage, setTodayPage] = useState(1)
+
+  useEffect(() => { setTodayPage(1) }, [searchQuery, statusFilter, serviceFilter])
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -3843,16 +3846,40 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
                 <p className="text-sm text-gray-400 text-center py-4">No appointments today</p>
               ) : (
                 <div className="space-y-3">
-                  {todayAppointments.map((apt: any) => (
-                    <div key={apt.id} className="p-3 border rounded-lg bg-gray-50 space-y-1">
-                      <div className="flex justify-between">
-                        <span className="font-bold text-[#005596]">{apt.time}</span>
-                        <Badge variant="outline" className="text-[10px]">{apt.service_type}</Badge>
-                      </div>
-                      <p className="text-sm font-medium">{apt.client_name}</p>
-                      <p className="text-xs text-gray-500 truncate">{apt.address}</p>
-                    </div>
-                  ))}
+                  {(() => {
+                    const itemsPerPage = 4
+                    const totalPages = Math.ceil(todayAppointments.length / itemsPerPage)
+                    const safePage = Math.min(todayPage, totalPages)
+                    const startIdx = (safePage - 1) * itemsPerPage
+                    const pagedItems = todayAppointments.slice(startIdx, startIdx + itemsPerPage)
+                    return (
+                      <>
+                        {pagedItems.map((apt: any) => (
+                          <div key={apt.id} className="p-3 border rounded-lg bg-gray-50 space-y-1">
+                            <div className="flex justify-between">
+                              <span className="font-bold text-[#005596]">{apt.time}</span>
+                              <Badge variant="outline" className="text-[10px]">{apt.service_type}</Badge>
+                            </div>
+                            <p className="text-sm font-medium">{apt.client_name}</p>
+                            <p className="text-xs text-gray-500 truncate">{apt.address}</p>
+                          </div>
+                        ))}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-2 border-t">
+                            <p className="text-xs text-gray-500">Page {safePage} of {totalPages}</p>
+                            <div className="flex gap-1">
+                              <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage <= 1} onClick={() => setTodayPage(safePage - 1)}>
+                                <ChevronLeft className="h-3 w-3" />
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage >= totalPages} onClick={() => setTodayPage(safePage + 1)}>
+                                <ChevronRight className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </CardContent>
