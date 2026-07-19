@@ -52,6 +52,9 @@ import {
   updateInstallationProgress,
   updateRepairProgress,
   updateMaintenanceProgress,
+  updateInstallationTechnician,
+  updateRepairTechnician,
+  updateMaintenanceTechnician,
   getAllPendingRequests,
   acceptRequestAsInstallation,
   acceptRequestAsRepair,
@@ -368,6 +371,9 @@ export default function AdminDashboard() {
   const [maintenanceProgressStatus, setMaintenanceProgressStatus] = useState('Scheduled')
   const [maintenanceProgress, setMaintenanceProgress] = useState(0)
   const [maintenanceProgressNotes, setMaintenanceProgressNotes] = useState('')
+  const [installationTechnician, setInstallationTechnician] = useState('')
+  const [repairTechnician, setRepairTechnician] = useState('')
+  const [maintenanceTechnician, setMaintenanceTechnician] = useState('')
 
   // Auto-update progress when status changes
   useEffect(() => {
@@ -419,6 +425,7 @@ export default function AdminDashboard() {
     setInstallationProgressStatus(installation.status || 'Scheduled')
     setInstallationProgress(installation.progress || 0)
     setInstallationProgressNotes(installation.notes || '')
+    setInstallationTechnician(installation.technician || '')
     setShowInstallationDetails(true)
   }
 
@@ -427,6 +434,7 @@ export default function AdminDashboard() {
     setRepairProgressStatus(repair.status || 'Scheduled')
     setRepairProgress(repair.progress || 0)
     setRepairProgressNotes(repair.notes || '')
+    setRepairTechnician(repair.technician || '')
     setShowRepairDetails(true)
   }
 
@@ -444,6 +452,7 @@ export default function AdminDashboard() {
     }
     setMaintenanceProgress(statusProgressMap[maintenance.status] || maintenance.progress || 0)
     setMaintenanceProgressNotes(maintenance.notes || '')
+    setMaintenanceTechnician(maintenance.technician || '')
     setShowMaintenanceDetails(true)
   }
 
@@ -491,6 +500,48 @@ export default function AdminDashboard() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSaveInstallationTechnician = async () => {
+    if (!selectedInstallation) return
+    setIsLoading(true)
+    const result = await updateInstallationTechnician(selectedInstallation.id, installationTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedInstallation({ ...selectedInstallation, technician: installationTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
+  }
+
+  const handleSaveRepairTechnician = async () => {
+    if (!selectedRepair) return
+    setIsLoading(true)
+    const result = await updateRepairTechnician(selectedRepair.id, repairTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedRepair({ ...selectedRepair, technician: repairTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
+  }
+
+  const handleSaveMaintenanceTechnician = async () => {
+    if (!selectedMaintenance) return
+    setIsLoading(true)
+    const result = await updateMaintenanceTechnician(selectedMaintenance.id, maintenanceTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedMaintenance({ ...selectedMaintenance, technician: maintenanceTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
   }
 
   const handleSignOut = async () => {
@@ -1026,7 +1077,19 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedInstallation.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={installationTechnician} onValueChange={setInstallationTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {technicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveInstallationTechnician} disabled={isLoading || !installationTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
@@ -1132,7 +1195,19 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedRepair.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={repairTechnician} onValueChange={setRepairTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {technicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveRepairTechnician} disabled={isLoading || !repairTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
@@ -1239,7 +1314,19 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedMaintenance.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={maintenanceTechnician} onValueChange={setMaintenanceTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {technicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveMaintenanceTechnician} disabled={isLoading || !maintenanceTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
