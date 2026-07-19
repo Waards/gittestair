@@ -5432,17 +5432,55 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
 
       toast.success(`Request approved! ${serviceCategory} job created.`)
       
-      if (serviceCategory === 'Installation') {
-        const updated = await getInstallations()
-        setInstallations(updated.data || [])
-        setView('installations')
-      } else if (serviceCategory === 'Repair') {
-        const updated = await getRepairs()
-        setRepairs(updated.data || [])
+      if (serviceCategory === 'Repair') {
+        const newItem = {
+          id: `temp_${Date.now()}`,
+          title: selectedRequestForApprove.request_type || 'Repair',
+          client_name: selectedRequestForApprove.client_name,
+          location: serviceAddress,
+          technician: approveTechnician,
+          date: appointmentDate,
+          time: appointmentTime,
+          cost: totalCost,
+          notes,
+          type: 'Standard',
+          status: 'Scheduled',
+          progress: 0,
+          created_at: new Date().toISOString()
+        }
+        setRepairs(prev => [newItem, ...prev])
         setView('repairs')
+      } else if (serviceCategory === 'Installation') {
+        const newItem = {
+          id: `temp_${Date.now()}`,
+          client_name: selectedRequestForApprove.client_name,
+          location: serviceAddress,
+          technician: approveTechnician,
+          date: appointmentDate,
+          time: appointmentTime,
+          cost: totalCost,
+          notes,
+          status: 'Scheduled',
+          progress: 0,
+          created_at: new Date().toISOString()
+        }
+        setInstallations(prev => [newItem, ...prev])
+        setView('installations')
       } else {
-        const updated = await getMaintenance()
-        setMaintenance(updated.data || [])
+        const newItem = {
+          id: `temp_${Date.now()}`,
+          client_name: selectedRequestForApprove.client_name,
+          location: serviceAddress,
+          technician: approveTechnician,
+          date: appointmentDate,
+          time: appointmentTime,
+          cost: totalCost,
+          notes,
+          status: 'Scheduled',
+          progress: 0,
+          created_at: new Date().toISOString()
+        }
+        setMaintenance(prev => [newItem, ...prev])
         setView('maintenance')
       }
 

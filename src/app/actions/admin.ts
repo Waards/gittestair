@@ -296,7 +296,16 @@ export async function getRepairs(page: number = 1, limit: number = 20) {
 
   if (error) {
     console.error('getRepairs error:', error)
-    return { data: [], total: 0 }
+    const { data: fallbackData, error: fallbackError, count: fallbackCount } = await supabase
+      .from('repairs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (fallbackError) {
+      console.error('getRepairs fallback error:', fallbackError)
+      return { data: [], total: 0 }
+    }
+    return { data: fallbackData || [], total: fallbackCount || 0 }
   }
 
   return { data: data || [], total: count || 0 }
