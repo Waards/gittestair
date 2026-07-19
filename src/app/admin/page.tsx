@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   createClientUser,
   getClients,
@@ -145,6 +145,7 @@ type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance
 
 export default function AdminDashboard() {
   const [view, setView] = useState<View>('dashboard')
+  const dataLoadedRef = useRef({ repairs: false, installations: false, maintenance: false })
   const [clients, setClients] = useState<any[]>([])
   const [clientsTotal, setClientsTotal] = useState(0)
   const [clientsPage, setClientsPage] = useState(1)
@@ -210,12 +211,15 @@ export default function AdminDashboard() {
         getNotifications()
       ])
 
-      if (priorityResults[0].status === 'fulfilled') setInstallations(priorityResults[0].value || [])
-      if (priorityResults[1].status === 'fulfilled') {
-        console.log('getDashboardRepairs result:', priorityResults[1].value)
+      if (priorityResults[0].status === 'fulfilled' && !dataLoadedRef.current.installations) {
+        setInstallations(priorityResults[0].value || [])
+      }
+      if (priorityResults[1].status === 'fulfilled' && !dataLoadedRef.current.repairs) {
         setRepairs(priorityResults[1].value || [])
       }
-      if (priorityResults[2].status === 'fulfilled') setMaintenance(priorityResults[2].value || [])
+      if (priorityResults[2].status === 'fulfilled' && !dataLoadedRef.current.maintenance) {
+        setMaintenance(priorityResults[2].value || [])
+      }
       if (priorityResults[3].status === 'fulfilled') setSettings(priorityResults[3].value)
       if (priorityResults[4].status === 'fulfilled') setNotifications(priorityResults[4].value || [])
 
@@ -247,6 +251,7 @@ export default function AdminDashboard() {
         setClientsTotal(r.total || 0)
       })
     } else if (view === 'installations') {
+      dataLoadedRef.current.installations = true
       getInstallations(1, 20).then((r: any) => {
         setInstallations(r.data || [])
         setInstallationsTotal(r.total || 0)
@@ -254,8 +259,8 @@ export default function AdminDashboard() {
       getClientUnits().then(setClientUnits)
       if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'repairs') {
+      dataLoadedRef.current.repairs = true
       getRepairs(1, 20).then((r: any) => {
-        console.log('getRepairs result:', r)
         setRepairs(r.data || [])
         setRepairsTotal(r.total || 0)
       })
@@ -263,6 +268,7 @@ export default function AdminDashboard() {
       getClientUnits().then(setClientUnits)
       if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'maintenance' && maintenance.length === 0) {
+      dataLoadedRef.current.maintenance = true
       getMaintenanceWithItems(1, 20).then((result: any) => {
         setMaintenance(result.data || [])
         setMaintenanceTotal(result.total || 0)
@@ -314,6 +320,7 @@ export default function AdminDashboard() {
         getClientUnits().then(setClientUnits)
         break
       case 'repairs':
+        dataLoadedRef.current.repairs = true
         getRepairs(repairsPage, 20).then((r: any) => {
           setRepairs(r.data || [])
           setRepairsTotal(r.total || 0)
@@ -338,9 +345,9 @@ export default function AdminDashboard() {
         break
       case 'schedule':
         getAppointments().then(setAppointments)
-        getDashboardInstallations().then(r => setInstallations(r || []))
-        getDashboardRepairs().then(r => setRepairs(r || []))
-        getDashboardMaintenance().then(r => setMaintenance(r || []))
+        getDashboardInstallations().then(r => { if (!dataLoadedRef.current.installations) setInstallations(r || []) })
+        getDashboardRepairs().then(r => { if (!dataLoadedRef.current.repairs) setRepairs(r || []) })
+        getDashboardMaintenance().then(r => { if (!dataLoadedRef.current.maintenance) setMaintenance(r || []) })
         break
       default:
         fetchDashboardData()
