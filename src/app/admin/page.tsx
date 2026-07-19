@@ -1082,7 +1082,7 @@ export default function AdminDashboard() {
                       <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
                       <SelectContent>
                         {technicians.map((t: any) => (
-                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1200,7 +1200,7 @@ export default function AdminDashboard() {
                       <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
                       <SelectContent>
                         {technicians.map((t: any) => (
-                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1319,7 +1319,7 @@ export default function AdminDashboard() {
                       <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
                       <SelectContent>
                         {technicians.map((t: any) => (
-                          <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
