@@ -1062,16 +1062,13 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     progress: 0
   }
 
-  try {
-    const { error: insertError } = await supabase
-      .from('installations')
-      .insert(insertData)
+  const { error: insertError } = await supabase
+    .from('installations')
+    .insert(insertData)
 
-    if (insertError) {
-      return { error: insertError.message }
-    }
-  } catch (e) {
-    console.log('client_request_id column not available:', e)
+  if (insertError) {
+    console.error('acceptRequestAsInstallation: insert error:', insertError)
+    return { error: insertError.message }
   }
 
   await supabase
@@ -1127,16 +1124,13 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     progress: 0
   }
 
-  try {
-    const { error: insertError } = await supabase
-      .from('repairs')
-      .insert(insertData)
+  const { error: insertError } = await supabase
+    .from('repairs')
+    .insert(insertData)
 
-    if (insertError) {
-      return { error: insertError.message }
-    }
-  } catch (e) {
-    console.log('client_request_id column not available:', e)
+  if (insertError) {
+    console.error('acceptRequestAsRepair: insert error:', insertError)
+    return { error: insertError.message }
   }
 
   await supabase
@@ -1192,16 +1186,13 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     progress: 0
   }
 
-  try {
-    const { error: insertError } = await supabase
-      .from('maintenance')
-      .insert(insertData)
+  const { error: insertError } = await supabase
+    .from('maintenance')
+    .insert(insertData)
 
-    if (insertError) {
-      return { error: insertError.message }
-    }
-  } catch (e) {
-    console.log('client_request_id column not available:', e)
+  if (insertError) {
+    console.error('acceptRequestAsMaintenance: insert error:', insertError)
+    return { error: insertError.message }
   }
 
   await supabase
