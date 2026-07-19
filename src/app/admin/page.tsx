@@ -211,7 +211,10 @@ export default function AdminDashboard() {
       ])
 
       if (priorityResults[0].status === 'fulfilled') setInstallations(priorityResults[0].value || [])
-      if (priorityResults[1].status === 'fulfilled') setRepairs(priorityResults[1].value || [])
+      if (priorityResults[1].status === 'fulfilled') {
+        console.log('getDashboardRepairs result:', priorityResults[1].value)
+        setRepairs(priorityResults[1].value || [])
+      }
       if (priorityResults[2].status === 'fulfilled') setMaintenance(priorityResults[2].value || [])
       if (priorityResults[3].status === 'fulfilled') setSettings(priorityResults[3].value)
       if (priorityResults[4].status === 'fulfilled') setNotifications(priorityResults[4].value || [])
@@ -252,6 +255,7 @@ export default function AdminDashboard() {
       if (clients.length === 0) getClients(1, 20).then((r: any) => { setClients(r.data || []); setClientsTotal(r.total || 0) })
     } else if (view === 'repairs') {
       getRepairs(1, 20).then((r: any) => {
+        console.log('getRepairs result:', r)
         setRepairs(r.data || [])
         setRepairsTotal(r.total || 0)
       })
@@ -272,6 +276,24 @@ export default function AdminDashboard() {
       getLeads().then(setLeads)
     } else if (view === 'technicians' && technicians.length === 0) {
       getTechnicians().then(setTechnicians)
+    } else if (view === 'repairs') {
+      getRepairs(repairsPage, 20).then((r: any) => {
+        setRepairs(r.data || [])
+        setRepairsTotal(r.total || 0)
+      })
+      getRepairJobs().then(setRepairJobs)
+      getClientUnits().then(setClientUnits)
+    } else if (view === 'installations') {
+      getInstallations(installationsPage, 20).then((r: any) => {
+        setInstallations(r.data || [])
+        setInstallationsTotal(r.total || 0)
+      })
+      getClientUnits().then(setClientUnits)
+    } else if (view === 'maintenance') {
+      getMaintenanceWithItems(maintenancePage, 20).then((result: any) => {
+        setMaintenance(result.data || [])
+        setMaintenanceTotal(result.total || 0)
+      })
     }
   }, [view])
 
