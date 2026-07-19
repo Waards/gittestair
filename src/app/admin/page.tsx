@@ -3606,9 +3606,14 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Combine all jobs for calendar view
+  // Combine all jobs for calendar view (deduplicate: skip appointments that have a corresponding operational job)
+  const jobKeys = new Set([
+    ...installations.map((j: any) => `${j.client_name}|${j.date}`),
+    ...repairs.map((j: any) => `${j.client_name}|${j.date}`),
+    ...maintenance.map((j: any) => `${j.client_name}|${j.date}`),
+  ])
   const allJobs = [
-    ...appointments.map((apt: any) => ({ ...apt, jobType: 'appointment' })),
+    ...appointments.filter((apt: any) => !jobKeys.has(`${apt.client_name}|${apt.date}`)).map((apt: any) => ({ ...apt, jobType: 'appointment' })),
     ...installations.map((inst: any) => ({ ...inst, jobType: 'installation' })),
     ...repairs.map((rep: any) => ({ ...rep, jobType: 'repair' })),
     ...maintenance.map((maint: any) => ({ ...maint, jobType: 'maintenance' }))
