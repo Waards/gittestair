@@ -351,7 +351,7 @@ export async function requestService(formData: FormData) {
   }
 
   // Create client request record for admin
-  await adminSupabase
+  const { error: requestError } = await adminSupabase
     .from('client_requests')
     .insert({
       client_id: user.id,
@@ -364,6 +364,11 @@ export async function requestService(formData: FormData) {
       phone_number: phone || null,
       status: 'Pending'
     })
+
+  if (requestError) {
+    console.error('requestService: error creating client request:', requestError)
+    return { error: requestError.message }
+  }
 
   // Create notification for admin with detailed information
   let detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +

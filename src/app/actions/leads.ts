@@ -682,7 +682,7 @@ export async function convertLeadToClient(leadId: string) {
   }
 
   // Create client request record for admin to approve
-  await supabase
+  const { error: requestError } = await supabase
     .from('client_requests')
     .insert({
       client_id: authData.user.id,
@@ -695,6 +695,10 @@ export async function convertLeadToClient(leadId: string) {
       phone_number: lead.phone_number || null,
       status: 'Pending'
     })
+
+  if (requestError) {
+    console.error('convertLeadToClient: error creating client request:', requestError)
+  }
 
   await supabase
     .from('notifications')
