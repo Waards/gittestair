@@ -1099,15 +1099,19 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  let clientUnitId = null
+  let airconBrand = null
+  let airconType = null
+  let horsepower = null
   if (request.client_id) {
     const { data: units } = await supabase
       .from('client_units')
-      .select('id')
+      .select('brand, unit_type, horsepower')
       .eq('client_id', request.client_id)
       .limit(1)
     if (units && units.length > 0) {
-      clientUnitId = units[0].id
+      airconBrand = units[0].brand
+      airconType = units[0].unit_type
+      horsepower = units[0].horsepower
     }
   }
 
@@ -1123,7 +1127,9 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     type: data.type || 'Standard',
     status: 'Scheduled',
     progress: 0,
-    client_unit_id: clientUnitId
+    aircon_brand: airconBrand,
+    aircon_type: airconType,
+    horsepower
   }
 
   const { error: insertError } = await supabase
@@ -1174,18 +1180,6 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  let clientUnitId = null
-  if (request.client_id) {
-    const { data: units } = await supabase
-      .from('client_units')
-      .select('id')
-      .eq('client_id', request.client_id)
-      .limit(1)
-    if (units && units.length > 0) {
-      clientUnitId = units[0].id
-    }
-  }
-
   const insertData: any = {
     title: request.request_type,
     client_name: request.client_name,
@@ -1197,8 +1191,7 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     notes: data.notes || request.message,
     type: data.type || 'Standard',
     status: 'Scheduled',
-    progress: 0,
-    client_unit_id: clientUnitId
+    progress: 0
   }
 
   const { error: insertError } = await supabase
@@ -1249,18 +1242,6 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
-  let clientUnitId = null
-  if (request.client_id) {
-    const { data: units } = await supabase
-      .from('client_units')
-      .select('id')
-      .eq('client_id', request.client_id)
-      .limit(1)
-    if (units && units.length > 0) {
-      clientUnitId = units[0].id
-    }
-  }
-
   const insertData: any = {
     title: request.request_type,
     client_name: request.client_name,
@@ -1272,8 +1253,7 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     notes: data.notes || request.message,
     type: data.type || 'Standard',
     status: 'Scheduled',
-    progress: 0,
-    client_unit_id: clientUnitId
+    progress: 0
   }
 
   const { error: insertError } = await supabase

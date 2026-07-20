@@ -1223,15 +1223,15 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Unit Brand</p>
-                  <p className="text-sm font-bold">{selectedRepair.client_units?.brand || 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedRepair.aircon_brand || 'N/A'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Unit Type</p>
-                  <p className="text-sm font-bold">{selectedRepair.client_units?.unit_type || 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedRepair.aircon_type || 'N/A'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Horsepower</p>
-                  <p className="text-sm font-bold">{selectedRepair.client_units?.horsepower ? `${selectedRepair.client_units.horsepower} HP` : 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedRepair.horsepower ? `${selectedRepair.horsepower} HP` : 'N/A'}</p>
                 </div>
               </div>
 
@@ -1342,15 +1342,15 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Unit Brand</p>
-                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.brand || 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.aircon_brand || 'N/A'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Unit Type</p>
-                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.unit_type || 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.aircon_type || 'N/A'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Horsepower</p>
-                  <p className="text-sm font-bold">{selectedMaintenance.client_units?.horsepower ? `${selectedMaintenance.client_units.horsepower} HP` : 'N/A'}</p>
+                  <p className="text-sm font-bold">{selectedMaintenance.horsepower ? `${selectedMaintenance.horsepower} HP` : 'N/A'}</p>
                 </div>
               </div>
 
