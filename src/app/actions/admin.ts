@@ -915,7 +915,16 @@ export async function getMaintenance(page: number = 1, limit: number = 20) {
 
   if (error) {
     console.error('getMaintenance error:', error)
-    return { data: [], total: 0 }
+    const { data: fallbackData, error: fallbackError, count: fallbackCount } = await supabase
+      .from('maintenance')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (fallbackError) {
+      console.error('getMaintenance fallback error:', fallbackError)
+      return { data: [], total: 0 }
+    }
+    return { data: fallbackData || [], total: fallbackCount || 0 }
   }
 
   return { data: data || [], total: count || 0 }

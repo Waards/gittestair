@@ -52,13 +52,15 @@ export async function POST(request: Request) {
     let userRole = profile?.role
 
     if (!profile) {
+      const adminEmail = process.env.ADMIN_EMAIL || ''
+      const isAdmin = authData.user.email?.toLowerCase() === adminEmail.toLowerCase()
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({
           id: authData.user.id,
           email: authData.user.email,
           full_name: authData.user.email?.split('@')[0] || 'User',
-          role: 'client'
+          role: isAdmin ? 'admin' : 'client'
         })
 
       if (!profileError) {
