@@ -356,12 +356,12 @@ export async function getAvailableTimeSlots(date: string) {
   return allSlots.filter(slot => !bookedSlots.includes(slot))
 }
 
-export async function rescheduleAppointment(id: string, newDate: string, newTime: string) {
+export async function rescheduleAppointment(id: string, newDate: string, newTime: string, table: string = 'appointments') {
   const supabase = await createAdminClient()
   
   const { data: appointment, error: fetchError } = await supabase
-    .from('appointments')
-    .select('*, leads!inner(*)')
+    .from(table as any)
+    .select('*')
     .eq('id', id)
     .single()
 
@@ -369,7 +369,12 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
     return { error: 'Appointment not found' }
   }
 
-  const originalDateTime = new Date(`${appointment.date}T${appointment.time.split(' - ')[0]}`)
+  const timePart = appointment.time?.split(' - ')[0]
+  if (!appointment.date || !timePart) {
+    return { error: 'Appointment has no date or time' }
+  }
+
+  const originalDateTime = new Date(`${appointment.date}T${timePart}`)
   const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
   const now = new Date()
 
@@ -378,7 +383,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
   }
 
   const { data: existingBooking } = await supabase
-    .from('appointments')
+    .from(table as any)
     .select('id')
     .eq('date', newDate)
     .eq('time', newTime)
@@ -393,7 +398,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
   const newRescheduleCount = (appointment.reschedule_count || 0) + 1
 
   const { error: updateError } = await supabase
-    .from('appointments')
+    .from(table as any)
     .update({ 
       date: newDate, 
       time: newTime,
@@ -406,7 +411,7 @@ export async function rescheduleAppointment(id: string, newDate: string, newTime
     return { error: updateError.message }
   }
 
-  sendDelayEmail('appointments', id, appointment.service_type || 'Appointment', 'Rescheduled by admin')
+  sendDelayEmail(table, id, appointment.service_type || appointment.title || 'Service', 'Rescheduled by admin')
 
   revalidatePath('/admin')
   return { success: true }
@@ -599,20 +604,78 @@ export async function createRepair(formData: FormData) {
 }
 
 function sanitizeJobFormData(formData: FormData, type: string): Record<string, unknown> {
+  const date = formData.get('date') as string || ''
+  const realTime = type === 'Real-Time'
   const data: Record<string, unknown> = {
     title: sanitizedString(formData.get('serviceType') as string || ''),
     client_name: sanitizedString(formData.get('clientName') as string || ''),
     location: sanitizedString(formData.get('address') as string || ''),
     technician: sanitizedString(formData.get('technician') as string || ''),
-    date: formData.get('date') as string || '',
-    time: formData.get('time') as string || '',
+    date: realTime ? new Date().toISOString().split('T')[0] : (date || null),
+    time: formData.get('time') as string || null,
     cost: formData.get('cost') as string || '',
     notes: sanitizedString(formData.get('notes') as string || ''),
     type: type || 'Standard',
-    status: type === 'Real-Time' ? 'In Progress' : 'Scheduled',
-    progress: type === 'Real-Time' ? 10 : 0
+    status: realTime ? 'In Progress' : (date ? 'Scheduled' : 'UnScheduled'),
+    progress: realTime ? 10 : 0
   }
   return data
+}
+
+export async function setJobSchedule(id: string, table: string, date: string, time: string) {
+  const supabase = await createAdminClient()
+
+  if (!['installations', 'repairs', 'maintenance'].includes(table)) {
+    return { error: 'Invalid job table' }
+  }
+
+  const { data: job, error: fetchError } = await supabase
+    .from(table as any)
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !job) {
+    return { error: 'Job not found' }
+  }
+
+  if (job.date) {
+    const timePart = job.time?.split(' - ')[0] || job.time
+    if (timePart) {
+      const originalDateTime = new Date(`${job.date}T${timePart}`)
+      if (!isNaN(originalDateTime.getTime())) {
+        const threeHoursBefore = new Date(originalDateTime.getTime() - (3 * 60 * 60 * 1000))
+        if (new Date() >= threeHoursBefore) {
+          return { error: 'Rescheduling is only allowed up to 3 hours before the original scheduled time' }
+        }
+      }
+    }
+  }
+
+  const { data: existingBooking } = await supabase
+    .from(table as any)
+    .select('id')
+    .eq('date', date)
+    .eq('time', time)
+    .neq('id', id)
+    .neq('status', 'cancelled')
+    .single()
+
+  if (existingBooking) {
+    return { error: 'This time slot is already booked' }
+  }
+
+  const { error: updateError } = await supabase
+    .from(table as any)
+    .update({ date, time, status: 'Scheduled' })
+    .eq('id', id)
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  revalidatePath('/admin')
+  return { success: true }
 }
 
 export async function markInstallationComplete(id: string) {
@@ -1039,6 +1102,26 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
+  // Prefer the specs captured on the booking itself, fall back to the client's registered unit
+  let airconBrand = request.aircon_brand || null
+  let airconType = request.aircon_type || null
+  let horsepower = request.horsepower || null
+  if ((!airconBrand || !airconType) && request.client_id) {
+    const { data: units } = await supabase
+      .from('client_units')
+      .select('brand, unit_type, horsepower')
+      .eq('client_id', request.client_id)
+      .limit(1)
+    if (units && units.length > 0) {
+      if (!airconBrand) airconBrand = units[0].brand || null
+      if (!airconType) airconType = units[0].unit_type || null
+      if (!horsepower && units[0].horsepower != null) {
+        horsepower = String(units[0].horsepower)
+        if (!/\d\s*hp$/i.test(horsepower)) horsepower = `${horsepower} HP`
+      }
+    }
+  }
+
   const insertData: any = {
     title: request.request_type,
     client_name: request.client_name,
@@ -1050,19 +1133,19 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
     notes: data.notes || request.message,
     type: data.type || 'Standard',
     status: 'Scheduled',
-    progress: 0
+    progress: 0,
+    aircon_brand: airconBrand,
+    aircon_type: airconType,
+    horsepower
   }
 
-  try {
-    const { error: insertError } = await supabase
-      .from('installations')
-      .insert(insertData)
+  const { error: insertError } = await supabase
+    .from('installations')
+    .insert(insertData)
 
-    if (insertError) {
-      return { error: insertError.message }
-    }
-  } catch (e) {
-    console.log('client_request_id column not available:', e)
+  if (insertError) {
+    console.error('acceptRequestAsInstallation: insert error:', insertError)
+    return { error: insertError.message }
   }
 
   await supabase
@@ -1104,6 +1187,10 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
+  const requestSpecs = request.aircon_brand || request.aircon_type || request.horsepower
+    ? { aircon_brand: request.aircon_brand || null, aircon_type: request.aircon_type || null, horsepower: request.horsepower || null }
+    : {}
+
   const insertData: any = {
     title: request.request_type,
     client_name: request.client_name,
@@ -1115,7 +1202,8 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     notes: data.notes || request.message,
     type: data.type || 'Standard',
     status: 'Scheduled',
-    progress: 0
+    progress: 0,
+    ...requestSpecs
   }
 
   try {
@@ -1169,6 +1257,10 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     return { error: 'Request not found' }
   }
 
+  const requestSpecs = request.aircon_brand || request.aircon_type || request.horsepower
+    ? { aircon_brand: request.aircon_brand || null, aircon_type: request.aircon_type || null, horsepower: request.horsepower || null }
+    : {}
+
   const insertData: any = {
     title: request.request_type,
     client_name: request.client_name,
@@ -1180,7 +1272,8 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     notes: data.notes || request.message,
     type: data.type || 'Standard',
     status: 'Scheduled',
-    progress: 0
+    progress: 0,
+    ...requestSpecs
   }
 
   try {
@@ -1280,6 +1373,44 @@ export async function getAllPendingRequests() {
   return [...pendingLeads, ...pendingRequests].sort((a, b) => 
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
+}
+
+// Find the client's most recent booking request so admin scheduling can prefill
+// the same date & time slot the customer preferred
+async function findClientBookingPrefill(supabase: any, clientName: string) {
+  const name = (clientName || '').trim()
+  if (!name) return { date: null, time: null }
+
+  const { data: requests } = await supabase
+    .from('client_requests')
+    .select('preferred_date, preferred_time')
+    .ilike('client_name', `%${name}%`)
+    .in('status', ['Pending', 'Approved'])
+    .not('preferred_date', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (requests && requests.length > 0 && requests[0].preferred_date) {
+    return { date: requests[0].preferred_date, time: requests[0].preferred_time || null }
+  }
+
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('preferred_date, preferred_time')
+    .ilike('full_name', `%${name}%`)
+    .eq('status', 'Pending')
+    .not('preferred_date', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (leads && leads.length > 0 && leads[0].preferred_date) {
+    return { date: leads[0].preferred_date, time: leads[0].preferred_time || null }
+  }
+
+  return { date: null, time: null }
+}
+
+export async function getBookingPreferredTime(clientName: string) {
+  const supabase = await createAdminClient()
+  return findClientBookingPrefill(supabase, clientName)
 }
 
 export async function archiveClient(id: string) {
@@ -1404,26 +1535,48 @@ export async function deleteTechnician(id: string) {
   return { success: true }
 }
 
-export async function updateAppointmentStatus(id: string, status: string) {
+export async function updateAppointmentStatus(id: string, status: string, table: string = 'appointments') {
   const supabase = await createAdminClient()
+
+  // Prevent re-updating completed/cancelled items
+  const { data: current } = await supabase.from(table as any).select('status').eq('id', id).single()
+  if (current && ['Completed', 'Cancelled'].includes(current.status)) {
+    return { error: 'Cannot update status — this booking is already ' + current.status.toLowerCase() }
+  }
+
   const { error } = await supabase
-    .from('appointments')
+    .from(table as any)
     .update({ status })
     .eq('id', id)
   if (error) return { error: error.message }
 
   // Notify client if reachable
-  const { data: apt } = await supabase.from('appointments').select('*').eq('id', id).single()
-  if (apt?.email) {
-    const { data: client } = await supabase.from('profiles').select('id').eq('email', apt.email).single()
-    if (client?.id) {
-      await supabase.from('notifications').insert({
-        user_id: client.id,
-        title: 'Appointment Status Updated',
-        message: `Your appointment status is now: ${status}.`,
-        type: 'update',
-        link: '/dashboard'
-      })
+  const { data: apt } = await supabase.from(table as any).select('*').eq('id', id).single()
+  if (apt) {
+    const email = apt.email
+    if (email) {
+      const { data: client } = await supabase.from('profiles').select('id').eq('email', email).single()
+      if (client?.id) {
+        await supabase.from('notifications').insert({
+          user_id: client.id,
+          title: 'Service Status Updated',
+          message: `Your ${apt.title || apt.service_type || 'service'} status is now: ${status}.`,
+          type: 'update',
+          link: '/dashboard'
+        })
+      }
+    } else if (apt.client_name) {
+      // Fallback: look up profile by full_name
+      const { data: client } = await supabase.from('profiles').select('id').eq('full_name', apt.client_name).single()
+      if (client?.id) {
+        await supabase.from('notifications').insert({
+          user_id: client.id,
+          title: 'Service Status Updated',
+          message: `Your ${apt.title || apt.service_type || 'service'} status is now: ${status}.`,
+          type: 'update',
+          link: '/dashboard'
+        })
+      }
     }
   }
   revalidatePath('/admin')
@@ -1444,11 +1597,29 @@ export async function registerUnit(formData: FormData) {
   const horsepower = parseFloat(formData.get('horsepower') as string)
   const indoorSerial = formData.get('indoorSerial') as string
   const outdoorSerial = formData.get('outdoorSerial') as string
-  const installationDate = formData.get('installationDate') as string
+  const model = formData.get('model') as string
+  let installationDate = formData.get('installationDate') as string
+  const installationId = formData.get('installationId') as string || null
   const warrantyMonths = parseInt(formData.get('warrantyMonths') as string) || 12
   const warrantyType = formData.get('warrantyType') as string
   if (!clientId || !unitName || !brand || !unitType || !technology || !horsepower) {
     return { error: 'Please fill in all required fields.' }
+  }
+
+  // If no installation date was entered but a linked installation job exists, use the job's date
+  let linkedTechnician: string | null = null
+  let linkedLocation: string | null = null
+  if (installationId) {
+    const { data: installation } = await supabase
+      .from('installations')
+      .select('date, technician, location')
+      .eq('id', installationId)
+      .single()
+    if (installation) {
+      if (!installationDate) installationDate = installation.date || null
+      linkedTechnician = installation.technician || null
+      linkedLocation = installation.location || null
+    }
   }
 
   let warrantyEndDate: string | null = null
@@ -1467,9 +1638,13 @@ export async function registerUnit(formData: FormData) {
       unit_type: unitType, 
       technology, 
       horsepower, 
+      model: model || null,
       indoor_serial: indoorSerial || null, 
       outdoor_serial: outdoorSerial || null, 
       installation_date: installationDate || null,
+      installation_id: installationId,
+      installation_technician: linkedTechnician,
+      installation_location: linkedLocation,
       warranty_months: warrantyMonths,
       warranty_type: warrantyType || 'Manufacturer',
       warranty_end_date: warrantyEndDate
@@ -1482,7 +1657,10 @@ export async function registerUnit(formData: FormData) {
 
 export async function getClientUnits(clientId?: string) {
   const supabase = await createAdminClient()
-  let query = supabase.from('client_units').select('*, profiles(full_name, email)').order('created_at', { ascending: false })
+  let query = supabase
+    .from('client_units')
+    .select('*, installations(id, title, date, technician, location, aircon_brand, aircon_type, horsepower), profiles(full_name, email)')
+    .order('created_at', { ascending: false })
   if (clientId) { query = query.eq('client_id', clientId) }
   const { data, error } = await query
   if (error) { console.error('getClientUnits error:', error); return [] }
@@ -1586,10 +1764,11 @@ export async function createMaintenanceWithUnits(formData: FormData) {
   const clientName = formData.get('clientName') as string
   const location = formData.get('address') as string
   const technician = formData.get('technician') as string
-  const date = formData.get('date') as string
-  const time = formData.get('time') as string
+  const date = formData.get('date') as string || ''
+  const time = formData.get('time') as string || ''
   const notes = formData.get('notes') as string
   const type = formData.get('type') as string
+  const realTime = type === 'Real-Time'
   
   // Parse JSON strings for unit IDs and service types
   let unitIds: string[] = []
@@ -1605,7 +1784,7 @@ export async function createMaintenanceWithUnits(formData: FormData) {
     return { error: 'Invalid unit data' }
   }
   
-  if (!clientName || !date || !time || unitIds.length === 0) {
+  if (!clientName || unitIds.length === 0) {
     return { error: 'Please fill in all required fields and select at least one unit.' }
   }
   
@@ -1617,12 +1796,12 @@ export async function createMaintenanceWithUnits(formData: FormData) {
       client_name: clientName,
       location,
       technician,
-      date,
-      time,
+      date: realTime ? new Date().toISOString().split('T')[0] : (date || null),
+      time: time || null,
       notes,
-      type: type || 'Scheduled',
-      status: 'Scheduled',
-      progress: 0,
+      type: type || 'Standard',
+      status: realTime ? 'In Progress' : (date ? 'Scheduled' : 'UnScheduled'),
+      progress: realTime ? 10 : 0,
       is_multi_unit: true,
       client_id: clientId || null
     })

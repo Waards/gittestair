@@ -37,6 +37,9 @@ export interface ClientRequest {
   status: 'Pending' | 'Approved' | 'Rejected'
   preferred_date: string | null
   preferred_time: string | null
+  aircon_brand: string | null
+  aircon_type: string | null
+  horsepower: string | null
 }
 
 export interface PendingRequest {
@@ -92,6 +95,9 @@ export interface Installation {
   notes: string | null
   time: string | null
   type: 'Real-Time' | 'Scheduled'
+  aircon_brand: string | null
+  aircon_type: string | null
+  horsepower: string | null
 }
 
 export interface Repair {
@@ -108,6 +114,9 @@ export interface Repair {
   notes: string | null
   time: string | null
   type: 'Real-Time' | 'Scheduled'
+  aircon_brand: string | null
+  aircon_type: string | null
+  horsepower: string | null
 }
 
 export interface Maintenance {
@@ -127,6 +136,9 @@ export interface Maintenance {
   updated_at: string
   is_multi_unit: boolean
   client_id: string | null
+  aircon_brand: string | null
+  aircon_type: string | null
+  horsepower: string | null
 }
 
 export interface Profile {

@@ -92,6 +92,7 @@ export default function ClientDashboard() {
   const [airconBrand, setAirconBrand] = useState<string>('')
   const [airconBrandOther, setAirconBrandOther] = useState<string>('')
   const [airconType, setAirconType] = useState<string>('')
+  const [horsepower, setHorsepower] = useState<string>('')
   const [, setTick] = useState<number>(0)
   const [view, setView] = useState<'dashboard' | 'settings' | 'machines' | 'notifications'>('dashboard')
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false)
@@ -246,6 +247,7 @@ export default function ClientDashboard() {
     if (serviceType === 'Installation') {
       formData.append('airconBrand', airconBrand === 'Other' ? airconBrandOther : airconBrand)
       formData.append('airconType', airconType)
+      formData.append('horsepower', horsepower)
     }
 
     const notesInput = document.getElementById('requestNotes') as HTMLTextAreaElement
@@ -261,6 +263,7 @@ export default function ClientDashboard() {
       setServiceType('')
       setAirconBrand('')
       setAirconType('')
+      setHorsepower('')
       setSelectedUnits([])
       setRequestDate('')
       setRequestTime('')
@@ -429,6 +432,12 @@ export default function ClientDashboard() {
                               {activity.status}
                             </span>
                           </div>
+                          {(activity.aircon_brand || activity.aircon_type || activity.horsepower) && (
+                            <p className="text-xs font-semibold text-[#005596] flex items-center gap-1.5">
+                              <Wind className="h-3.5 w-3.5" />
+                              {activity.aircon_brand}{activity.aircon_type ? ` ${activity.aircon_type}` : ''}{activity.horsepower ? ` • ${activity.horsepower}` : ''}
+                            </p>
+                          )}
                           <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
                             <Clock className="h-3.5 w-3.5" />
                             Requested on {activity.date} at {activity.time}
@@ -568,6 +577,12 @@ export default function ClientDashboard() {
                           <span className="text-slate-500">Horsepower:</span>
                           <span className="font-medium">{unit.horsepower ? `${unit.horsepower} HP` : 'N/A'}</span>
                         </div>
+                        {unit.model && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Model:</span>
+                            <span className="font-medium text-xs">{unit.model}</span>
+                          </div>
+                        )}
                         {unit.indoor_serial && (
                           <div className="flex justify-between">
                             <span className="text-slate-500">Indoor S/N:</span>
@@ -584,6 +599,23 @@ export default function ClientDashboard() {
                           <div className="flex justify-between">
                             <span className="text-slate-500">Installed:</span>
                             <span className="font-medium text-xs">{unit.installation_date}</span>
+                          </div>
+                        )}
+                        {(unit.installations || unit.installation_technician || unit.installation_location) && (
+                          <div className="pt-3 mt-3 border-t border-slate-100 space-y-2">
+                            <p className="text-xs font-bold text-[#005596] uppercase tracking-wide">Installation Job</p>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Job:</span>
+                              <span className="font-medium text-xs">{unit.installations?.title || '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Technician:</span>
+                              <span className="font-medium text-xs">{unit.installations?.technician || unit.installation_technician || '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Location:</span>
+                              <span className="font-medium text-xs">{unit.installations?.location || unit.installation_location || '—'}</span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -801,6 +833,7 @@ export default function ClientDashboard() {
           setServiceType('')
           setAirconBrand('')
           setAirconType('')
+          setHorsepower('')
           setSelectedUnits([])
           setRequestDate('')
           setRequestTime('')
@@ -815,7 +848,7 @@ export default function ClientDashboard() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Service Type *</Label>
-              <Select value={serviceType} onValueChange={(val) => { setServiceType(val); setSelectedUnits([]) }}>
+              <Select value={serviceType} onValueChange={(val) => { setServiceType(val); setSelectedUnits([]); setAirconBrand(''); setAirconType(''); setHorsepower('') }}>
                 <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Installation">Installation</SelectItem>
@@ -858,6 +891,17 @@ export default function ClientDashboard() {
                         <SelectItem value="Window">Window</SelectItem>
                         <SelectItem value="Split">Split</SelectItem>
                         <SelectItem value="Inverter">Inverter</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Horsepower *</Label>
+                    <Select value={horsepower} onValueChange={setHorsepower}>
+                      <SelectTrigger><SelectValue placeholder="Select HP" /></SelectTrigger>
+                      <SelectContent>
+                        {['0.5 HP', '0.75 HP', '1.0 HP', '1.5 HP', '2.0 HP', '2.5 HP', '3.0 HP', '4.0 HP', '5.0 HP'].map(hp => (
+                          <SelectItem key={hp} value={hp}>{hp}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

@@ -278,6 +278,9 @@ export async function requestService(formData: FormData) {
 
   const serviceType = formData.get('serviceType') as string
   const phone = formData.get('phone') as string
+  const airconBrand = (formData.get('airconBrand') as string || '').trim().slice(0, 100) || null
+  const airconType = (formData.get('airconType') as string || '').trim().slice(0, 100) || null
+  const horsepower = (formData.get('horsepower') as string || '').trim().slice(0, 50) || null
 
   if (phone && !validatePHPhone(phone)) {
     return { error: PHONE_VALIDATION_ERROR }
@@ -343,106 +346,12 @@ export async function requestService(formData: FormData) {
     return { error: appointmentError.message }
   }
 
-  // Insert into appropriate monitoring table based on service type
-  if (serviceType === 'Installation') {
-    await adminSupabase
-      .from('installations')
-      .insert({
-        title: serviceType,
-        client_name: clientName,
-        location: address,
-        date,
-        time,
-        notes,
-        status: 'Scheduled',
-        progress: 0
-      })
-  } else if (['Cleaning', 'Maintenance', 'Inspection'].includes(serviceType) && selectedUnitsData.length > 0) {
-    // Multi-unit service: Create maintenance record with items
-    // Check warranty status for each unit
-    const warrantyInfo = selectedUnitsData.map(unit => {
-      const now = new Date()
-      const end = unit.warranty_end_date ? new Date(unit.warranty_end_date) : null
-      if (!end) return { unitName: unit.unit_name, isActive: false, daysLeft: 0 }
-      const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return { unitName: unit.unit_name, isActive: daysLeft > 0, daysLeft: Math.max(0, daysLeft) }
-    })
-    
-    const allActive = warrantyInfo.every(w => w.isActive)
-    const anyActive = warrantyInfo.some(w => w.isActive)
-    let warrantyNote = ''
-    if (anyActive) {
-      const activeUnits = warrantyInfo.filter(w => w.isActive).map(w => `${w.unitName} (${w.daysLeft}d left)`).join(', ')
-      warrantyNote = allActive 
-        ? `All units under warranty` 
-        : `Some units under warranty: ${activeUnits}`
-    }
-
-    const maintenanceTitle = `${serviceType} - ${selectedUnitsData.map(u => u.unit_name).join(', ')}`
-    
-    const { data: maintenanceRecord, error: maintError } = await adminSupabase
-      .from('maintenance')
-      .insert({
-        title: maintenanceTitle,
-        client_name: clientName,
-        location: address,
-        date,
-        time,
-        notes: isMultiUnit 
-          ? `Multi-unit ${serviceType} for ${selectedUnitsData.length} units${warrantyNote ? '. ' + warrantyNote : ''}` 
-          : (warrantyNote ? warrantyNote + (notes ? '. ' + notes : '') : notes),
-        status: 'Scheduled',
-        progress: 0,
-        is_multi_unit: isMultiUnit,
-        cost: 0
-      })
-      .select()
-      .single()
-
-    if (maintError) {
-      console.error('requestService: error inserting maintenance:', maintError)
-      return { error: maintError.message }
-    }
-
-    // Insert maintenance items for each selected unit
-    if (maintenanceRecord) {
-      for (const unit of selectedUnitsData) {
-        const unitWarranty = unit.warranty_end_date ? (() => {
-          const now = new Date()
-          const end = new Date(unit.warranty_end_date)
-          const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-          return days > 0
-        })() : false
-        
-        await adminSupabase
-          .from('maintenance_items')
-          .insert({
-            maintenance_id: maintenanceRecord.id,
-            unit_id: unit.id,
-            service_type: serviceType,
-            status: 'Scheduled',
-            notes: `${unit.brand} ${unit.unit_type} ${unit.horsepower}HP`
-          })
-      }
-    }
-  } else {
-    // Repair or single unit service go to repairs table
-    await adminSupabase
-      .from('repairs')
-      .insert({
-        title: serviceType,
-        client_name: clientName,
-        location: address,
-        date,
-        time,
-        notes: notes || (selectedUnitsData.length === 1 ? `Unit: ${selectedUnitsData[0].unit_name}` : ''),
-        status: 'Scheduled',
-        progress: 0
-      })
-  }
+  const requestSpecs = airconBrand || airconType || horsepower
+    ? { aircon_brand: airconBrand, aircon_type: airconType, horsepower }
+    : {}
 
   // Create client request record for admin
-  await adminSupabase
+  const { error: requestError } = await adminSupabase
     .from('client_requests')
     .insert({
       client_id: user.id,
@@ -452,14 +361,25 @@ export async function requestService(formData: FormData) {
       preferred_date: date,
       preferred_time: time,
       service_address: address || null,
-      phone_number: phone || null
+      phone_number: phone || null,
+      ...requestSpecs,
+      status: 'Pending'
     })
+
+  if (requestError) {
+    console.error('requestService: error creating client request:', requestError)
+    return { error: requestError.message }
+  }
 
   // Create notification for admin with detailed information
   let detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +
     `Phone: ${phone}\n` +
     `Date: ${date} at ${time}\n` +
     `Address: ${address || 'Not specified'}\n`
+
+  if (airconBrand) {
+    detailedMessage += `Unit: ${airconBrand}${airconType ? ` ${airconType}` : ''}${horsepower ? ` ${horsepower}` : ''}\n`
+  }
 
   if (selectedUnitsData.length > 0) {
     detailedMessage += `Units: ${selectedUnitsData.map(u => `${u.unit_name} (${u.brand} ${u.unit_type} ${u.horsepower}HP)`).join(', ')}\n`
@@ -705,7 +625,7 @@ export async function getUserClientUnits() {
   // Query by client_id (more reliable) or client_name as fallback
   const { data: units, error } = await adminSupabase
     .from('client_units')
-    .select('*')
+    .select('*, installations(id, title, date, technician, location, aircon_brand, aircon_type, horsepower)')
     .eq('client_id', user.id)
     .order('created_at', { ascending: false })
 

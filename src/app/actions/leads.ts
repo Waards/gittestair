@@ -306,7 +306,10 @@ export async function acceptLead(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      aircon_brand: lead.aircon_brand || null,
+      aircon_type: lead.aircon_type || null,
+      horsepower: lead.horsepower || null
     })
 
   if (insertError) {
@@ -402,6 +405,10 @@ export async function acceptLeadAsRepair(leadId: string, data: {
     return { error: 'Lead not found' }
   }
 
+  const leadSpecs = lead.aircon_brand || lead.aircon_type || lead.horsepower
+    ? { aircon_brand: lead.aircon_brand || null, aircon_type: lead.aircon_type || null, horsepower: lead.horsepower || null }
+    : {}
+
   const { error: insertError } = await supabase
     .from('repairs')
     .insert({
@@ -415,7 +422,8 @@ export async function acceptLeadAsRepair(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      ...leadSpecs
     })
 
   if (insertError) {
@@ -511,6 +519,10 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
     return { error: 'Lead not found' }
   }
 
+  const leadSpecs = lead.aircon_brand || lead.aircon_type || lead.horsepower
+    ? { aircon_brand: lead.aircon_brand || null, aircon_type: lead.aircon_type || null, horsepower: lead.horsepower || null }
+    : {}
+
   const { error: insertError } = await supabase
     .from('maintenance')
     .insert({
@@ -524,7 +536,8 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      ...leadSpecs
     })
 
   if (insertError) {
@@ -713,66 +726,33 @@ export async function convertLeadToClient(leadId: string) {
     console.error('convertLeadToClient: error updating lead status:', convertError)
   }
 
-  // Create job based on service type when converting to client
-  const serviceType = lead.service_type || ''
-  const isInstallation = serviceType.toLowerCase().includes('installation')
-  const isRepair = serviceType.toLowerCase().includes('repair') || serviceType.toLowerCase().includes('freon') || serviceType.toLowerCase().includes('dismantle') || serviceType.toLowerCase().includes('relocation')
+  // Create client request record for admin to approve
+  const { error: requestError } = await supabase
+    .from('client_requests')
+    .insert({
+      client_id: authData.user.id,
+      client_name: lead.full_name,
+      request_type: lead.service_type || '',
+      message: lead.additional_info || '',
+      preferred_date: lead.preferred_date || null,
+      preferred_time: lead.preferred_time || null,
+      service_address: lead.service_address || null,
+      phone_number: lead.phone_number || null,
+      aircon_brand: lead.aircon_brand || null,
+      aircon_type: lead.aircon_type || null,
+      horsepower: lead.horsepower || null,
+      status: 'Pending'
+    })
 
-  // Build notes with aircon specifications
-  let jobNotes = lead.additional_info || ''
-  if (isInstallation && lead.aircon_brand) {
-    const specs = [
-      `Brand: ${lead.aircon_brand}`,
-      lead.aircon_type ? `Type: ${lead.aircon_type}` : null,
-      lead.horsepower ? `HP: ${lead.horsepower}` : null,
-      lead.btu ? `BTU: ${lead.btu}` : null,
-    ].filter(Boolean).join(' | ')
-    jobNotes = specs + (jobNotes ? '\n' + jobNotes : '')
-  }
-
-  const jobData = {
-    title: serviceType,
-    client_name: lead.full_name,
-    location: lead.service_address,
-    technician: '',
-    date: lead.preferred_date || new Date().toISOString().split('T')[0],
-    time: lead.preferred_time || '09:00 AM - 11:00 AM',
-    cost: '',
-    notes: jobNotes,
-    type: lead.client_type || 'Standard',
-    status: 'Scheduled',
-    progress: 0
-  }
-
-  let tableName = 'maintenance'
-  if (isInstallation) {
-    tableName = 'installations'
-  } else if (isRepair) {
-    tableName = 'repairs'
-  }
-
-  const { error: jobError } = await supabase
-    .from(tableName)
-    .insert(jobData)
-
-  if (jobError) {
-    console.error('convertLeadToClient: error creating job:', jobError)
-  } else {
-    await supabase
-      .from('notifications')
-      .insert({
-        title: 'New Job Created',
-        message: `${serviceType} for ${lead.full_name} has been scheduled on ${lead.preferred_date}.`,
-        type: 'info',
-        link: '/admin'
-      })
+  if (requestError) {
+    console.error('convertLeadToClient: error creating client request:', requestError)
   }
 
   await supabase
     .from('notifications')
     .insert({
       title: 'Lead Converted to Client',
-      message: `${lead.full_name} has been added as a client.`,
+      message: `${lead.full_name} has been added as a client with a pending service request.`,
       type: 'info',
       link: '/admin'
     })
