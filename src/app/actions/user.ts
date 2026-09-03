@@ -272,6 +272,9 @@ export async function requestService(formData: FormData) {
 
   const serviceType = formData.get('serviceType') as string
   const phone = formData.get('phone') as string
+  const airconBrand = (formData.get('airconBrand') as string || '').trim().slice(0, 100) || null
+  const airconType = (formData.get('airconType') as string || '').trim().slice(0, 100) || null
+  const horsepower = (formData.get('horsepower') as string || '').trim().slice(0, 50) || null
 
   if (phone && !validatePHPhone(phone)) {
     return { error: PHONE_VALIDATION_ERROR }
@@ -350,6 +353,10 @@ export async function requestService(formData: FormData) {
     return { error: appointmentError.message }
   }
 
+  const requestSpecs = airconBrand || airconType || horsepower
+    ? { aircon_brand: airconBrand, aircon_type: airconType, horsepower }
+    : {}
+
   // Create client request record for admin
   const { error: requestError } = await adminSupabase
     .from('client_requests')
@@ -362,6 +369,7 @@ export async function requestService(formData: FormData) {
       preferred_time: time,
       service_address: address || null,
       phone_number: phone || null,
+      ...requestSpecs,
       status: 'Pending'
     })
 
@@ -375,6 +383,10 @@ export async function requestService(formData: FormData) {
     `Phone: ${phone}\n` +
     `Date: ${date} at ${time}\n` +
     `Address: ${address || 'Not specified'}\n`
+
+  if (airconBrand) {
+    detailedMessage += `Unit: ${airconBrand}${airconType ? ` ${airconType}` : ''}${horsepower ? ` ${horsepower}` : ''}\n`
+  }
 
   if (selectedUnitsData.length > 0) {
     detailedMessage += `Units: ${selectedUnitsData.map(u => `${u.unit_name} (${u.brand} ${u.unit_type} ${u.horsepower}HP)`).join(', ')}\n`
@@ -726,7 +738,7 @@ export async function getUserClientUnits() {
   // Query by client_id (more reliable) or client_name as fallback
   const { data: units, error } = await adminSupabase
     .from('client_units')
-    .select('*')
+    .select('*, installations(id, title, date, technician, location, aircon_brand, aircon_type, horsepower)')
     .eq('client_id', user.id)
     .order('created_at', { ascending: false })
 

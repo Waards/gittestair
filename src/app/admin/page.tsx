@@ -39,6 +39,7 @@ import {
   getDashboardStats,
   updateAppointmentStatus,
   rescheduleAppointment,
+  setJobSchedule,
   registerUnit,
   getClientUnits,
   deleteClientUnit,
@@ -56,6 +57,7 @@ import {
   updateRepairTechnician,
   updateMaintenanceTechnician,
   getAllPendingRequests,
+  getBookingPreferredTime,
   acceptRequestAsInstallation,
   acceptRequestAsRepair,
   acceptRequestAsMaintenance,
@@ -143,6 +145,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { AdminSidebar } from '@/components/admin-sidebar'
+
+// Time slots offered to customers when booking — used so admin schedules
+// always match the customer's preferred time
+const BOOKING_TIME_SLOTS = [
+  '08:00 AM - 10:00 AM',
+  '10:00 AM - 12:00 PM',
+  '01:00 PM - 03:00 PM',
+  '03:00 PM - 05:00 PM',
+  '05:00 PM - 07:00 PM',
+  '07:00 PM - 08:00 PM',
+]
 
 type View = 'dashboard' | 'clients' | 'installations' | 'repairs' | 'maintenance' | 'schedule' | 'reports' | 'settings' | 'requests' | 'leads' | 'technicians'
 
@@ -2383,11 +2396,19 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
                         <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
                           <span>Technology: <strong>{unit.technology}</strong></span>
                           <span>Horsepower: <strong>{unit.horsepower} HP</strong></span>
+                          {unit.model && <span>Model: <strong>{unit.model}</strong></span>}
                           {unit.indoor_serial && <span>Indoor Serial: <strong>{unit.indoor_serial}</strong></span>}
                           {unit.outdoor_serial && <span>Outdoor Serial: <strong>{unit.outdoor_serial}</strong></span>}
                           {unit.installation_date && <span>Installed: <strong>{unit.installation_date}</strong></span>}
                           <span>Warranty: <strong>{unit.warranty_months || 0} months{unit.warranty_type ? ` (${unit.warranty_type})` : ''}</strong></span>
                           {unit.warranty_end_date && <span>Warranty Ends: <strong>{unit.warranty_end_date}</strong></span>}
+                          {(unit.installations || unit.installation_technician || unit.installation_location) && (
+                            <>
+                              <span>Job: <strong>{unit.installations?.title || '—'}</strong></span>
+                              <span>Technician: <strong>{unit.installations?.technician || unit.installation_technician || '—'}</strong></span>
+                              <span>Location: <strong>{unit.installations?.location || unit.installation_location || '—'}</strong></span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2465,6 +2486,27 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   const [selectedUnit, setSelectedUnit] = useState<any>(null)
   const [prefillClientId, setPrefillClientId] = useState('')
   const [unitType, setUnitType] = useState('')
+  const [prefillInstallationId, setPrefillInstallationId] = useState('')
+  const [prefillBrand, setPrefillBrand] = useState('')
+  const [prefillHorsepower, setPrefillHorsepower] = useState('')
+  const [prefillInstallationDate, setPrefillInstallationDate] = useState('')
+
+  const resetUnitPrefills = () => {
+    setPrefillInstallationId('')
+    setPrefillBrand('')
+    setPrefillHorsepower('')
+    setPrefillInstallationDate('')
+    setUnitType('')
+    setTechnology('Inverter')
+  }
+
+  const applyInstallationPrefill = (installation: any) => {
+    setPrefillInstallationId(installation.id)
+    setPrefillBrand(installation.aircon_brand || '')
+    setUnitType(installation.aircon_type || '')
+    setPrefillHorsepower(installation.horsepower || '')
+    setPrefillInstallationDate(installation.date || '')
+  }
 
   const isMultiComponentUnit = unitType === 'Split Type' || unitType === 'Multi-Split' || unitType === 'Cassette' || unitType === 'Centralized' || unitType === 'Floor Mounted'
   
@@ -2479,7 +2521,6 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   const [unitSearchQuery, setUnitSearchQuery] = useState('')
   const [unitBrandFilter, setUnitBrandFilter] = useState('all')
   
-  const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
 
@@ -2512,6 +2553,12 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
     
     return matchesSearch && matchesStatus && matchesTech && matchesDateFrom && matchesDateTo
   })
+
+  // Installations available to link a unit to (completed jobs, plus the currently selected one)
+  const linkableInstallations = [
+    ...installations.filter((i: any) => i.status === 'Completed'),
+    ...installations.filter((i: any) => prefillInstallationId && i.id === prefillInstallationId && i.status !== 'Completed')
+  ]
 
   // Filter client units
   const filteredUnits = clientUnits.filter((unit: any) => {
@@ -2548,8 +2595,9 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
       toast.success('Installation marked as completed')
       fetchInstallations()
       const installation = installations.find((i: any) => i.id === id)
-      if (installation?.client_id) {
-        setPrefillClientId(installation.client_id)
+      if (installation) {
+        setPrefillClientId(installation.client_id || '')
+        applyInstallationPrefill(installation)
         setShowRegisterUnit(true)
       }
     }
@@ -2560,16 +2608,25 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
     setIsLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set('technology', technology)
+    formData.set('installationId', prefillInstallationId)
     const result = await registerUnit(formData)
     if (result.error) toast.error(result.error)
     else {
       toast.success('Unit registered successfully!')
       fetchInstallations()
       setShowRegisterUnit(false)
-      setTechnology('Inverter')
-      setUnitType('')
+      resetUnitPrefills()
     }
     setIsLoading(false)
+  }
+
+  const openRegisterUnit = (installation?: any) => {
+    resetUnitPrefills()
+    if (installation) {
+      setPrefillClientId(installation.client_id || '')
+      applyInstallationPrefill(installation)
+    }
+    setShowRegisterUnit(true)
   }
 
   const handleDeleteUnit = async (unitId: string) => {
@@ -2593,7 +2650,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="border-[#005596] text-[#005596] hover:bg-blue-50" onClick={() => setShowRegisterUnit(true)}>
+          <Button variant="outline" className="border-[#005596] text-[#005596] hover:bg-blue-50" onClick={() => openRegisterUnit()}>
             <Plus className="h-4 w-4 mr-2" />Register New Unit
           </Button>
           <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}>
@@ -2653,6 +2710,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="UnScheduled">UnScheduled</SelectItem>
                   <SelectItem value="Scheduled">Scheduled</SelectItem>
                   <SelectItem value="In Progress">In Progress</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
@@ -2787,7 +2845,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
               <ClipboardList className="h-12 w-12 mx-auto mb-3 text-gray-200" />
               <p className="font-semibold text-gray-500">No units found</p>
               <p className="text-sm text-gray-400 mb-4">Click "Register New Unit" to give an aircon its Digital Identity</p>
-              <Button className="bg-[#005596]" onClick={() => setShowRegisterUnit(true)}><Plus className="h-4 w-4 mr-2" />Register First Unit</Button>
+              <Button className="bg-[#005596]" onClick={() => openRegisterUnit()}><Plus className="h-4 w-4 mr-2" />Register First Unit</Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -2830,10 +2888,20 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                       </div>
                     </div>
 
-                    {(unit.indoor_serial || unit.outdoor_serial) && (
+                    {(unit.indoor_serial || unit.outdoor_serial || unit.model) && (
                       <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
+                        {unit.model && <p className="text-[10px] text-gray-500"><span className="font-semibold">Model:</span> {unit.model}</p>}
                         {unit.indoor_serial && <p className="text-[10px] text-gray-500"><span className="font-semibold">Indoor S/N:</span> {unit.indoor_serial}</p>}
                         {unit.outdoor_serial && <p className="text-[10px] text-gray-500"><span className="font-semibold">Outdoor S/N:</span> {unit.outdoor_serial}</p>}
+                      </div>
+                    )}
+
+                    {(unit.installations || unit.installation_technician || unit.installation_location) && (
+                      <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                        <p className="text-[10px] font-bold text-[#005596] uppercase tracking-wide">Installation Job</p>
+                        <p className="text-[10px] text-gray-500"><span className="font-semibold">Job:</span> {unit.installations?.title || '—'}</p>
+                        <p className="text-[10px] text-gray-500"><span className="font-semibold">Technician:</span> {unit.installations?.technician || unit.installation_technician || '—'}</p>
+                        <p className="text-[10px] text-gray-500"><span className="font-semibold">Location:</span> {unit.installations?.location || unit.installation_location || '—'}</p>
                       </div>
                     )}
 
@@ -2866,7 +2934,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 <button onClick={() => setType('Schedule')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
                   <div className="font-bold">Schedule</div>
-                  <div className="text-xs text-gray-500">Pick date & time</div>
+                  <div className="text-xs text-gray-500">Set date & time in Calendar & Schedule</div>
                 </button>
               </div>
             </div>
@@ -2907,19 +2975,6 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1"><Label>Cost *</Label>
-                  <Select name="cost" required><SelectTrigger><SelectValue placeholder="Select cost" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="₱1,500">₱1,500</SelectItem><SelectItem value="₱2,500">₱2,500</SelectItem>
-                      <SelectItem value="₱3,500">₱3,500</SelectItem><SelectItem value="₱5,000">₱5,000</SelectItem>
-                      <SelectItem value="Custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1"><Label>Date *</Label><Input name="date" type="date" min={today} required /></div>
-                <div className="space-y-1"><Label>Time *</Label><Input name="time" type="time" required /></div>
-              </div>
               <div className="space-y-1"><Label>Address *</Label><Input name="address" placeholder="Installation address" required /></div>
               <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Additional notes" /></div>
               <div className="flex justify-end gap-3 pt-4 border-t">
@@ -2932,7 +2987,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
       </Dialog>
 
       {/* Register New Unit Dialog */}
-      <Dialog open={showRegisterUnit} onOpenChange={setShowRegisterUnit}>
+      <Dialog open={showRegisterUnit} onOpenChange={(open) => { setShowRegisterUnit(open); if (!open) resetUnitPrefills() }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-[#005596]">
@@ -2951,6 +3006,45 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
               </Select>
             </div>
 
+            {/* Linked Installation Job */}
+            <div className="space-y-1">
+              <Label>Installation Job (optional)</Label>
+              <Select name="installationId" value={prefillInstallationId} onValueChange={(val) => {
+                setPrefillInstallationId(val)
+                const job = installations.find((i: any) => i.id === val)
+                if (job) {
+                  setPrefillClientId(job.client_id || prefillClientId)
+                  applyInstallationPrefill(job)
+                } else {
+                  resetUnitPrefills()
+                  setPrefillClientId(prefillClientId)
+                }
+              }}>
+                <SelectTrigger><SelectValue placeholder="Link to an installation job..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No job linked</SelectItem>
+                  {linkableInstallations.map((i: any) => (
+                    <SelectItem key={i.id} value={i.id}>{i.title} — {i.client_name} ({i.date || 'unscheduled'})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {prefillInstallationId && (() => {
+              const job = installations.find((i: any) => i.id === prefillInstallationId)
+              return (
+                <div className="rounded-lg bg-[#005596]/5 border border-[#005596]/10 p-3 space-y-1">
+                  <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">From Installation Job</p>
+                  <p className="text-sm">Job: <strong>{job?.title || '—'}</strong></p>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <span>Technician: <strong>{job?.technician || 'N/A'}</strong></span>
+                    <span>Location: <strong>{job?.location || 'N/A'}</strong></span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">Assigned date/time ready — edit below if needed.</p>
+                </div>
+              )
+            })()}
+
             {/* Unit Details */}
             <div className="border rounded-xl p-4 space-y-4 bg-slate-50/50">
               <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Unit Details</p>
@@ -2961,14 +3055,14 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 </div>
                 <div className="space-y-1">
                   <Label>Brand *</Label>
-                  <Select name="brand" required>
+                  <Select name="brand" required value={prefillBrand} onValueChange={setPrefillBrand}>
                     <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
                     <SelectContent>{BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label>Unit Type *</Label>
-                  <Select name="unitType" required onValueChange={setUnitType}>
+                  <Select name="unitType" required value={unitType} onValueChange={setUnitType}>
                     <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Split Type">Split Type</SelectItem>
@@ -2983,10 +3077,14 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                 </div>
                 <div className="space-y-1">
                   <Label>Horsepower (HP) *</Label>
-                  <Select name="horsepower" required>
+                  <Select name="horsepower" required value={prefillHorsepower} onValueChange={setPrefillHorsepower}>
                     <SelectTrigger><SelectValue placeholder="Select HP" /></SelectTrigger>
                     <SelectContent>{HP_OPTIONS.map(hp => <SelectItem key={hp} value={hp}>{hp} HP</SelectItem>)}</SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Model</Label>
+                  <Input name="model" placeholder="e.g. INVERTER-12K" />
                 </div>
               </div>
 
@@ -3029,7 +3127,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
             {/* Installation Date */}
             <div className="space-y-1">
               <Label>Installation Date</Label>
-              <Input name="installationDate" type="date" />
+              <Input name="installationDate" type="date" value={prefillInstallationDate} onChange={(e) => setPrefillInstallationDate(e.target.value)} />
             </div>
 
             {/* Warranty Information */}
@@ -3065,7 +3163,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
             </div>
 
             <div className="flex justify-end gap-3 pt-2 border-t">
-              <Button type="button" variant="outline" onClick={() => setShowRegisterUnit(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { setShowRegisterUnit(false); resetUnitPrefills() }}>Cancel</Button>
               <Button type="submit" className="bg-[#005596] px-8" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Register Unit
               </Button>
@@ -3101,7 +3199,6 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
   const [jobSearchQuery, setJobSearchQuery] = useState('')
   const [jobStatusFilter, setJobStatusFilter] = useState('all')
   
-  const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
 
@@ -3266,6 +3363,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="UnScheduled">UnScheduled</SelectItem>
                   <SelectItem value="Scheduled">Scheduled</SelectItem>
                   <SelectItem value="In Progress">In Progress</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
@@ -3497,7 +3595,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
                 <button onClick={() => setType('Schedule')} className={`p-6 border rounded-xl text-center space-y-2 transition-all ${type === 'Schedule' ? 'border-[#005596] bg-blue-50 ring-2 ring-[#005596]/10' : 'border-gray-200 hover:border-gray-300'}`}>
                   <Calendar className="mx-auto h-8 w-8 text-[#005596]" />
                   <div className="font-bold">Schedule</div>
-                  <div className="text-xs text-gray-500">Pick date & time</div>
+                  <div className="text-xs text-gray-500">Set date & time in Calendar & Schedule</div>
                 </button>
               </div>
             </div>
@@ -3531,19 +3629,6 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
                     )}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1"><Label>Cost *</Label>
-                  <Select name="cost" required><SelectTrigger><SelectValue placeholder="Cost" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="₱500">₱500</SelectItem><SelectItem value="₱1,000">₱1,000</SelectItem>
-                      <SelectItem value="₱1,500">₱1,500</SelectItem><SelectItem value="₱2,500">₱2,500</SelectItem>
-                      <SelectItem value="Custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1"><Label>Date *</Label><Input name="date" type="date" min={today} required /></div>
-                <div className="space-y-1"><Label>Time *</Label><Input name="time" type="time" required /></div>
               </div>
               <div className="space-y-1"><Label>Address *</Label><Input name="address" placeholder="Repair address" required /></div>
               <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Additional notes" /></div>
@@ -3707,6 +3792,10 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   const [statusModalOpen, setStatusModalOpen] = useState(false)
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false)
   const [workOrderModalOpen, setWorkOrderModalOpen] = useState(false)
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+  const [selectedJob, setSelectedJob] = useState<any>(null)
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleTime, setScheduleTime] = useState('')
   const [selectedApt, setSelectedApt] = useState<any>(null)
   const [selectedStatus, setSelectedStatus] = useState('')
   const [rescheduleDate, setRescheduleDate] = useState('')
@@ -3717,10 +3806,27 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [todayPage, setTodayPage] = useState(1)
+  const [addDate, setAddDate] = useState('')
+  const [addTime, setAddTime] = useState('')
 
   useEffect(() => { setTodayPage(1) }, [searchQuery, statusFilter, serviceFilter])
 
   const today = new Date().toISOString().split('T')[0]
+
+  // Auto-fill date & time from the client's booking (preferred date/time slot)
+  const applyBookingPrefill = async (clientName: string, target: 'add' | 'schedule' = 'add') => {
+    const name = (clientName || '').trim()
+    if (!name) return
+    const prefill = await getBookingPreferredTime(name)
+    if (!prefill?.date) return
+    if (target === 'schedule') {
+      setScheduleDate(prefill.date)
+      if (prefill.time) setScheduleTime(prefill.time)
+    } else {
+      setAddDate(prefill.date)
+      if (prefill.time) setAddTime(prefill.time)
+    }
+  }
 
   // Combine all jobs for calendar view (deduplicate: skip appointments that have a corresponding operational job)
   const jobKeys = new Set([
@@ -3733,6 +3839,13 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
     ...installations.map((inst: any) => ({ ...inst, jobType: 'installation' })),
     ...repairs.map((rep: any) => ({ ...rep, jobType: 'repair' })),
     ...maintenance.map((maint: any) => ({ ...maint, jobType: 'maintenance' }))
+  ]
+
+  // Jobs without a date/time yet - schedule is set via the calendar
+  const unscheduledJobs = [
+    ...installations.filter((j: any) => !j.date).map((j: any) => ({ ...j, jobType: 'installation' })),
+    ...repairs.filter((j: any) => !j.date).map((j: any) => ({ ...j, jobType: 'repair' })),
+    ...maintenance.filter((j: any) => !j.date).map((j: any) => ({ ...j, jobType: 'maintenance' }))
   ]
 
   // Filter all jobs
@@ -3792,6 +3905,30 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
     setIsLoading(false)
   }
 
+  const handleSetSchedule = async () => {
+    if (!selectedJob || !scheduleDate || !scheduleTime) return
+    setIsLoading(true)
+    const table = tableMap[selectedJob.jobType] || 'installations'
+    const res = await setJobSchedule(selectedJob.id, table, scheduleDate, scheduleTime)
+    if (res.error) toast.error(res.error)
+    else {
+      toast.success('Schedule set')
+      setScheduleModalOpen(false)
+      setSelectedJob(null)
+      fetchAppointments()
+    }
+    setIsLoading(false)
+  }
+
+  const openSetSchedule = (job: any) => {
+    setSelectedJob(job)
+    setScheduleDate('')
+    setScheduleTime('')
+    setScheduleModalOpen(true)
+    // Prefill with the client's booking preferred date/time when one exists
+    applyBookingPrefill(job.client_name || '', 'schedule')
+  }
+
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(monthStart)
   const startDate = startOfWeek(monthStart)
@@ -3815,6 +3952,10 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
       toast.error(PHONE_VALIDATION_ERROR)
       return
     }
+    if (!addTime) {
+      toast.error('Please select a time slot')
+      return
+    }
 
     setIsLoading(true)
     const result = await createAppointment(formData)
@@ -3823,6 +3964,8 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
       toast.success('Appointment created')
       fetchAppointments()
       setShowAdd(false)
+      setAddDate('')
+      setAddTime('')
     }
     setIsLoading(false)
   }
@@ -3903,6 +4046,36 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
               </p>
             </CardContent>
           </Card>
+
+          {unscheduledJobs.length > 0 && (
+            <Card className="border-none shadow-sm border-l-4 border-l-amber-400">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  Jobs Needing Schedule ({unscheduledJobs.length})
+                </CardTitle>
+                <CardDescription>
+                  Set the date & time for these jobs in the calendar. Each job shows its schedule here and on the job card.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {unscheduledJobs.map((job: any) => (
+                  <div key={`${job.jobType}-${job.id}`} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-[#005596] truncate">{job.title || job.client_name}</p>
+                        <Badge variant="outline" className="text-[10px] capitalize">{job.jobType}</Badge>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{job.client_name} • {job.technician || 'No technician'} • {job.date ? `Currently: ${job.date}` : 'No date set'}</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50 h-8 text-xs shrink-0 ml-3" onClick={() => openSetSchedule(job)}>
+                      <Calendar className="h-3 w-3 mr-1" />Set Schedule
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border-none shadow-sm p-6">
             <div className="flex items-center justify-between mb-8">
@@ -4040,11 +4213,11 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
         </div>
       </main>
 
-      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+      <Dialog open={showAdd} onOpenChange={(open) => { setShowAdd(open); if (open) { setAddDate(''); setAddTime('') } }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Add Appointment</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-4 py-4">
-            <div className="space-y-1"><Label>Client Name</Label><Input name="clientName" placeholder="Client Name" required /></div>
+            <div className="space-y-1"><Label>Client Name</Label><Input name="clientName" placeholder="Client Name" required onBlur={(e) => applyBookingPrefill(e.target.value)} /><p className="text-[10px] text-gray-400">Date & time auto-fill from this client's booking when one exists.</p></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1"><Label>Email</Label><Input name="email" type="email" placeholder="client@example.com" /></div>
               <div className="space-y-1"><Label>Phone Number</Label><Input name="phone" placeholder="09XXXXXXXXX" maxLength={11} required /></div>
@@ -4052,26 +4225,27 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
             </div>
             <div className="space-y-1"><Label>Address</Label><Textarea name="address" placeholder="Full address" /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" min={today} required /></div>
-              <div className="space-y-1"><Label>Time</Label><Input name="time" type="time" required /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Service Type</Label>
-                <Select name="serviceType" defaultValue="Installation">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+              <div className="space-y-1"><Label>Date</Label><Input name="date" type="date" min={today} required value={addDate} onChange={(e) => setAddDate(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Time Slot</Label>
+                <Select name="time" value={addTime} onValueChange={setAddTime}>
+                  <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Installation">Installation</SelectItem>
-                    <SelectItem value="Repair">Repair</SelectItem>
-                    <SelectItem value="Cleaning">Cleaning</SelectItem>
-                    <SelectItem value="Maintenance">Maintenance</SelectItem>
+                    {BOOKING_TIME_SLOTS.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label>Cost</Label>
-                <Input name="cost" placeholder="₱1,500" />
-              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Service Type</Label>
+              <Select name="serviceType" defaultValue="Installation">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Installation">Installation</SelectItem>
+                  <SelectItem value="Repair">Repair</SelectItem>
+                  <SelectItem value="Cleaning">Cleaning</SelectItem>
+                  <SelectItem value="Maintenance">Maintenance</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1"><Label>Notes</Label><Textarea name="notes" placeholder="Any special instructions..." /></div>
             <div className="flex justify-end gap-3 pt-4 border-t">
@@ -4231,11 +4405,45 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
               <Input type="date" min={today} value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>New Time</Label>
-              <Input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
+              <Label>New Time Slot</Label>
+              <Select value={rescheduleTime} onValueChange={setRescheduleTime}>
+                <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
+                <SelectContent className="z-[105]">
+                  {BOOKING_TIME_SLOTS.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <Button className="w-full bg-[#005596] text-white" onClick={handleReschedule} disabled={isLoading || !rescheduleDate || !rescheduleTime}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scheduleModalOpen} onOpenChange={setScheduleModalOpen}>
+        <DialogContent className="sm:max-w-xs z-[100]">
+          <DialogHeader><DialogTitle>Set Schedule</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedJob && (
+              <p className="text-sm text-gray-500">
+                <span className="font-bold text-[#005596]">{selectedJob.title || selectedJob.client_name}</span> — {selectedJob.client_name}
+              </p>
+            )}
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input type="date" min={today} value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Time Slot</Label>
+              <Select value={scheduleTime} onValueChange={setScheduleTime}>
+                <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
+                <SelectContent className="z-[105]">
+                  {BOOKING_TIME_SLOTS.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full bg-[#005596] text-white" onClick={handleSetSchedule} disabled={isLoading || !scheduleDate || !scheduleTime}>
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Schedule
             </Button>
           </div>
         </DialogContent>
@@ -4253,7 +4461,6 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
                 <div><span className="text-gray-500 block">Date</span><span className="font-bold">{selectedApt.date}</span></div>
                 <div><span className="text-gray-500 block">Time</span><span className="font-bold">{selectedApt.time}</span></div>
                 <div><span className="text-gray-500 block">Service</span><span className="font-bold">{selectedApt.service_type}</span></div>
-                <div><span className="text-gray-500 block">Cost</span><span className="font-bold">{selectedApt.cost || 'TBD'}</span></div>
                 <div><span className="text-gray-500 block">Status</span><Badge>{selectedApt.status}</Badge></div>
                 <div><span className="text-gray-500 block">Technician</span><span className="font-bold">{selectedApt.technician || 'Unassigned'}</span></div>
                 <div className="col-span-2"><span className="text-gray-500 block">Notes</span><div className="bg-gray-50 p-2 rounded border italic mt-1">{selectedApt.notes || 'None'}</div></div>
@@ -5371,6 +5578,13 @@ function MiniStatCard({ title, value, icon }: { title: string, value: string, ic
   )
 }
 
+function detectServiceCategory(serviceType: string): string {
+  const value = (serviceType || '').toLowerCase()
+  if (value.includes('install')) return 'Installation'
+  if (value.includes('repair')) return 'Repair'
+  return 'Maintenance'
+}
+
 function RequestsView({ requests, technicians = [], onBack, fetchRequests, router, setView, setInstallations, setRepairs, setMaintenance }: any) {
   const [isLoading, setIsLoading] = useState(false)
   const [showApproveDialog, setShowApproveDialog] = useState(false)
@@ -5490,7 +5704,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
         type: 'Standard'
       }
 
-      const serviceCategory = selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || 'Maintenance'
+      const serviceCategory = approveServiceCategory || detectServiceCategory(selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || '')
 
       let result
       if (selectedRequestForApprove.source === 'lead') {
@@ -5498,7 +5712,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           result = await acceptLead(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
         } else if (serviceCategory === 'Repair') {
           result = await acceptLeadAsRepair(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
-        } else if (serviceCategory === 'Maintenance') {
+        } else {
           result = await acceptLeadAsMaintenance(selectedRequestForApprove.id, { serviceType: selectedRequestForApprove.service_type, ...jobData })
         }
       } else {
@@ -5584,7 +5798,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
 
   const openApproveDialog = (request: any) => {
     setSelectedRequestForApprove(request)
-    setApproveServiceCategory(request.service_type || request.request_type || '')
+    setApproveServiceCategory(detectServiceCategory(request.service_type || request.request_type || ''))
     setApproveTechnician('')
     setApprovePriority('Normal')
     setApproveServiceStatus('Scheduled')
@@ -5806,11 +6020,28 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           {selectedRequestForApprove && (
             <form onSubmit={handleApproveSubmit} className="space-y-6 py-2">
 
-              {/* Service Category - Auto-filled from request, read-only */}
+              {/* Service Category - Auto-detected from requested service, admin can override */}
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Service Type</p>
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <span className="text-lg font-bold text-blue-800">{selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || 'Service'}</span>
+                  {(selectedRequestForApprove.aircon_brand || selectedRequestForApprove.aircon_type || selectedRequestForApprove.horsepower) && (
+                    <span className="block text-sm font-semibold text-blue-700 mt-1">
+                      {selectedRequestForApprove.aircon_brand}{selectedRequestForApprove.aircon_type ? ` ${selectedRequestForApprove.aircon_type}` : ''}{selectedRequestForApprove.horsepower ? ` • ${selectedRequestForApprove.horsepower}` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label>Job Category</Label>
+                  <Select value={approveServiceCategory} onValueChange={setApproveServiceCategory} required>
+                    <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select job category" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Installation">Installation</SelectItem>
+                      <SelectItem value="Maintenance">Maintenance</SelectItem>
+                      <SelectItem value="Repair">Repair</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">Auto-detected from the requested service; change only if the job type differs.</p>
                 </div>
               </div>
 
@@ -5941,7 +6172,6 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
   const [dateTo, setDateTo] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   
-  const today = new Date().toISOString().split('T')[0]
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
 
@@ -6108,6 +6338,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="UnScheduled">UnScheduled</SelectItem>
                   <SelectItem value="Scheduled">Scheduled</SelectItem>
                   <SelectItem value="In Progress">In Progress</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
@@ -6269,7 +6500,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Schedule Multi-Unit Maintenance</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Multi-Unit Maintenance</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="py-4 space-y-6">
             {/* Client Selection */}
             <div className="space-y-2">
@@ -6360,16 +6591,6 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
                     )}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input name="date" type="date" defaultValue={today} required />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Time</Label>
-                <Input name="time" type="time" required />
               </div>
               <div className="space-y-2">
                 <Label>Schedule Type</Label>

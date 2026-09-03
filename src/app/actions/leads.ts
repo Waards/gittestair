@@ -270,7 +270,10 @@ export async function acceptLead(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      aircon_brand: lead.aircon_brand || null,
+      aircon_type: lead.aircon_type || null,
+      horsepower: lead.horsepower || null
     })
 
   if (insertError) {
@@ -366,6 +369,10 @@ export async function acceptLeadAsRepair(leadId: string, data: {
     return { error: 'Lead not found' }
   }
 
+  const leadSpecs = lead.aircon_brand || lead.aircon_type || lead.horsepower
+    ? { aircon_brand: lead.aircon_brand || null, aircon_type: lead.aircon_type || null, horsepower: lead.horsepower || null }
+    : {}
+
   const { error: insertError } = await supabase
     .from('repairs')
     .insert({
@@ -379,7 +386,8 @@ export async function acceptLeadAsRepair(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      ...leadSpecs
     })
 
   if (insertError) {
@@ -475,6 +483,10 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
     return { error: 'Lead not found' }
   }
 
+  const leadSpecs = lead.aircon_brand || lead.aircon_type || lead.horsepower
+    ? { aircon_brand: lead.aircon_brand || null, aircon_type: lead.aircon_type || null, horsepower: lead.horsepower || null }
+    : {}
+
   const { error: insertError } = await supabase
     .from('maintenance')
     .insert({
@@ -488,7 +500,8 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
       notes: data.notes || lead.additional_info,
       type: data.type || 'Standard',
       status: 'Scheduled',
-      progress: 0
+      progress: 0,
+      ...leadSpecs
     })
 
   if (insertError) {
@@ -693,6 +706,9 @@ export async function convertLeadToClient(leadId: string) {
       preferred_time: lead.preferred_time || null,
       service_address: lead.service_address || null,
       phone_number: lead.phone_number || null,
+      aircon_brand: lead.aircon_brand || null,
+      aircon_type: lead.aircon_type || null,
+      horsepower: lead.horsepower || null,
       status: 'Pending'
     })
 
