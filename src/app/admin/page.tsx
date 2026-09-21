@@ -5581,7 +5581,12 @@ function MiniStatCard({ title, value, icon }: { title: string, value: string, ic
 function detectServiceCategory(serviceType: string): string {
   const value = (serviceType || '').toLowerCase()
   if (value.includes('install')) return 'Installation'
-  if (value.includes('repair')) return 'Repair'
+  if (
+    value.includes('repair') ||
+    value.includes('dismantle') ||
+    value.includes('relocation') ||
+    value.includes('freon')
+  ) return 'Repair'
   return 'Maintenance'
 }
 
