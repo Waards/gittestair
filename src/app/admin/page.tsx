@@ -58,6 +58,9 @@ import {
   acceptRequestAsInstallation,
   acceptRequestAsRepair,
   acceptRequestAsMaintenance,
+  updateInstallationTechnician,
+  updateRepairTechnician,
+  updateMaintenanceTechnician,
   rejectRequest
 } from '@/app/actions/admin'
 import { getLeads, updateLeadStatus, convertLeadToClient, deleteLead, acceptLead, acceptLeadAsRepair, acceptLeadAsMaintenance, rejectLead } from '@/app/actions/leads'
@@ -178,6 +181,9 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState<any>(null)
   const [clientUnits, setClientUnits] = useState<any[]>([])
   const [repairJobs, setRepairJobs] = useState<any[]>([])
+
+  // Only Active technicians can be assigned to jobs — On Leave / Suspended / Inactive are excluded
+  const activeTechnicians = technicians.filter((t: any) => t.status === 'Active')
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(true)
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
@@ -345,6 +351,9 @@ export default function AdminDashboard() {
   const [maintenanceProgressStatus, setMaintenanceProgressStatus] = useState('Scheduled')
   const [maintenanceProgress, setMaintenanceProgress] = useState(0)
   const [maintenanceProgressNotes, setMaintenanceProgressNotes] = useState('')
+  const [installationTechnician, setInstallationTechnician] = useState('')
+  const [repairTechnician, setRepairTechnician] = useState('')
+  const [maintenanceTechnician, setMaintenanceTechnician] = useState('')
 
   // Auto-update progress when status changes
   useEffect(() => {
@@ -472,6 +481,48 @@ export default function AdminDashboard() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSaveInstallationTechnician = async () => {
+    if (!selectedInstallation) return
+    setIsLoading(true)
+    const result = await updateInstallationTechnician(selectedInstallation.id, installationTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedInstallation({ ...selectedInstallation, technician: installationTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
+  }
+
+  const handleSaveRepairTechnician = async () => {
+    if (!selectedRepair) return
+    setIsLoading(true)
+    const result = await updateRepairTechnician(selectedRepair.id, repairTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedRepair({ ...selectedRepair, technician: repairTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
+  }
+
+  const handleSaveMaintenanceTechnician = async () => {
+    if (!selectedMaintenance) return
+    setIsLoading(true)
+    const result = await updateMaintenanceTechnician(selectedMaintenance.id, maintenanceTechnician)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Technician updated')
+      setSelectedMaintenance({ ...selectedMaintenance, technician: maintenanceTechnician })
+      refreshData()
+    }
+    setIsLoading(false)
   }
 
   const handleSignOut = async () => {
@@ -636,7 +687,7 @@ export default function AdminDashboard() {
             setPage={setInstallationsPage}
             clients={clients}
             clientUnits={clientUnits}
-            technicians={technicians}
+            technicians={activeTechnicians}
             onBack={() => setView('dashboard')}
             fetchInstallations={refreshData}
             onViewDetails={handleViewInstallationDetails}
@@ -651,7 +702,7 @@ export default function AdminDashboard() {
             setPage={setRepairsPage}
             clients={clients}
             clientUnits={clientUnits}
-            technicians={technicians}
+            technicians={activeTechnicians}
             repairJobs={repairJobs}
             onBack={() => setView('dashboard')}
             fetchRepairs={refreshData}
@@ -667,7 +718,7 @@ export default function AdminDashboard() {
             setPage={setMaintenancePage}
             clients={clients}
             clientUnits={clientUnits}
-            technicians={technicians}
+            technicians={activeTechnicians}
             onBack={() => setView('dashboard')}
             fetchMaintenance={refreshData}
             onViewDetails={handleViewMaintenanceDetails}
@@ -691,6 +742,7 @@ export default function AdminDashboard() {
             repairs={repairs}
             maintenance={maintenance}
             clients={clients}
+            technicians={technicians}
             onBack={() => setView('dashboard')}
           />
         )}
@@ -706,7 +758,7 @@ export default function AdminDashboard() {
         {view === 'requests' && (
           <RequestsView
             requests={requests}
-            technicians={technicians}
+            technicians={activeTechnicians}
             onBack={() => setView('dashboard')}
             fetchRequests={refreshData}
             router={router}
@@ -1015,7 +1067,22 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedInstallation.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={installationTechnician} onValueChange={setInstallationTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {activeTechnicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                        ))}
+                        {activeTechnicians.length === 0 && (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No active technicians available.</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveInstallationTechnician} disabled={isLoading || !installationTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
@@ -1114,7 +1181,22 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedRepair.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={repairTechnician} onValueChange={setRepairTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {activeTechnicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                        ))}
+                        {activeTechnicians.length === 0 && (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No active technicians available.</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveRepairTechnician} disabled={isLoading || !repairTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
@@ -1214,7 +1296,22 @@ export default function AdminDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Technician</p>
-                  <p className="text-sm font-bold">{selectedMaintenance.technician || 'Not assigned'}</p>
+                  <div className="flex gap-2 items-center">
+                    <Select value={maintenanceTechnician} onValueChange={setMaintenanceTechnician}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                      <SelectContent>
+                        {activeTechnicians.map((t: any) => (
+                          <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                        ))}
+                        {activeTechnicians.length === 0 && (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No active technicians available.</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="bg-[#005596]" onClick={handleSaveMaintenanceTechnician} disabled={isLoading || !maintenanceTechnician}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-gray-500 font-medium">Scheduled Date</p>
@@ -2346,9 +2443,9 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
   const BRANDS = ['LG', 'Samsung', 'Carrier', 'Daikin', 'Midea', 'Aux', 'Panasonic', 'Kolin', 'Sharp', 'Fujidenzo', 'Generic']
   const HP_OPTIONS = ['0.5', '1.0', '1.5', '2.0', '2.5', '3.0']
 
-  const techSet = new Set<string>()
-  installations.forEach((i: any) => { if (i.technician) techSet.add(i.technician) })
-  const uniqueTechnicians = Array.from(techSet)
+  // Technician filter reads from the technicians table (Active only), not old job records —
+  // otherwise deleted technicians still appear as filter options
+  const uniqueTechnicians = technicians.map((t: any) => t.full_name).filter(Boolean)
 
   const brandSet = new Set<string>()
   clientUnits.forEach((u: any) => { if (u.brand) brandSet.add(u.brand as string) })
@@ -3022,10 +3119,8 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
   const itemsPerPage = 20
   const totalPages = Math.ceil(total / itemsPerPage)
 
-  // Get unique technicians
-  const techSet = new Set<string>()
-  repairs.forEach((r: any) => { if (r.technician) techSet.add(r.technician as string) })
-  const uniqueTechnicians = Array.from(techSet)
+  // Technician filter reads from the technicians table (Active only), not old job records
+  const uniqueTechnicians = technicians.map((t: any) => t.full_name).filter(Boolean)
 
   // Filter repairs
   const filteredRepairs = repairs.filter((item: any) => {
@@ -4244,7 +4339,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   )
 }
 
-function ReportsView({ installations, repairs, maintenance, clients, onBack }: any) {
+function ReportsView({ installations, repairs, maintenance, clients, technicians, onBack }: any) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [datePreset, setDatePreset] = useState('all')
@@ -4344,8 +4439,11 @@ function ReportsView({ installations, repairs, maintenance, clients, onBack }: a
   })
   const sortedIssues = Object.entries(issueCounts).sort((a, b) => b[1] - a[1])
 
-  // Get unique technicians
-  const techSet = new Set<string>()
+  // DB technicians (all statuses, since they may still own past jobs) unioned with names found
+  // in job records so historical reports keep working for technicians no longer in the table
+  const techSet = new Set<string>(
+    (technicians || []).map((t: any) => t.full_name).filter(Boolean)
+  )
   allItems.forEach((i: any) => { if (i.technician) techSet.add(i.technician as string) })
   const uniqueTechnicians = Array.from(techSet)
 
@@ -6007,10 +6105,10 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                     <Select value={approveTechnician} onValueChange={setApproveTechnician} required>
                       <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select technician" /></SelectTrigger>
                       <SelectContent>
-                        {technicians.filter((t: any) => t.status === 'Active').map((t: any) => (
+                        {technicians.map((t: any) => (
                           <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
-                        {technicians.filter((t: any) => t.status === 'Active').length === 0 && (
+                        {technicians.length === 0 && (
                           <div className="px-2 py-1.5 text-sm text-gray-500">No active technicians available. Add one in Technician Management.</div>
                         )}
                       </SelectContent>
@@ -6096,9 +6194,8 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
   const totalPages = Math.ceil(total / itemsPerPage)
 
   // Get unique technicians
-  const techSet = new Set<string>()
-  maintenance.forEach((m: any) => { if (m.technician) techSet.add(m.technician as string) })
-  const uniqueTechnicians = Array.from(techSet)
+  // Technician filter reads from the technicians table (Active only), not old job records
+  const uniqueTechnicians = technicians.map((t: any) => t.full_name).filter(Boolean)
 
   // Filter maintenance
   const filteredMaintenance = maintenance.filter((item: any) => {

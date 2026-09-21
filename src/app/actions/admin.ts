@@ -2404,3 +2404,36 @@ export async function deleteUnitComponent(componentId: string) {
   revalidatePath('/admin')
   return { success: true }
 }
+
+export async function updateInstallationTechnician(id: string, technician: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('installations')
+    .update({ technician })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function updateRepairTechnician(id: string, technician: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('repairs')
+    .update({ technician })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function updateMaintenanceTechnician(id: string, technician: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('maintenance')
+    .update({ technician })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
