@@ -2970,7 +2970,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                       <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                     ))}
                     {technicians.length === 0 && (
-                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                      <div className="px-2 py-1.5 text-sm text-gray-500">No technicians available. Add one in Technician Management.</div>
                     )}
                   </SelectContent>
                 </Select>
@@ -3009,8 +3009,9 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
             {/* Linked Installation Job */}
             <div className="space-y-1">
               <Label>Installation Job (optional)</Label>
-              <Select name="installationId" value={prefillInstallationId} onValueChange={(val) => {
-                setPrefillInstallationId(val)
+              <Select name="installationId" value={prefillInstallationId || '__none__'} onValueChange={(val) => {
+                const chosen = val === '__none__' ? '' : val
+                setPrefillInstallationId(chosen)
                 const job = installations.find((i: any) => i.id === val)
                 if (job) {
                   setPrefillClientId(job.client_id || prefillClientId)
@@ -3022,7 +3023,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
               }}>
                 <SelectTrigger><SelectValue placeholder="Link to an installation job..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No job linked</SelectItem>
+                  <SelectItem value="__none__">No job linked</SelectItem>
                   {linkableInstallations.map((i: any) => (
                     <SelectItem key={i.id} value={i.id}>{i.title} — {i.client_name} ({i.date || 'unscheduled'})</SelectItem>
                   ))}
@@ -3625,7 +3626,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
                       <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                     ))}
                     {technicians.length === 0 && (
-                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                      <div className="px-2 py-1.5 text-sm text-gray-500">No technicians available. Add one in Technician Management.</div>
                     )}
                   </SelectContent>
                 </Select>
@@ -6096,7 +6097,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                           <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                         ))}
                         {technicians.filter((t: any) => t.status === 'Active').length === 0 && (
-                          <SelectItem value="" disabled>No active technicians available. Add one in Technician Management.</SelectItem>
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No active technicians available. Add one in Technician Management.</div>
                         )}
                       </SelectContent>
                     </Select>
@@ -6592,7 +6593,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
                       <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
                     ))}
                     {technicians.length === 0 && (
-                      <SelectItem value="" disabled>No technicians available. Add one in Technician Management.</SelectItem>
+                      <div className="px-2 py-1.5 text-sm text-gray-500">No technicians available. Add one in Technician Management.</div>
                     )}
                   </SelectContent>
                 </Select>
