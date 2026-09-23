@@ -176,6 +176,59 @@ async function sendClientPushNotification(table: string, id: string, title: stri
   }
 }
 
+const STATUS_HISTORY_REMARK_REQUIRED = ['Delayed', 'Issue', 'Failed']
+
+export async function uploadJobImage(file: File, jobType: string, jobId: string) {
+  try {
+    const MAX_SIZE_MB = 10
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1)
+      return { error: `Image is too big (${sizeMB} MB). Maximum size is ${MAX_SIZE_MB}MB. Please compress or choose a smaller image.` }
+    }
+    if (!file.type.startsWith('image/')) {
+      return { error: 'Only image files are allowed.' }
+    }
+
+    const supabase = await createAdminClient()
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg'
+    const path = `${jobType}/${jobId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('job-images')
+      .upload(path, file, { contentType: file.type, upsert: false })
+
+    if (uploadError) return { error: uploadError.message }
+
+    const { data } = supabase.storage.from('job-images').getPublicUrl(path)
+    return { url: data.publicUrl }
+  } catch (e: any) {
+    console.error('uploadJobImage error:', e)
+    return { error: e?.message || 'Failed to upload image.' }
+  }
+}
+
+async function appendStatusHistory(
+  supabase: any,
+  table: string,
+  id: string,
+  entry: { status: string; note: string | null; remark: string | null; progress: number; images?: string[] | null }
+) {
+  try {
+    const { data: job } = await supabase
+      .from(table as any)
+      .select('status_history')
+      .eq('id', id)
+      .single()
+    const history: any[] = Array.isArray(job?.status_history) ? job.status_history : []
+    history.push({ ...entry, updated_at: new Date().toISOString() })
+    return history
+  } catch (e) {
+    console.log('status history read skipped:', e)
+    return [{ ...entry, updated_at: new Date().toISOString() }]
+  }
+}
+
 export async function createClientUser(formData: FormData) {
   const email = formData.get('email') as string
   const fullName = formData.get('fullName') as string
@@ -712,9 +765,15 @@ export async function markInstallationComplete(id: string) {
     console.log('client_request_id check skipped:', e)
   }
 
+  const history = await appendStatusHistory(supabase, 'installations', id, {
+    status: 'Completed',
+    note: null,
+    remark: null,
+    progress: 100
+  })
   const { error } = await supabase
     .from('installations')
-    .update({ status: 'Completed', progress: 100 })
+    .update({ status: 'Completed', progress: 100, status_history: history })
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
@@ -750,9 +809,15 @@ export async function markRepairComplete(id: string) {
     console.log('client_request_id check skipped:', e)
   }
 
+  const history = await appendStatusHistory(supabase, 'repairs', id, {
+    status: 'Completed',
+    note: null,
+    remark: null,
+    progress: 100
+  })
   const { error } = await supabase
     .from('repairs')
-    .update({ status: 'Completed', progress: 100 })
+    .update({ status: 'Completed', progress: 100, status_history: history })
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
@@ -763,9 +828,13 @@ export async function markRepairComplete(id: string) {
   return { success: true }
 }
 
-export async function updateInstallationProgress(id: string, status: string, progress: number, notes?: string) {
+export async function updateInstallationProgress(id: string, status: string, progress: number, notes?: string, remarks?: string, images?: string[]) {
   const supabase = await createAdminClient()
-  
+
+  if (STATUS_HISTORY_REMARK_REQUIRED.includes(status) && !remarks?.trim()) {
+    return { error: `A remark is required when status is "${status}". Please explain the situation before saving.` }
+  }
+
   try {
     const { data: job, error: fetchError } = await supabase
       .from('installations')
@@ -790,6 +859,14 @@ export async function updateInstallationProgress(id: string, status: string, pro
 
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
+  if (remarks !== undefined) updateData.remarks = remarks.trim() || null
+  updateData.status_history = await appendStatusHistory(supabase, 'installations', id, {
+    status,
+    note: notes?.trim() || null,
+    remark: remarks?.trim() || null,
+    progress,
+    images: images && images.length > 0 ? images : null
+  })
   const { error } = await supabase
     .from('installations')
     .update(updateData)
@@ -801,6 +878,12 @@ export async function updateInstallationProgress(id: string, status: string, pro
     sendClientPushNotification('installations', id, 'Service Started!', 'Our technician has started working on your installation.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('installations', id, 'Service Scheduled', 'Your installation has been scheduled.', 'progress')
+  } else if (status === 'Delayed') {
+    sendClientPushNotification('installations', id, 'Service Update', `Your installation was not finished today and will continue on the next schedule.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Issue') {
+    sendClientPushNotification('installations', id, 'Service Update', `Your installation has an issue.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Failed') {
+    sendClientPushNotification('installations', id, 'Service Update', `Your installation could not be completed.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
   } else if (status === 'Cancelled') {
     sendCancelEmail('installations', id, 'Installation', notes || 'Cancelled by admin')
   }
@@ -808,9 +891,13 @@ export async function updateInstallationProgress(id: string, status: string, pro
   return { success: true }
 }
 
-export async function updateRepairProgress(id: string, status: string, progress: number, notes?: string) {
+export async function updateRepairProgress(id: string, status: string, progress: number, notes?: string, remarks?: string, images?: string[]) {
   const supabase = await createAdminClient()
-  
+
+  if (STATUS_HISTORY_REMARK_REQUIRED.includes(status) && !remarks?.trim()) {
+    return { error: `A remark is required when status is "${status}". Please explain the situation before saving.` }
+  }
+
   try {
     const { data: job, error: fetchError } = await supabase
       .from('repairs')
@@ -835,6 +922,14 @@ export async function updateRepairProgress(id: string, status: string, progress:
 
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
+  if (remarks !== undefined) updateData.remarks = remarks.trim() || null
+  updateData.status_history = await appendStatusHistory(supabase, 'repairs', id, {
+    status,
+    note: notes?.trim() || null,
+    remark: remarks?.trim() || null,
+    progress,
+    images: images && images.length > 0 ? images : null
+  })
   const { error } = await supabase
     .from('repairs')
     .update(updateData)
@@ -846,6 +941,12 @@ export async function updateRepairProgress(id: string, status: string, progress:
     sendClientPushNotification('repairs', id, 'Service Started!', 'Our technician has started working on your repair.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('repairs', id, 'Service Scheduled', 'Your repair has been scheduled.', 'progress')
+  } else if (status === 'Delayed') {
+    sendClientPushNotification('repairs', id, 'Service Update', `Your repair was not finished today and will continue on the next schedule.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Issue') {
+    sendClientPushNotification('repairs', id, 'Service Update', `Your repair has an issue.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Failed') {
+    sendClientPushNotification('repairs', id, 'Service Update', `Your repair could not be completed.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
   } else if (status === 'Cancelled') {
     sendCancelEmail('repairs', id, 'Repair', notes || 'Cancelled by admin')
   }
@@ -853,9 +954,13 @@ export async function updateRepairProgress(id: string, status: string, progress:
   return { success: true }
 }
 
-export async function updateMaintenanceProgress(id: string, status: string, progress: number, notes?: string) {
+export async function updateMaintenanceProgress(id: string, status: string, progress: number, notes?: string, remarks?: string, images?: string[]) {
   const supabase = await createAdminClient()
-  
+
+  if (STATUS_HISTORY_REMARK_REQUIRED.includes(status) && !remarks?.trim()) {
+    return { error: `A remark is required when status is "${status}". Please explain the situation before saving.` }
+  }
+
   try {
     const { data: job, error: fetchError } = await supabase
       .from('maintenance')
@@ -880,6 +985,14 @@ export async function updateMaintenanceProgress(id: string, status: string, prog
 
   const updateData: any = { status, progress }
   if (notes) updateData.notes = notes
+  if (remarks !== undefined) updateData.remarks = remarks.trim() || null
+  updateData.status_history = await appendStatusHistory(supabase, 'maintenance', id, {
+    status,
+    note: notes?.trim() || null,
+    remark: remarks?.trim() || null,
+    progress,
+    images: images && images.length > 0 ? images : null
+  })
   const { error } = await supabase
     .from('maintenance')
     .update(updateData)
@@ -891,6 +1004,12 @@ export async function updateMaintenanceProgress(id: string, status: string, prog
     sendClientPushNotification('maintenance', id, 'Service Started!', 'Our technician has started working on your maintenance.', 'progress')
   } else if (status === 'Scheduled') {
     sendClientPushNotification('maintenance', id, 'Service Scheduled', 'Your maintenance has been scheduled.', 'progress')
+  } else if (status === 'Delayed') {
+    sendClientPushNotification('maintenance', id, 'Service Update', `Your maintenance was not finished today and will continue on the next schedule.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Issue') {
+    sendClientPushNotification('maintenance', id, 'Service Update', `Your maintenance has an issue.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
+  } else if (status === 'Failed') {
+    sendClientPushNotification('maintenance', id, 'Service Update', `Your maintenance could not be completed.${remarks?.trim() ? ` Note: ${remarks.trim()}` : ''}`, 'progress')
   } else if (status === 'Cancelled') {
     sendCancelEmail('maintenance', id, 'Maintenance', notes || 'Cancelled by admin')
   }
@@ -1000,9 +1119,15 @@ export async function getDashboardMaintenance() {
 
 export async function markMaintenanceComplete(id: string) {
   const supabase = await createAdminClient()
+  const history = await appendStatusHistory(supabase, 'maintenance', id, {
+    status: 'Completed',
+    note: null,
+    remark: null,
+    progress: 100
+  })
   const { error } = await supabase
     .from('maintenance')
-    .update({ status: 'Completed', progress: 100 })
+    .update({ status: 'Completed', progress: 100, status_history: history })
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
@@ -1140,6 +1265,7 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
   cost: string
   notes: string
   type: string
+  serviceTitle?: string
 }) {
   const supabase = await createAdminClient()
   
@@ -1174,7 +1300,7 @@ export async function acceptRequestAsInstallation(requestId: string, data: {
   }
 
   const insertData: any = {
-    title: request.request_type,
+    title: data.serviceTitle || request.request_type,
     client_name: request.client_name,
     location: data.location || request.service_address || '',
     technician: data.technician,
@@ -1225,6 +1351,7 @@ export async function acceptRequestAsRepair(requestId: string, data: {
   cost: string
   notes: string
   type: string
+  serviceTitle?: string
 }) {
   const supabase = await createAdminClient()
   
@@ -1243,7 +1370,7 @@ export async function acceptRequestAsRepair(requestId: string, data: {
     : {}
 
   const insertData: any = {
-    title: request.request_type,
+    title: data.serviceTitle || request.request_type,
     client_name: request.client_name,
     location: data.location || request.service_address || '',
     technician: data.technician,
@@ -1292,6 +1419,7 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
   cost: string
   notes: string
   type: string
+  serviceTitle?: string
 }) {
   const supabase = await createAdminClient()
   
@@ -1310,7 +1438,7 @@ export async function acceptRequestAsMaintenance(requestId: string, data: {
     : {}
 
   const insertData: any = {
-    title: request.request_type,
+    title: data.serviceTitle || request.request_type,
     client_name: request.client_name,
     location: data.location || request.service_address || '',
     technician: data.technician,

@@ -5,7 +5,7 @@ export interface Lead {
   email: string
   service_address: string
   client_type: 'Residential' | 'Corporate'
-  service_type: string
+  service_type: string | null
   preferred_date: string
   preferred_time: string
   additional_info: string | null
@@ -27,12 +27,18 @@ export interface Lead {
   province: string | null
 }
 
+export interface RequestedServiceItem {
+  service: string
+  notes: string | null
+}
+
 export interface ClientRequest {
   id: string
   created_at: string
   client_id: string | null
   client_name: string
   request_type: string
+  requested_services: RequestedServiceItem[] | null
   message: string | null
   status: 'Pending' | 'Approved' | 'Rejected'
   preferred_date: string | null
@@ -81,6 +87,14 @@ export interface Appointment {
   is_corporate?: boolean
 }
 
+export interface StatusHistoryEntry {
+  status: string
+  note: string | null
+  remark: string | null
+  progress: number
+  updated_at: string
+}
+
 export interface Installation {
   id: string
   title: string
@@ -93,6 +107,8 @@ export interface Installation {
   created_at: string
   cost: string | null
   notes: string | null
+  remarks: string | null
+  status_history: StatusHistoryEntry[] | null
   time: string | null
   type: 'Real-Time' | 'Scheduled'
   aircon_brand: string | null
@@ -112,6 +128,8 @@ export interface Repair {
   created_at: string
   cost: string | null
   notes: string | null
+  remarks: string | null
+  status_history: StatusHistoryEntry[] | null
   time: string | null
   type: 'Real-Time' | 'Scheduled'
   aircon_brand: string | null
@@ -129,6 +147,8 @@ export interface Maintenance {
   time: string | null
   cost: string | null
   notes: string | null
+  remarks: string | null
+  status_history: StatusHistoryEntry[] | null
   type: 'Standard' | 'Real-Time' | 'Scheduled'
   status: 'Scheduled' | 'In Progress' | 'Completed'
   progress: number
@@ -175,6 +195,7 @@ export interface ClientUnit {
   warranty_end_date: string | null
   warranty_provider: string | null
   warranty_type: string | null
+  source: 'admin' | 'client' | null
 }
 
 export interface UnitComponent {

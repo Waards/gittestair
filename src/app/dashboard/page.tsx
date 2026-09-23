@@ -15,7 +15,8 @@ import {
   cancelService,
   getUserClientUnits,
   getUserUnitServiceHistory,
-  sendMessageToAdmin
+  sendMessageToAdmin,
+  registerClientUnit
 } from '@/app/actions/user'
 import { getAvailableTimeSlots } from '@/app/actions/admin'
 import { createClient } from '@/lib/supabase'
@@ -43,7 +44,8 @@ import {
   ChevronRight,
   Package,
   Mail,
-  AlertTriangle
+  AlertTriangle,
+  Plus
 } from 'lucide-react'
 import {
   Dialog,
@@ -88,11 +90,19 @@ export default function ClientDashboard() {
   const [isFetching, setIsFetching] = useState(true)
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
-  const [serviceType, setServiceType] = useState<string>('')
-  const [airconBrand, setAirconBrand] = useState<string>('')
-  const [airconBrandOther, setAirconBrandOther] = useState<string>('')
-  const [airconType, setAirconType] = useState<string>('')
-  const [horsepower, setHorsepower] = useState<string>('')
+  const [selectedServices, setSelectedServices] = useState<string[]>([])
+  const [installationDetails, setInstallationDetails] = useState({ brand: '', brandOther: '', type: '', hp: '' })
+  const [repairIssue, setRepairIssue] = useState('')
+  const [serviceUnits, setServiceUnits] = useState<Record<string, string[]>>({})
+
+  // Client self-registration of an existing aircon unit
+  const [showRegisterUnit, setShowRegisterUnit] = useState(false)
+  const [isRegisteringUnit, setIsRegisteringUnit] = useState(false)
+  const [unitForm, setUnitForm] = useState({
+    unitName: '', brand: '', brandOther: '', unitType: 'Split', technology: 'Inverter',
+    horsepower: '', model: '', indoorSerial: '', outdoorSerial: '',
+    installationDate: '', warrantyMonths: '', warrantyType: 'Manufacturer'
+  })
   const [, setTick] = useState<number>(0)
   const [view, setView] = useState<'dashboard' | 'settings' | 'machines' | 'notifications'>('dashboard')
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false)
@@ -232,9 +242,71 @@ export default function ClientDashboard() {
     return statusProgress[item.status] || 0
   }
 
+  // Toggle a service in the multi-service request; clearing a service also
+  // clears its per-service details
+  const toggleService = (svc: string, checked: boolean) => {
+    setSelectedServices(prev => checked ? (prev.includes(svc) ? prev : [...prev, svc]) : prev.filter(s => s !== svc))
+    if (!checked) {
+      setServiceUnits(prev => {
+        const next = { ...prev }
+        delete next[svc]
+        return next
+      })
+      if (svc === 'Repair') setRepairIssue('')
+      if (svc === 'Installation') setInstallationDetails({ brand: '', brandOther: '', type: '', hp: '' })
+    }
+  }
+
+  const resetRequestFormState = () => {
+    setSelectedServices([])
+    setInstallationDetails({ brand: '', brandOther: '', type: '', hp: '' })
+    setRepairIssue('')
+    setServiceUnits({})
+  }
+
+  const resetUnitForm = () => {
+    setUnitForm({
+      unitName: '', brand: '', brandOther: '', unitType: 'Split', technology: 'Inverter',
+      horsepower: '', model: '', indoorSerial: '', outdoorSerial: '',
+      installationDate: '', warrantyMonths: '', warrantyType: 'Manufacturer'
+    })
+  }
+
+  const handleRegisterUnit = async () => {
+    const brand = unitForm.brand === 'Other' ? unitForm.brandOther : unitForm.brand
+    if (!unitForm.unitName || !brand || !unitForm.unitType || !unitForm.horsepower) {
+      toast.error('Please fill in Unit Name, Brand, Type, and Horsepower')
+      return
+    }
+    setIsRegisteringUnit(true)
+    const result = await registerClientUnit({
+      unitName: unitForm.unitName,
+      brand,
+      unitType: unitForm.unitType,
+      technology: unitForm.technology,
+      horsepower: unitForm.horsepower,
+      model: unitForm.model,
+      indoorSerial: unitForm.indoorSerial,
+      outdoorSerial: unitForm.outdoorSerial,
+      installationDate: unitForm.installationDate,
+      warrantyMonths: unitForm.warrantyMonths,
+      warrantyType: unitForm.warrantyType
+    })
+    setIsRegisteringUnit(false)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Unit registered! You can now book Cleaning, Maintenance, or Repair for it.')
+      setShowRegisterUnit(false)
+      resetUnitForm()
+      // Refresh so the new unit is selectable right away (request dialog + machines list)
+      getUserClientUnits().then(units => setClientUnits(units || []))
+    }
+  }
+
   const handleServiceRequest = async () => {
-    if (!serviceType) {
-      toast.error('Please select a service type')
+    if (selectedServices.length === 0) {
+      toast.error('Please select at least one service')
       return
     }
     if (!profile?.full_name || !profile?.email) {
@@ -246,9 +318,25 @@ export default function ClientDashboard() {
       return
     }
 
-    const servicesWithMultipleUnits = ['Maintenance']
-    if (servicesWithMultipleUnits.includes(serviceType) && selectedUnits.length === 0) {
-      toast.error('Please select at least one unit')
+    // Per-service details captured alongside the shared schedule
+    const servicesPayload: { service: string; notes: string | null }[] = selectedServices.map(svc => ({
+      service: svc,
+      notes: svc === 'Repair' ? (repairIssue.trim() || null) : null
+    }))
+
+    if (selectedServices.includes('Repair') && !repairIssue.trim()) {
+      toast.error('Please describe the issue for the Repair service')
+      return
+    }
+    for (const svc of selectedServices) {
+      if (['Maintenance', 'Cleaning', 'Repair'].includes(svc) && !(serviceUnits[svc]?.length)) {
+        toast.error(`Please select a unit for ${svc}`)
+        return
+      }
+    }
+    if (selectedServices.includes('Installation') &&
+      (!installationDetails.brand || !installationDetails.type || !installationDetails.hp)) {
+      toast.error('Please complete the aircon details for Installation')
       return
     }
 
@@ -258,32 +346,38 @@ export default function ClientDashboard() {
     formData.append('phone', profile.phone || '')
     formData.append('email', profile.email)
     formData.append('address', profile.address || '')
-    formData.append('serviceType', serviceType)
+    // Combined request: one request row carrying all selected services
+    formData.append('services', JSON.stringify(servicesPayload))
+    // Legacy single string (comma-joined) kept for backwards compatibility
+    formData.append('serviceType', selectedServices.join(', '))
     formData.append('date', requestDate)
     formData.append('time', requestTime)
-    if (selectedUnits.length > 0) {
-      formData.append('selectedUnits', JSON.stringify(selectedUnits))
+
+    // Union of units selected across services
+    const allUnitIds = Array.from(new Set(selectedServices.flatMap(s => serviceUnits[s] || [])))
+    if (allUnitIds.length > 0) {
+      formData.append('selectedUnits', JSON.stringify(allUnitIds))
     }
-    if (serviceType === 'Installation') {
-      formData.append('airconBrand', airconBrand === 'Other' ? airconBrandOther : airconBrand)
-      formData.append('airconType', airconType)
-      formData.append('horsepower', horsepower)
+
+    if (selectedServices.includes('Installation')) {
+      formData.append('airconBrand', installationDetails.brand === 'Other' ? installationDetails.brandOther : installationDetails.brand)
+      formData.append('airconType', installationDetails.type)
+      formData.append('horsepower', installationDetails.hp)
     }
 
     const notesInput = document.getElementById('requestNotes') as HTMLTextAreaElement
-    if (notesInput) formData.append('notes', notesInput.value)
-    
+    if (notesInput?.value) formData.append('notes', notesInput.value)
+
     const result = await requestService(formData)
 
     if (result.error) {
       toast.error(result.error)
     } else {
-      toast.success('Service request submitted successfully!')
+      toast.success(selectedServices.length > 1
+        ? `Service request submitted: ${selectedServices.join(' + ')} (one request, admin will schedule each service)`
+        : 'Service request submitted successfully!')
       setIsRequestDialogOpen(false)
-      setServiceType('')
-      setAirconBrand('')
-      setAirconType('')
-      setHorsepower('')
+      resetRequestFormState()
       setSelectedUnits([])
       setRequestDate('')
       setRequestTime('')
@@ -497,13 +591,21 @@ export default function ClientDashboard() {
                             Requested on {activity.date} at {activity.time}
                           </p>
                         </div>
-                        <div className="text-right flex flex-col items-end gap-1.5 min-w-[200px]">
+                        <div className="text-left md:text-right flex flex-col items-start md:items-end gap-1.5 w-full md:w-auto md:min-w-[200px]">
                           <span className="text-xs font-bold text-[#1E293B] bg-slate-100 px-2 py-0.5 rounded">{getStatusProgress(activity)}% Complete</span>
-                          <div className="w-full">
+                          <div className="w-full md:w-[200px]">
                             <Progress value={getStatusProgress(activity)} status={getStatusType(activity.status)} className="h-2 rounded-full" />
                           </div>
                         </div>
                       </div>
+                      {activity.remarks && (
+                        <div className="mt-4 pt-4 border-t border-slate-50">
+                          <p className="text-[13px] text-slate-700 font-semibold bg-amber-50 p-3 rounded-lg border-l-[3px] border-amber-500">
+                            <span className="font-bold text-[10px] uppercase tracking-widest text-amber-600 block mb-1">Latest Update:</span>
+                            {activity.remarks}
+                          </p>
+                        </div>
+                      )}
                       {activity.notes && (
                         <div className="mt-4 pt-4 border-t border-slate-50">
                           <p className="text-[13px] text-slate-600 font-medium bg-slate-50 p-3 rounded-lg border-l-[3px] border-[#005596]">
@@ -511,6 +613,33 @@ export default function ClientDashboard() {
                             {activity.notes}
                           </p>
                         </div>
+                      )}
+                      {Array.isArray(activity.status_history) && activity.status_history.length > 0 && (
+                        <details className="mt-4 pt-4 border-t border-slate-50 group">
+                          <summary className="text-xs font-bold text-[#005596] uppercase tracking-widest cursor-pointer select-none hover:opacity-80">
+                            Update History ({activity.status_history.length})
+                          </summary>
+                          <div className="mt-3 space-y-2">
+                            {[...activity.status_history].reverse().map((h: any, idx: number) => (
+                              <div key={idx} className="text-xs bg-slate-50 rounded-lg p-3 border-l-[3px] border-slate-300">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-extrabold text-[#1E293B]">{h.status}</span>
+                                  <span className="text-slate-400">{new Date(h.updated_at).toLocaleString()}</span>
+                                </div>
+                                {h.progress !== undefined && <span className="text-slate-500">{h.progress}% complete</span>}
+                                {h.remark && <p className="text-slate-700 mt-1"><span className="font-semibold">Remark:</span> {h.remark}</p>}
+                                {Array.isArray(h.images) && h.images.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {h.images.map((img: string) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img key={img} src={img} alt="Update" className="h-16 w-16 rounded-md object-cover border border-slate-200 cursor-pointer hover:opacity-80" onClick={() => window.open(img, '_blank')} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
                       )}
                       {canReschedule(activity) && (
                         <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end gap-3">
@@ -550,13 +679,29 @@ export default function ClientDashboard() {
                 <Wind className="h-6 w-6 text-white" />
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-[#1E293B]">My Machine List</h1>
+              <Button
+                size="sm"
+                className="ml-auto bg-[#005596] hover:bg-[#005596]/90"
+                onClick={() => setShowRegisterUnit(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Register a Unit
+              </Button>
             </div>
 
             {clientUnits.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
                 <Wind className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">No registered air conditioning units found</p>
-                <p className="text-sm text-gray-400 mt-2">Your registered units will appear here after installation</p>
+                <p className="text-sm text-gray-400 mt-2">Have an existing aircon? Register it below so you can book cleaning, maintenance, or repair.</p>
+                <Button
+                  size="sm"
+                  className="mt-4 bg-[#005596] hover:bg-[#005596]/90"
+                  onClick={() => setShowRegisterUnit(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Register a Unit
+                </Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -843,10 +988,7 @@ export default function ClientDashboard() {
       <Dialog open={isRequestDialogOpen} onOpenChange={(open) => {
         setIsRequestDialogOpen(open)
         if (!open) {
-          setServiceType('')
-          setAirconBrand('')
-          setAirconType('')
-          setHorsepower('')
+          resetRequestFormState()
           setSelectedUnits([])
           setRequestDate('')
           setRequestTime('')
@@ -860,25 +1002,37 @@ export default function ClientDashboard() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Service Type *</Label>
-              <Select value={serviceType} onValueChange={(val) => { setServiceType(val); setSelectedUnits([]); setAirconBrand(''); setAirconType(''); setHorsepower('') }}>
-                <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Installation">Installation</SelectItem>
-                  <SelectItem value="Maintenance">Maintenance</SelectItem>
-                  <SelectItem value="Repair">Repair</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Select Services * <span className="text-xs font-normal text-slate-500">(you may pick more than one)</span></Label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Installation', 'Cleaning', 'Maintenance', 'Repair'].map(svc => {
+                  const checked = selectedServices.includes(svc)
+                  return (
+                    <label
+                      key={svc}
+                      className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                        checked ? 'border-[#005596] bg-[#005596]/5' : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleService(svc, e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 accent-[#005596]"
+                      />
+                      <span className="text-sm font-medium">{svc}</span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
 
-            {serviceType === 'Installation' && (
+            {selectedServices.includes('Installation') && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Aircon Brand *</Label>
-                    <Select value={airconBrand} onValueChange={(v) => {
-                      setAirconBrand(v)
-                      if (v === 'Other') setAirconBrandOther('')
+                    <Select value={installationDetails.brand} onValueChange={(v) => {
+                      setInstallationDetails(prev => ({ ...prev, brand: v, brandOther: v === 'Other' ? prev.brandOther : '' }))
                     }}>
                       <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
                       <SelectContent>
@@ -887,18 +1041,18 @@ export default function ClientDashboard() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {airconBrand === 'Other' && (
+                    {installationDetails.brand === 'Other' && (
                       <Input 
                         placeholder="Enter brand name"
-                        value={airconBrandOther}
-                        onChange={(e) => setAirconBrandOther(e.target.value)}
+                        value={installationDetails.brandOther}
+                        onChange={(e) => setInstallationDetails(prev => ({ ...prev, brandOther: e.target.value }))}
                         className="mt-2"
                       />
                     )}
                   </div>
                   <div className="space-y-2">
                     <Label>Aircon Type *</Label>
-                    <Select value={airconType} onValueChange={setAirconType}>
+                    <Select value={installationDetails.type} onValueChange={(v) => setInstallationDetails(prev => ({ ...prev, type: v }))}>
                       <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Window">Window</SelectItem>
@@ -909,7 +1063,7 @@ export default function ClientDashboard() {
                   </div>
                   <div className="space-y-2">
                     <Label>Horsepower *</Label>
-                    <Select value={horsepower} onValueChange={setHorsepower}>
+                    <Select value={installationDetails.hp} onValueChange={(v) => setInstallationDetails(prev => ({ ...prev, hp: v }))}>
                       <SelectTrigger><SelectValue placeholder="Select HP" /></SelectTrigger>
                       <SelectContent>
                         {['0.5 HP', '0.75 HP', '1.0 HP', '1.5 HP', '2.0 HP', '2.5 HP', '3.0 HP', '4.0 HP', '5.0 HP'].map(hp => (
@@ -922,44 +1076,56 @@ export default function ClientDashboard() {
               </>
             )}
 
-            {['Maintenance', 'Repair'].includes(serviceType) && clientUnits.length > 0 && (
-              <div className="space-y-2">
-                <Label>Select Unit *</Label>
-                {clientUnits.length === 0 ? (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
-                    No registered units found. Please register units first.
-                  </div>
-                ) : (
-                  <Select 
-                    value={selectedUnits[0] || ''} 
-                    onValueChange={(val) => setSelectedUnits([val])}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select your unit" /></SelectTrigger>
-                    <SelectContent>
-                      {clientUnits.map((unit) => (
-                        <SelectItem key={unit.id} value={unit.id}>
-                          {unit.unit_name} - {unit.brand} {unit.unit_type} ({unit.horsepower}HP)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+            {selectedServices.filter(svc => ['Maintenance', 'Cleaning', 'Repair'].includes(svc) && clientUnits.length > 0).map(svc => (
+              <div key={svc} className="space-y-2 p-4 rounded-lg border border-slate-200 bg-slate-50/60">
+                <Label>Unit for {svc} *</Label>
+                <div className="space-y-1.5">
+                  {clientUnits.map((unit) => {
+                    const unitSel = (serviceUnits[svc] || []).includes(unit.id)
+                    return (
+                      <label key={unit.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={unitSel}
+                          onChange={(e) => {
+                            setServiceUnits(prev => {
+                              const current = prev[svc] || []
+                              return { ...prev, [svc]: e.target.checked ? [...current, unit.id] : current.filter(id => id !== unit.id) }
+                            })
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 accent-[#005596]"
+                        />
+                        <span>{unit.unit_name} - {unit.brand} {unit.unit_type} ({unit.horsepower}HP)</span>
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
-            )}
+            ))}
 
-            {['Maintenance', 'Repair'].includes(serviceType) && clientUnits.length === 0 && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
-                No registered units found. Please contact support or register units first.
+            {selectedServices.filter(svc => ['Maintenance', 'Cleaning', 'Repair'].includes(svc) && clientUnits.length === 0).map(svc => (
+              <div key={svc} className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700 space-y-2">
+                <p>No registered units found for {svc}. Please register units first.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-[#005596] text-[#005596] hover:bg-[#005596]/5"
+                  onClick={() => setShowRegisterUnit(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Register a Unit
+                </Button>
               </div>
-            )}
+            ))}
 
-            {serviceType === 'Repair' && (
+            {selectedServices.includes('Repair') && (
               <div className="space-y-2">
-                <Label>Describe the Issue *</Label>
+                <Label>Describe the Issue (for Repair) *</Label>
                 <Textarea
                   placeholder="Describe the issue with your aircon (e.g., not cooling, making noise, leaking water)"
                   className="min-h-[80px]"
-                  required
+                  value={repairIssue}
+                  onChange={(e) => setRepairIssue(e.target.value)}
                 />
                 <p className="text-xs text-slate-500">For issues with your registered aircon unit only</p>
               </div>
@@ -1009,6 +1175,7 @@ export default function ClientDashboard() {
                 placeholder="Any other details or special instructions..."
                 className="min-h-[80px]"
               />
+              <p className="text-xs text-slate-500">Each service in a combined request is scheduled as its own job; the request counts as one booking.</p>
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -1047,7 +1214,7 @@ export default function ClientDashboard() {
 
       {/* Reschedule Dialog */}
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-[#005596]" />
@@ -1132,6 +1299,162 @@ export default function ClientDashboard() {
             >
               {isCancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Cancel Service
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register Unit Dialog (client self-registration of an existing aircon) */}
+      <Dialog open={showRegisterUnit} onOpenChange={(open) => {
+        setShowRegisterUnit(open)
+        if (!open) resetUnitForm()
+      }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wind className="h-5 w-5 text-[#005596]" />
+              Register an Existing Aircon Unit
+            </DialogTitle>
+            <DialogDescription>
+              Already have an aircon? Register it here so it appears in your machine list and can be used for Cleaning, Maintenance, and Repair bookings. Admin can see and verify registered units.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Unit Name *</Label>
+              <Input
+                placeholder="e.g. Living Room Aircon"
+                value={unitForm.unitName}
+                onChange={(e) => setUnitForm(prev => ({ ...prev, unitName: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Brand *</Label>
+                <Select value={unitForm.brand} onValueChange={(v) => setUnitForm(prev => ({ ...prev, brand: v, brandOther: v === 'Other' ? prev.brandOther : '' }))}>
+                  <SelectTrigger><SelectValue placeholder="Select brand" /></SelectTrigger>
+                  <SelectContent>
+                    {['Aux', 'Midea', 'LG', 'Samsung', 'Daikin', 'Carrier', 'Panasonic', 'Hitachi', 'Sharp', 'Kelvinator', 'Other'].map(b => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {unitForm.brand === 'Other' && (
+                  <Input
+                    placeholder="Enter brand name"
+                    value={unitForm.brandOther}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, brandOther: e.target.value }))}
+                    className="mt-2"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Type *</Label>
+                <Select value={unitForm.unitType} onValueChange={(v) => setUnitForm(prev => ({ ...prev, unitType: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Window">Window</SelectItem>
+                    <SelectItem value="Split">Split</SelectItem>
+                    <SelectItem value="Inverter">Inverter</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Horsepower *</Label>
+                <Select value={unitForm.horsepower} onValueChange={(v) => setUnitForm(prev => ({ ...prev, horsepower: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select HP" /></SelectTrigger>
+                  <SelectContent>
+                    {['0.5', '0.75', '1.0', '1.5', '2.0', '2.5', '3.0', '4.0', '5.0'].map(hp => (
+                      <SelectItem key={hp} value={hp}>{hp} HP</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Technology *</Label>
+                <Select value={unitForm.technology} onValueChange={(v) => setUnitForm(prev => ({ ...prev, technology: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select technology" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Inverter">Inverter</SelectItem>
+                    <SelectItem value="Non-Inverter">Non-Inverter</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="border rounded-xl p-4 space-y-3 bg-slate-50/60">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Unit Details (optional)</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Model</Label>
+                  <Input
+                    placeholder="e.g. INVERTER-12K"
+                    value={unitForm.model}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, model: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Indoor / Unit Serial</Label>
+                  <Input
+                    placeholder="Serial number"
+                    value={unitForm.indoorSerial}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, indoorSerial: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Outdoor Serial</Label>
+                  <Input
+                    placeholder="Serial number (split type)"
+                    value={unitForm.outdoorSerial}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, outdoorSerial: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Approx. Install Date</Label>
+                  <Input
+                    type="date"
+                    max={new Date().toISOString().split('T')[0]}
+                    value={unitForm.installationDate}
+                    onChange={(e) => setUnitForm(prev => ({ ...prev, installationDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-xl p-4 space-y-3 bg-slate-50/60">
+              <p className="text-xs font-bold text-[#005596] uppercase tracking-widest">Warranty Information (optional)</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Warranty Period</Label>
+                  <Select value={unitForm.warrantyMonths} onValueChange={(v) => setUnitForm(prev => ({ ...prev, warrantyMonths: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select months" /></SelectTrigger>
+                    <SelectContent>
+                      {['6', '12', '18', '24', '36', '60'].map(m => (
+                        <SelectItem key={m} value={m}>{m} months</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Warranty Type</Label>
+                  <Select value={unitForm.warrantyType} onValueChange={(v) => setUnitForm(prev => ({ ...prev, warrantyType: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Manufacturer">Manufacturer</SelectItem>
+                      <SelectItem value="Store">Store/Retailer</SelectItem>
+                      <SelectItem value="Extended">Extended Warranty</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">If an install date and warranty period are given, the warranty expiry is calculated automatically.</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setShowRegisterUnit(false)}>Cancel</Button>
+            <Button className="bg-[#005596]" onClick={handleRegisterUnit} disabled={isRegisteringUnit}>
+              {isRegisteringUnit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Register Unit
             </Button>
           </div>
         </DialogContent>

@@ -270,7 +270,7 @@ export async function requestService(formData: FormData) {
     return { error: 'You must be logged in to request a service' }
   }
 
-  const serviceType = formData.get('serviceType') as string
+  const serviceTypeRaw = (formData.get('serviceType') as string || '').trim()
   const phone = formData.get('phone') as string
   const airconBrand = (formData.get('airconBrand') as string || '').trim().slice(0, 100) || null
   const airconType = (formData.get('airconType') as string || '').trim().slice(0, 100) || null
@@ -285,9 +285,51 @@ export async function requestService(formData: FormData) {
   const time = formData.get('time') as string
   const notes = formData.get('notes') as string
 
-  if (!serviceType || !phone || !date || !time) {
-    return { error: 'Please fill in all required fields (Service Type, Phone, Date, and Time)' }
+  // Multi-service support: a combined request carries a JSON array of
+  // { service, notes } entries. Fall back to the legacy single serviceType
+  // string (comma-joined) for older clients.
+  const allowedServices = ['Installation', 'Cleaning', 'Maintenance', 'Repair']
+  let servicesList: { service: string; notes: string | null }[] = []
+  try {
+    const servicesJson = formData.get('services') as string | null
+    if (servicesJson) {
+      const parsed = JSON.parse(servicesJson)
+      if (Array.isArray(parsed)) {
+        servicesList = parsed
+          .map((s: any) => ({
+            service: String(s?.service || '').trim(),
+            notes: s?.notes ? String(s.notes).trim().slice(0, 1000) : null
+          }))
+          .filter((s: any) => allowedServices.includes(s.service))
+      }
+    }
+  } catch {
+    // Malformed JSON — fall through to the legacy string handling below
   }
+  if (servicesList.length === 0 && serviceTypeRaw) {
+    servicesList = serviceTypeRaw
+      .split(',')
+      .map(s => s.trim())
+      .filter((s: string) => allowedServices.includes(s))
+      .map(s => ({ service: s, notes: null }))
+  }
+
+  if (servicesList.length === 0 || !phone || !date || !time) {
+    return { error: 'Please fill in all required fields (Service, Phone, Date, and Time)' }
+  }
+
+  // Per-service requirements
+  if (servicesList.some(s => s.service === 'Installation') && (!airconBrand || !airconType || !horsepower)) {
+    return { error: 'Installation requires the aircon brand, type, and horsepower' }
+  }
+  const repairEntry = servicesList.find(s => s.service === 'Repair')
+  if (repairEntry && !repairEntry.notes) {
+    return { error: 'Please describe the issue for the Repair service' }
+  }
+
+  // Combined label, e.g. "Cleaning, Repair" — counts as ONE booking against
+  // the daily capacity limit below
+  const serviceType = servicesList.map(s => s.service).join(', ')
 
   // Check max 3 bookings per day
   const activeStatuses = ['pending', 'Scheduled', 'In Progress', 'Rescheduled']
@@ -357,14 +399,21 @@ export async function requestService(formData: FormData) {
     ? { aircon_brand: airconBrand, aircon_type: airconType, horsepower }
     : {}
 
-  // Create client request record for admin
+  // Shared notes plus any per-service notes, so admins see everything in one field
+  const serviceNotes = servicesList
+    .filter(s => s.notes)
+    .map(s => `[${s.service}] ${s.notes}`)
+  const combinedMessage = [notes, ...serviceNotes].filter(Boolean).join('\n') || null
+
+  // Create client request record for admin (one combined request row)
   const { error: requestError } = await adminSupabase
     .from('client_requests')
     .insert({
       client_id: user.id,
       client_name: clientName,
       request_type: serviceType,
-      message: notes,
+      requested_services: servicesList,
+      message: combinedMessage,
       preferred_date: date,
       preferred_time: time,
       service_address: address || null,
@@ -379,10 +428,13 @@ export async function requestService(formData: FormData) {
   }
 
   // Create notification for admin with detailed information
-  let detailedMessage = `${clientName} has requested a ${serviceType} service.\n` +
+  let detailedMessage = `${clientName} has requested: ${serviceType}.\n` +
     `Phone: ${phone}\n` +
     `Date: ${date} at ${time}\n` +
     `Address: ${address || 'Not specified'}\n`
+  for (const s of servicesList.filter(s => s.notes)) {
+    detailedMessage += `${s.service}: ${s.notes}\n`
+  }
 
   if (airconBrand) {
     detailedMessage += `Unit: ${airconBrand}${airconType ? ` ${airconType}` : ''}${horsepower ? ` ${horsepower}` : ''}\n`
@@ -399,7 +451,7 @@ export async function requestService(formData: FormData) {
   const { error: notifError } = await adminSupabase
     .from('notifications')
     .insert({
-      title: `New ${serviceType} Service Request`,
+      title: `New Service Request — ${serviceType}`,
       message: detailedMessage,
       type: 'request',
       link: '/admin',
@@ -877,4 +929,100 @@ export async function sendMessageToAdmin(subject: string, message: string) {
 
   revalidatePath('/dashboard')
   return { success: true }
+}
+
+// Client self-registers an EXISTING aircon unit so it can be used for
+// Cleaning / Maintenance / Repair bookings. Appears immediately on both the
+// client's My Machine List and the admin's unit registry.
+const CLIENT_WARRANTY_TYPES = ['Manufacturer', 'Store', 'Extended']
+
+export async function registerClientUnit(payload: {
+  unitName: string
+  brand: string
+  unitType: string
+  technology: string
+  horsepower: string
+  model?: string
+  indoorSerial?: string
+  outdoorSerial?: string
+  installationDate?: string
+  warrantyMonths?: string
+  warrantyType?: string
+}) {
+  const adminSupabase = await createAdminClient()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be logged in to register a unit' }
+  }
+
+  const unitName = (payload.unitName || '').trim().slice(0, 100)
+  const brand = (payload.brand || '').trim().slice(0, 100)
+  const unitType = (payload.unitType || '').trim()
+  const technology = (payload.technology || '').trim()
+  const horsepower = parseFloat(payload.horsepower || '')
+
+  if (!unitName || !brand || !unitType || !technology || !horsepower || horsepower <= 0) {
+    return { error: 'Please fill in all required fields (Unit Name, Brand, Type, Technology, Horsepower).' }
+  }
+
+  // Warranty end date is derived from the install date when provided
+  const installationDate = (payload.installationDate || '').trim() || null
+  const warrantyMonths = parseInt(payload.warrantyMonths || '') || null
+  let warrantyEndDate: string | null = null
+  if (installationDate && warrantyMonths) {
+    const endDate = new Date(installationDate)
+    endDate.setMonth(endDate.getMonth() + warrantyMonths)
+    warrantyEndDate = endDate.toISOString().split('T')[0]
+  }
+
+  const { data, error } = await adminSupabase
+    .from('client_units')
+    .insert({
+      client_id: user.id,
+      unit_name: unitName,
+      brand,
+      unit_type: unitType,
+      technology,
+      horsepower,
+      model: (payload.model || '').trim().slice(0, 100) || null,
+      indoor_serial: (payload.indoorSerial || '').trim().slice(0, 100) || null,
+      outdoor_serial: (payload.outdoorSerial || '').trim().slice(0, 100) || null,
+      installation_date: installationDate,
+      warranty_months: warrantyMonths,
+      warranty_type: CLIENT_WARRANTY_TYPES.includes(payload.warrantyType || '') ? payload.warrantyType! : 'Manufacturer',
+      warranty_end_date: warrantyEndDate,
+      is_multi_unit: false,
+      source: 'client'
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('registerClientUnit error:', error)
+    return { error: error.message }
+  }
+
+  // Notify admin that a client registered a new unit
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', user.id)
+    .single()
+  const clientName = profile?.full_name || user.email?.split('@')[0] || 'A client'
+
+  await adminSupabase
+    .from('notifications')
+    .insert({
+      title: 'New Unit Registered by Client',
+      message: `${clientName} self-registered an existing unit: ${data.unit_name} (${data.brand} ${data.unit_type}, ${data.horsepower}HP).`,
+      type: 'info',
+      link: '/admin',
+      is_read: false
+    })
+
+  revalidatePath('/dashboard')
+  revalidatePath('/admin')
+  return { success: true, unit: data }
 }

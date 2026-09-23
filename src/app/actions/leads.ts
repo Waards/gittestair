@@ -36,7 +36,7 @@ export async function submitLead(formData: FormData) {
   const airconBrand = formData.get('airconBrand') as string
   const airconType = formData.get('airconType') as string
   const horsepower = formData.get('horsepower') as string
-  if (!phone || !email || !street || !barangay || !city || !clientType || !serviceType || !preferredDate || !preferredTime) {
+  if (!phone || !email || !street || !barangay || !city || !clientType) {
     return { error: 'Please fill in all required fields' }
   }
 
@@ -60,6 +60,8 @@ export async function submitLead(formData: FormData) {
   const sanitizedAirconBrand = sanitizedString(airconBrand || '')
   const sanitizedAirconType = sanitizedString(airconType || '')
   const sanitizedHorsepower = sanitizedString(horsepower || '')
+  const sanitizedPreferredDate = preferredDate || ''
+  const sanitizedPreferredTime = preferredTime || ''
   if (!sanitizedFullName || !sanitizedEmailAddr || !sanitizedStreet || !sanitizedBarangay || !sanitizedCity) {
     return { error: 'Invalid input detected. Please check your entries.' }
   }
@@ -71,8 +73,8 @@ export async function submitLead(formData: FormData) {
     serviceAddress: `${sanitizedStreet}, ${sanitizedBarangay}, ${sanitizedCity}${sanitizedZipCode ? ' ' + sanitizedZipCode : ''}`,
     clientType,
     serviceType: sanitizedServiceType,
-    preferredDate,
-    preferredTime,
+    preferredDate: sanitizedPreferredDate,
+    preferredTime: sanitizedPreferredTime,
     additionalInfo: sanitizedAdditionalInfo,
   })
 
@@ -80,26 +82,29 @@ export async function submitLead(formData: FormData) {
     return { error: validation.error || 'Validation failed' }
   }
 
-  const { count: appointmentsCount, error: apptError } = await supabase
-    .from('appointments')
-    .select('id', { count: 'exact', head: true })
-    .eq('date', preferredDate)
+  // Only run the capacity check when the client provided a preferred date
+  if (preferredDate) {
+    const { count: appointmentsCount, error: apptError } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('date', preferredDate)
 
-  const { count: leadsCount, error: leadsError } = await supabase
-    .from('leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('preferred_date', preferredDate)
-    .neq('status', 'Cancelled')
+    const { count: leadsCount, error: leadsError } = await supabase
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('preferred_date', preferredDate)
+      .neq('status', 'Cancelled')
 
-  if (apptError || leadsError) {
-    console.error('Error checking availability:', apptError || leadsError)
-    return { error: 'Failed to verify booking availability. Please try again later.' }
-  }
+    if (apptError || leadsError) {
+      console.error('Error checking availability:', apptError || leadsError)
+      return { error: 'Failed to verify booking availability. Please try again later.' }
+    }
 
-  const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
-  
-  if (totalBookings >= 4) {
-    return { error: 'This date is fully booked (Max 4 bookings). Please select another day.' }
+    const totalBookings = (appointmentsCount || 0) + (leadsCount || 0)
+
+    if (totalBookings >= 4) {
+      return { error: 'This date is fully booked (Max 4 bookings). Please select another day.' }
+    }
   }
 
   // Get corporate fields
@@ -130,6 +135,9 @@ export async function submitLead(formData: FormData) {
       city: sanitizedCity,
       zip_code: sanitizedZipCode || null,
       province: sanitizedProvince || null,
+      service_type: sanitizedServiceType || null,
+      preferred_date: sanitizedPreferredDate || null,
+      preferred_time: sanitizedPreferredTime || null,
       aircon_brand: sanitizedAirconBrand || null,
       aircon_type: sanitizedAirconType || null,
       horsepower: sanitizedHorsepower || null,
@@ -163,13 +171,24 @@ export async function submitLead(formData: FormData) {
     })
 
   // Send booking confirmation email to client
-  sendBookingConfirmationEmail({
-    to: sanitizedEmailAddr,
-    customerName: sanitizedFullName,
-    serviceType: sanitizedServiceType,
-    preferredDate,
-    preferredTime
-  }).catch(console.error)
+  if (preferredDate && preferredTime) {
+    sendBookingConfirmationEmail({
+      to: sanitizedEmailAddr,
+      customerName: sanitizedFullName,
+      serviceType: sanitizedServiceType || 'Service Request',
+      preferredDate,
+      preferredTime
+    }).catch(console.error)
+  } else {
+    // No preferred schedule provided — send an inquiry acknowledgment instead
+    sendClientMessageEmail({
+      to: sanitizedEmailAddr,
+      clientName: sanitizedFullName,
+      clientEmail: sanitizedEmailAddr,
+      subject: 'We Received Your Booking Request',
+      message: 'Thank you for reaching out! Our team will contact you within 24 hours to confirm the details of your request and schedule your appointment.'
+    }).catch(console.error)
+  }
 
   // Notify admin
   const adminEmail = process.env.ADMIN_EMAIL
@@ -178,8 +197,8 @@ export async function submitLead(formData: FormData) {
       to: adminEmail,
       clientName: sanitizedFullName,
       clientEmail: sanitizedEmailAddr,
-      subject: `New ${sanitizedServiceType} Booking Request (Lead)`,
-      message: `Client: ${sanitizedFullName}\nEmail: ${sanitizedEmailAddr}\nPhone: ${sanitizedPhoneNum}\nService: ${sanitizedServiceType}\nDate: ${preferredDate}\nTime: ${preferredTime}\nAddress: ${validation.data.service_address || 'Not specified'}\nNotes: ${sanitizedAdditionalInfo || 'None'}`
+      subject: `New ${sanitizedServiceType || 'Service'} Booking Request (Lead)`,
+      message: `Client: ${sanitizedFullName}\nEmail: ${sanitizedEmailAddr}\nPhone: ${sanitizedPhoneNum}\nService: ${sanitizedServiceType || 'For Assessment'}\nDate: ${preferredDate || 'Not specified (to be scheduled by admin)'}\nTime: ${preferredTime || 'Not specified (to be scheduled by admin)'}\nAddress: ${validation.data.service_address || 'Not specified'}\nNotes: ${sanitizedAdditionalInfo || 'None'}`
     }).catch(console.error)
   }
 
@@ -260,7 +279,7 @@ export async function acceptLead(leadId: string, data: {
   const { error: insertError } = await supabase
     .from('installations')
     .insert({
-      title: data.serviceType,
+      title: data.serviceType || 'Service',
       client_name: lead.full_name,
       location: lead.service_address,
       technician: data.technician,
@@ -376,7 +395,7 @@ export async function acceptLeadAsRepair(leadId: string, data: {
   const { error: insertError } = await supabase
     .from('repairs')
     .insert({
-      title: data.serviceType,
+      title: data.serviceType || 'Service',
       client_name: lead.full_name,
       location: lead.service_address,
       technician: data.technician,
@@ -490,7 +509,7 @@ export async function acceptLeadAsMaintenance(leadId: string, data: {
   const { error: insertError } = await supabase
     .from('maintenance')
     .insert({
-      title: data.serviceType,
+      title: data.serviceType || 'Service',
       client_name: lead.full_name,
       location: lead.service_address,
       technician: data.technician,

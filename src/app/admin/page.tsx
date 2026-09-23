@@ -53,6 +53,7 @@ import {
   updateInstallationProgress,
   updateRepairProgress,
   updateMaintenanceProgress,
+  uploadJobImage,
   updateInstallationTechnician,
   updateRepairTechnician,
   updateMaintenanceTechnician,
@@ -141,6 +142,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { ImageIcon, Upload, Printer } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -381,12 +383,110 @@ export default function AdminDashboard() {
   const [installationProgressStatus, setInstallationProgressStatus] = useState('Scheduled')
   const [installationProgress, setInstallationProgress] = useState(0)
   const [installationProgressNotes, setInstallationProgressNotes] = useState('')
+  const [installationProgressRemarks, setInstallationProgressRemarks] = useState('')
+  const [installationStatusHistory, setInstallationStatusHistory] = useState<any[]>([])
   const [repairProgressStatus, setRepairProgressStatus] = useState('Scheduled')
   const [repairProgress, setRepairProgress] = useState(0)
   const [repairProgressNotes, setRepairProgressNotes] = useState('')
+  const [repairProgressRemarks, setRepairProgressRemarks] = useState('')
+  const [repairStatusHistory, setRepairStatusHistory] = useState<any[]>([])
   const [maintenanceProgressStatus, setMaintenanceProgressStatus] = useState('Scheduled')
   const [maintenanceProgress, setMaintenanceProgress] = useState(0)
   const [maintenanceProgressNotes, setMaintenanceProgressNotes] = useState('')
+  const [maintenanceProgressRemarks, setMaintenanceProgressRemarks] = useState('')
+  const [maintenanceStatusHistory, setMaintenanceStatusHistory] = useState<any[]>([])
+
+  const isRemarkRequired = (status: string) => ['Delayed', 'Issue', 'Failed'].includes(status)
+
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [installationImages, setInstallationImages] = useState<string[]>([])
+  const [repairImages, setRepairImages] = useState<string[]>([])
+  const [maintenanceImages, setMaintenanceImages] = useState<string[]>([])
+
+  const MAX_IMAGE_SIZE_MB = 10
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  }
+
+  const uploadImagesForJob = async (files: FileList | null, jobType: string, jobId: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    if (!files || files.length === 0) return
+
+    // Validate size BEFORE upload so large files never hit the server-action body limit
+    const validFiles: File[] = []
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+        toast.error(`Image "${file.name}" is too big (${formatFileSize(file.size)}). Maximum size is ${MAX_IMAGE_SIZE_MB}MB. Please compress or choose a smaller image.`, { duration: 6000 })
+      } else {
+        validFiles.push(file)
+      }
+    }
+    if (validFiles.length === 0) return
+
+    setUploadingImages(true)
+    try {
+      const uploaded: string[] = []
+      for (const file of validFiles) {
+        const result = await uploadJobImage(file, jobType, jobId)
+        if (result.error) {
+          toast.error(result.error)
+        } else if (result.url) {
+          uploaded.push(result.url)
+        }
+      }
+      if (uploaded.length > 0) {
+        setter((prev: string[]) => [...prev, ...uploaded])
+        toast.success(`${uploaded.length} image${uploaded.length > 1 ? 's' : ''} attached`)
+      }
+    } finally {
+      setUploadingImages(false)
+    }
+  }
+
+  const removeJobImage = (setter: React.Dispatch<React.SetStateAction<string[]>>, url: string) => {
+    setter((prev: string[]) => prev.filter(u => u !== url))
+  }
+
+  const ImageAttachSection = ({ images, setter, jobType, jobId }: { images: string[], setter: React.Dispatch<React.SetStateAction<string[]>>, jobType: string, jobId: string }) => (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-1.5">
+        <ImageIcon className="h-3.5 w-3.5" /> Photos (proof of completion / cause of issue)
+      </Label>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((url) => (
+            <div key={url} className="relative group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="Attached" className="h-16 w-16 rounded-md object-cover border" />
+              <button
+                type="button"
+                onClick={() => removeJobImage(setter, url)}
+                className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-md py-2 cursor-pointer hover:border-[#005596] hover:bg-blue-50/40 transition-colors text-sm text-gray-500">
+        <Upload className="h-4 w-4" />
+        {uploadingImages ? 'Uploading...' : `Attach photos (max ${MAX_IMAGE_SIZE_MB}MB each)`}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          disabled={uploadingImages}
+          onChange={(e) => {
+            uploadImagesForJob(e.target.files, jobType, jobId, setter)
+            e.target.value = ''
+          }}
+        />
+      </label>
+    </div>
+  )
   const [installationTechnician, setInstallationTechnician] = useState('')
   const [repairTechnician, setRepairTechnician] = useState('')
   const [maintenanceTechnician, setMaintenanceTechnician] = useState('')
@@ -441,6 +541,9 @@ export default function AdminDashboard() {
     setInstallationProgressStatus(installation.status || 'Scheduled')
     setInstallationProgress(installation.progress || 0)
     setInstallationProgressNotes(installation.notes || '')
+    setInstallationProgressRemarks('')
+    setInstallationImages([])
+    setInstallationStatusHistory(Array.isArray(installation.status_history) ? installation.status_history : [])
     setInstallationTechnician(installation.technician || '')
     setShowInstallationDetails(true)
   }
@@ -450,6 +553,9 @@ export default function AdminDashboard() {
     setRepairProgressStatus(repair.status || 'Scheduled')
     setRepairProgress(repair.progress || 0)
     setRepairProgressNotes(repair.notes || '')
+    setRepairProgressRemarks('')
+    setRepairImages([])
+    setRepairStatusHistory(Array.isArray(repair.status_history) ? repair.status_history : [])
     setRepairTechnician(repair.technician || '')
     setShowRepairDetails(true)
   }
@@ -468,6 +574,9 @@ export default function AdminDashboard() {
     }
     setMaintenanceProgress(statusProgressMap[maintenance.status] || maintenance.progress || 0)
     setMaintenanceProgressNotes(maintenance.notes || '')
+    setMaintenanceProgressRemarks('')
+    setMaintenanceImages([])
+    setMaintenanceStatusHistory(Array.isArray(maintenance.status_history) ? maintenance.status_history : [])
     setMaintenanceTechnician(maintenance.technician || '')
     setShowMaintenanceDetails(true)
   }
@@ -475,7 +584,7 @@ export default function AdminDashboard() {
   const handleUpdateInstallationProgress = async () => {
     if (!selectedInstallation) return
     setIsLoading(true)
-    const result = await updateInstallationProgress(selectedInstallation.id, installationProgressStatus, installationProgress, installationProgressNotes)
+    const result = await updateInstallationProgress(selectedInstallation.id, installationProgressStatus, installationProgress, installationProgressNotes, installationProgressRemarks, installationImages)
     if (result.error) toast.error(result.error)
     else {
       toast.success('Installation progress updated')
@@ -488,7 +597,7 @@ export default function AdminDashboard() {
   const handleUpdateRepairProgress = async () => {
     if (!selectedRepair) return
     setIsLoading(true)
-    const result = await updateRepairProgress(selectedRepair.id, repairProgressStatus, repairProgress, repairProgressNotes)
+    const result = await updateRepairProgress(selectedRepair.id, repairProgressStatus, repairProgress, repairProgressNotes, repairProgressRemarks, repairImages)
     if (result.error) toast.error(result.error)
     else {
       toast.success('Repair progress updated')
@@ -502,7 +611,7 @@ export default function AdminDashboard() {
     if (!selectedMaintenance) return
     setIsLoading(true)
     try {
-      const result = await updateMaintenanceProgress(selectedMaintenance.id, maintenanceProgressStatus, maintenanceProgress, maintenanceProgressNotes)
+      const result = await updateMaintenanceProgress(selectedMaintenance.id, maintenanceProgressStatus, maintenanceProgress, maintenanceProgressNotes, maintenanceProgressRemarks, maintenanceImages)
       if (result.error) {
         toast.error(result.error)
       } else {
@@ -671,17 +780,17 @@ export default function AdminDashboard() {
                         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                         .slice(0, 5)
                         .map((item, i) => (
-                          <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-gray-200">
+                          <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className="w-10 h-10 shrink-0 bg-white rounded-full flex items-center justify-center border border-gray-200">
                                 {item.title.toLowerCase().includes('repair') ? <PenTool className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
                               </div>
-                              <div>
-                                <p className="font-bold text-[#005596]">{item.title}</p>
-                                <p className="text-xs text-gray-500">{item.client_name} • {item.date}</p>
+                              <div className="min-w-0">
+                                <p className="font-bold text-[#005596] truncate">{item.title}</p>
+                                <p className="text-xs text-gray-500 truncate">{item.client_name} • {item.date}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                               <Badge variant={item.status === 'Completed' ? 'default' : 'secondary'} className={item.status === 'Completed' ? 'bg-green-100 text-green-700 border-green-200' : ''}>
                                 {item.status}
                               </Badge>
@@ -778,6 +887,7 @@ export default function AdminDashboard() {
             maintenance={maintenance}
             clients={clients}
             technicians={technicians}
+            settings={settings}
             onBack={() => setView('dashboard')}
           />
         )}
@@ -1011,7 +1121,7 @@ export default function AdminDashboard() {
       </Dialog>
 
       <Dialog open={showBookingDetails} onOpenChange={setShowBookingDetails}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Client Details</DialogTitle>
           </DialogHeader>
@@ -1072,7 +1182,7 @@ export default function AdminDashboard() {
       </Dialog>
       {/* Installation Details Dialog */}
       <Dialog open={showInstallationDetails} onOpenChange={setShowInstallationDetails}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Installation Details</DialogTitle>
           </DialogHeader>
@@ -1167,14 +1277,55 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Notes</Label>
+                  <Label>
+                    Remarks {isRemarkRequired(installationProgressStatus) && <span className="text-red-500">*</span>}
+                  </Label>
+                  <Textarea 
+                    value={installationProgressRemarks} 
+                    onChange={(e) => setInstallationProgressRemarks(e.target.value)}
+                    placeholder={isRemarkRequired(installationProgressStatus) ? 'Required — explain why (e.g. not finished, continuing tomorrow)...' : 'Visible to client (e.g. installation not finished, continuing tomorrow)...'}
+                  />
+                  {isRemarkRequired(installationProgressStatus) && !installationProgressRemarks.trim() && (
+                    <p className="text-xs text-red-500">A remark is required for Delayed, Issue, and Failed statuses.</p>
+                  )}
+                </div>
+                <ImageAttachSection images={installationImages} setter={setInstallationImages} jobType="installations" jobId={selectedInstallation.id} />
+                <div className="space-y-2">
+                  <Label>Notes (internal)</Label>
                   <Textarea 
                     value={installationProgressNotes} 
                     onChange={(e) => setInstallationProgressNotes(e.target.value)}
-                    placeholder="Add notes about the installation progress..."
+                    placeholder="Internal notes about the installation progress..."
                   />
                 </div>
               </div>
+              )}
+
+              {installationStatusHistory.length > 0 && (
+                <div className="border-t pt-4 space-y-2">
+                  <Label>Status History</Label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg border bg-slate-50 p-3">
+                    {[...installationStatusHistory].reverse().map((h: any, idx: number) => (
+                      <div key={idx} className="text-xs border-b border-slate-200 last:border-0 pb-2 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-[#005596]">{h.status}</span>
+                          <span className="text-gray-400">{new Date(h.updated_at).toLocaleString()}</span>
+                        </div>
+                        {h.progress !== undefined && <span className="text-gray-500">Progress: {h.progress}%</span>}
+                        {h.remark && <p className="text-gray-700 mt-0.5"><span className="font-medium">Remark:</span> {h.remark}</p>}
+                        {h.note && <p className="text-gray-500 mt-0.5"><span className="font-medium">Note:</span> {h.note}</p>}
+                        {Array.isArray(h.images) && h.images.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {h.images.map((img: string) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={img} src={img} alt="Update" className="h-14 w-14 rounded-md object-cover border cursor-pointer hover:opacity-80" onClick={() => window.open(img, '_blank')} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {selectedInstallation.status !== 'Completed' && (
@@ -1193,7 +1344,7 @@ export default function AdminDashboard() {
 
       {/* Repair Details Dialog */}
       <Dialog open={showRepairDetails} onOpenChange={setShowRepairDetails}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Repair Details</DialogTitle>
           </DialogHeader>
@@ -1288,14 +1439,55 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Notes</Label>
+                  <Label>
+                    Remarks {isRemarkRequired(repairProgressStatus) && <span className="text-red-500">*</span>}
+                  </Label>
+                  <Textarea 
+                    value={repairProgressRemarks} 
+                    onChange={(e) => setRepairProgressRemarks(e.target.value)}
+                    placeholder={isRemarkRequired(repairProgressStatus) ? 'Required — explain why (e.g. not finished, continuing tomorrow)...' : 'Visible to client (e.g. repair not finished, continuing tomorrow)...'}
+                  />
+                  {isRemarkRequired(repairProgressStatus) && !repairProgressRemarks.trim() && (
+                    <p className="text-xs text-red-500">A remark is required for Delayed, Issue, and Failed statuses.</p>
+                  )}
+                </div>
+                <ImageAttachSection images={repairImages} setter={setRepairImages} jobType="repairs" jobId={selectedRepair.id} />
+                <div className="space-y-2">
+                  <Label>Notes (internal)</Label>
                   <Textarea 
                     value={repairProgressNotes} 
                     onChange={(e) => setRepairProgressNotes(e.target.value)}
-                    placeholder="Add notes about the repair progress..."
+                    placeholder="Internal notes about the repair progress..."
                   />
                 </div>
               </div>
+              )}
+
+              {repairStatusHistory.length > 0 && (
+                <div className="border-t pt-4 space-y-2">
+                  <Label>Status History</Label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg border bg-slate-50 p-3">
+                    {[...repairStatusHistory].reverse().map((h: any, idx: number) => (
+                      <div key={idx} className="text-xs border-b border-slate-200 last:border-0 pb-2 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-[#005596]">{h.status}</span>
+                          <span className="text-gray-400">{new Date(h.updated_at).toLocaleString()}</span>
+                        </div>
+                        {h.progress !== undefined && <span className="text-gray-500">Progress: {h.progress}%</span>}
+                        {h.remark && <p className="text-gray-700 mt-0.5"><span className="font-medium">Remark:</span> {h.remark}</p>}
+                        {h.note && <p className="text-gray-500 mt-0.5"><span className="font-medium">Note:</span> {h.note}</p>}
+                        {Array.isArray(h.images) && h.images.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {h.images.map((img: string) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={img} src={img} alt="Update" className="h-14 w-14 rounded-md object-cover border cursor-pointer hover:opacity-80" onClick={() => window.open(img, '_blank')} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {selectedRepair.status !== 'Completed' && (
@@ -1314,7 +1506,7 @@ export default function AdminDashboard() {
 
       {/* Maintenance Details Dialog */}
       <Dialog open={showMaintenanceDetails} onOpenChange={setShowMaintenanceDetails}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Maintenance Details</DialogTitle>
           </DialogHeader>
@@ -1410,14 +1602,55 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Notes</Label>
+                  <Label>
+                    Remarks {isRemarkRequired(maintenanceProgressStatus) && <span className="text-red-500">*</span>}
+                  </Label>
+                  <Textarea 
+                    value={maintenanceProgressRemarks} 
+                    onChange={(e) => setMaintenanceProgressRemarks(e.target.value)}
+                    placeholder={isRemarkRequired(maintenanceProgressStatus) ? 'Required — explain why (e.g. not finished, continuing tomorrow)...' : 'Visible to client (e.g. maintenance not finished, continuing tomorrow)...'}
+                  />
+                  {isRemarkRequired(maintenanceProgressStatus) && !maintenanceProgressRemarks.trim() && (
+                    <p className="text-xs text-red-500">A remark is required for Delayed, Issue, and Failed statuses.</p>
+                  )}
+                </div>
+                <ImageAttachSection images={maintenanceImages} setter={setMaintenanceImages} jobType="maintenance" jobId={selectedMaintenance.id} />
+                <div className="space-y-2">
+                  <Label>Notes (internal)</Label>
                   <Textarea 
                     value={maintenanceProgressNotes} 
                     onChange={(e) => setMaintenanceProgressNotes(e.target.value)}
-                    placeholder="Add notes about the maintenance progress..."
+                    placeholder="Internal notes about the maintenance progress..."
                   />
                 </div>
               </div>
+              )}
+
+              {maintenanceStatusHistory.length > 0 && (
+                <div className="border-t pt-4 space-y-2">
+                  <Label>Status History</Label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 rounded-lg border bg-slate-50 p-3">
+                    {[...maintenanceStatusHistory].reverse().map((h: any, idx: number) => (
+                      <div key={idx} className="text-xs border-b border-slate-200 last:border-0 pb-2 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-[#005596]">{h.status}</span>
+                          <span className="text-gray-400">{new Date(h.updated_at).toLocaleString()}</span>
+                        </div>
+                        {h.progress !== undefined && <span className="text-gray-500">Progress: {h.progress}%</span>}
+                        {h.remark && <p className="text-gray-700 mt-0.5"><span className="font-medium">Remark:</span> {h.remark}</p>}
+                        {h.note && <p className="text-gray-500 mt-0.5"><span className="font-medium">Note:</span> {h.note}</p>}
+                        {Array.isArray(h.images) && h.images.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {h.images.map((img: string) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={img} src={img} alt="Update" className="h-14 w-14 rounded-md object-cover border cursor-pointer hover:opacity-80" onClick={() => window.open(img, '_blank')} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {selectedMaintenance.status !== 'Completed' && (
@@ -1520,7 +1753,7 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -1529,9 +1762,9 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
           </div>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MiniStatCard title="Total Leads" value={filteredLeads.length.toString()} icon={<TrendingUp className="text-blue-600" />} />
           <MiniStatCard title="Pending" value={filteredLeads.filter((l: any) => l.status === 'Pending').length.toString()} icon={<Clock className="text-yellow-600" />} />
           <MiniStatCard title="Contacted" value={filteredLeads.filter((l: any) => l.status === 'Contacted').length.toString()} icon={<Phone className="text-blue-600" />} />
@@ -1657,7 +1890,7 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div className="space-y-1">
                           <p className="text-gray-500 font-medium">Service Requested</p>
-                          <p className="text-[#005596] flex items-center gap-2"><Wrench className="h-4 w-4" /> {lead.service_type}</p>
+                          <p className="text-[#005596] flex items-center gap-2"><Wrench className="h-4 w-4" /> {lead.service_type || 'For Assessment'}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-gray-500 font-medium">Contact Info</p>
@@ -1783,7 +2016,7 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Service Requested</p>
-                    <p className="text-sm font-bold text-blue-600 flex items-center gap-1"><Wrench className="h-3 w-3" /> {selectedLead.service_type}</p>
+                    <p className="text-sm font-bold text-blue-600 flex items-center gap-1"><Wrench className="h-3 w-3" /> {selectedLead.service_type || 'For Assessment'}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Unit Brand / Type</p>
@@ -1796,7 +2029,11 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Preferred Schedule</p>
-                    <p className="text-sm">{selectedLead.preferred_date} at {selectedLead.preferred_time}</p>
+                    <p className="text-sm">
+                      {selectedLead.preferred_date || selectedLead.preferred_time
+                        ? [selectedLead.preferred_date, selectedLead.preferred_time].filter(Boolean).join(' at ')
+                        : 'To be scheduled'}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-medium">Service Address</p>
@@ -1861,13 +2098,13 @@ function LeadsView({ leads, onBack, fetchLeads, fetchClients, onGoToClients }: a
 function StatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
   return (
     <Card className="border-none shadow-sm">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-gray-500 font-medium">{title}</p>
-            <p className="text-3xl font-bold text-[#005596]">{value}</p>
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <p className="text-xs sm:text-sm text-gray-500 font-medium truncate">{title}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-[#005596]">{value}</p>
           </div>
-          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-gray-50 rounded-full flex items-center justify-center">
             {icon}
           </div>
         </div>
@@ -2020,7 +2257,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ChevronLeft className="h-4 w-4 mr-2" />
@@ -2043,7 +2280,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
         </div>
       </header>
 
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         <div className="flex justify-end">
           <Button
             variant="outline"
@@ -2294,7 +2531,7 @@ function ClientsView({ clients, total, page, setPage, isFetching, onBack, fetchC
         setShowDetails(open)
         if (!open) setShowPassword(false)
       }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Client Details</DialogTitle>
           </DialogHeader>
@@ -2654,7 +2891,7 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back</Button>
           <div>
@@ -2672,9 +2909,9 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
         </div>
       </header>
 
-      <main className="container mx-auto py-8 px-6 space-y-8">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <MiniStatCard title="Total Jobs" value={filteredInstallations.length.toString()} icon={<Wrench className="text-blue-600" />} />
           <MiniStatCard title="Scheduled" value={filteredInstallations.filter((i: any) => i.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
           <MiniStatCard title="In Progress" value={filteredInstallations.filter((i: any) => i.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
@@ -2769,25 +3006,25 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
           {filteredInstallations.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex gap-4">
-                    <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 mb-4">
+                  <div className="flex gap-4 min-w-0">
+                    <div className="w-10 h-10 shrink-0 bg-gray-50 rounded-full flex items-center justify-center">
                       {item.status === 'Completed' ? <CheckCircle className="text-green-500" /> : <Clock className="text-blue-500" />}
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-[#005596]">{item.title}</h3>
                         <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
-                        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
-                        <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> {item.technician}</span>
-                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0" /> {item.client_name}</span>
+                        <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{item.location}</span></span>
+                        <span className="flex items-center gap-1"><Wrench className="h-3 w-3 shrink-0" /> {item.technician}</span>
+                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3 shrink-0" /> {item.date}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 shrink-0">
                     {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
                     <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
                   </div>
@@ -2873,6 +3110,9 @@ function InstallationsView({ installations, total, page, setPage, clients, clien
                         <div>
                           <h3 className="font-bold text-[#1E293B] text-sm">{unit.unit_name}</h3>
                           <p className="text-xs text-gray-500">{unit.profiles?.full_name || 'Unknown Client'}</p>
+                          {unit.source === 'client' && (
+                            <Badge className="mt-1 bg-purple-100 text-purple-700 border-purple-200 text-[10px]">Registered by client</Badge>
+                          )}
                         </div>
                       </div>
                       <button onClick={() => handleDeleteUnit(unit.id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
@@ -3306,7 +3546,7 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back</Button>
           <div>
@@ -3324,9 +3564,9 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
         </div>
       </header>
 
-      <main className="container mx-auto py-8 px-6 space-y-8">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <MiniStatCard title="Total Jobs" value={filteredRepairs.length.toString()} icon={<PenTool className="text-blue-600" />} />
           <MiniStatCard title="In Progress" value={filteredRepairs.filter((r: any) => r.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
           <MiniStatCard title="Scheduled" value={filteredRepairs.filter((r: any) => r.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
@@ -3419,20 +3659,20 @@ function RepairsView({ repairs, total, page, setPage, clients, clientUnits, tech
           {filteredRepairs.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 mb-4">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold text-[#005596]">{item.title}</h3>
                       <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}>{item.status}</Badge>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
-                      <span className="flex items-center gap-1"><PenTool className="h-3 w-3" /> {item.technician}</span>
-                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0" /> {item.client_name}</span>
+                      <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{item.location}</span></span>
+                      <span className="flex items-center gap-1"><PenTool className="h-3 w-3 shrink-0" /> {item.technician}</span>
+                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3 shrink-0" /> {item.date}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 shrink-0">
                     {item.status !== 'Completed' && <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleComplete(item.id)}>Mark Complete</Button>}
                     <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
                   </div>
@@ -3988,7 +4228,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -4000,7 +4240,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
           <Button className="bg-[#005596] h-9" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Appointment</Button>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Filters */}
           <Card className="border-none shadow-sm">
@@ -4485,7 +4725,7 @@ function ScheduleView({ appointments, installations, repairs, maintenance, onBac
   )
 }
 
-function ReportsView({ installations, repairs, maintenance, clients, technicians, onBack }: any) {
+function ReportsView({ installations, repairs, maintenance, clients, technicians, settings, onBack }: any) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [datePreset, setDatePreset] = useState('all')
@@ -4679,9 +4919,238 @@ function ReportsView({ installations, repairs, maintenance, clients, technicians
     toast.success(`PDF exported successfully (${filteredItems.length} records)`)
   }
 
+  const escapeHtml = (value: any): string =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  // Documentary remarks: status-history trail (newest first) + job remarks + notes
+  const getJobRemarks = (item: any): string => {
+    const seen = new Set<string>()
+    const parts: string[] = []
+    const push = (txt: any) => {
+      const t = String(txt || '').trim()
+      if (t && !seen.has(t)) { seen.add(t); parts.push(t) }
+    }
+    const history = Array.isArray(item.status_history) ? item.status_history : []
+    for (let i = history.length - 1; i >= 0; i--) {
+      const h = history[i] || {}
+      const txt = String(h.remark || h.note || '').trim()
+      if (txt) {
+        const when = h.updated_at ? format(parseISO(h.updated_at), 'MMM d, yyyy') : ''
+        push([h.status, when ? `(${when})` : '', txt].filter(Boolean).join(' '))
+      }
+    }
+    push(item.remarks)
+    push(item.notes)
+    return parts.length ? parts.join(' — ') : 'No remarks recorded'
+  }
+
+  // Opens a formal, documentary-style print view of the currently filtered
+  // report and triggers the browser print dialog immediately.
+  const handlePrintReport = () => {
+    if (filteredItems.length === 0) {
+      toast.error('No records match the current filters — nothing to print.')
+      return
+    }
+
+    const companyName = settings?.company_name || 'Service Management System'
+    const companyAddress = settings?.company_address || ''
+    const companyPhone = settings?.company_phone || ''
+    const companyEmail = settings?.company_email || ''
+
+    const dateRangeLabel = dateFrom && dateTo
+      ? `${dateFrom} to ${dateTo}`
+      : dateFrom ? `From ${dateFrom}` : dateTo ? `Until ${dateTo}` : 'All Dates'
+
+    const categories = [
+      showInstallation ? 'Installation' : '',
+      showRepair ? 'Repair' : '',
+      showMaintenance ? 'Maintenance' : ''
+    ].filter(Boolean).join(', ') || 'None'
+
+    const filtersLabel = [
+      `Date: ${dateRangeLabel}`,
+      serviceTypeFilter !== 'all' ? `Service: ${serviceTypeFilter}` : '',
+      technicianFilter !== 'all' ? `Technician: ${technicianFilter}` : '',
+      locationFilter ? `Location: ${locationFilter}` : '',
+      `Categories: ${categories}`
+    ].filter(Boolean).join('  |  ')
+
+    const sortedItems = [...filteredItems].sort((a: any, b: any) =>
+      new Date(a.date || a.created_at).getTime() - new Date(b.date || b.created_at).getTime()
+    )
+
+    const statusClass = (s: string) => s.toLowerCase().replace(/\s+/g, '-')
+
+    const jobRows = sortedItems.map((item: any, idx: number) => `
+      <tr>
+        <td class="num">${idx + 1}</td>
+        <td class="nowrap">${escapeHtml(item.serviceType || '')}</td>
+        <td>${escapeHtml(item.title || '')}</td>
+        <td>${escapeHtml(item.client_name || '')}</td>
+        <td class="nowrap">${escapeHtml(item.date || '')}${item.time ? `<br/><span class="sub">${escapeHtml(item.time)}</span>` : ''}</td>
+        <td>${escapeHtml(item.technician || 'Unassigned')}</td>
+        <td class="nowrap"><span class="status ${escapeHtml(statusClass(item.status || ''))}">${escapeHtml(item.status || '')}</span></td>
+        <td>${escapeHtml(item.location || item.address || '')}</td>
+        <td class="remarks">${escapeHtml(getJobRemarks(item))}</td>
+      </tr>`).join('')
+
+    const activeTechStats = technicianStats.filter((t: any) => t.total > 0)
+    const techRows = activeTechStats.length > 0
+      ? activeTechStats.map((t: any) => `
+          <tr>
+            <td>${escapeHtml(t.name)}</td>
+            <td class="num">${t.total}</td>
+            <td class="num">${t.completed}</td>
+            <td class="num">${t.rate}%</td>
+          </tr>`).join('')
+      : '<tr><td colspan="4" style="text-align:center">No technician data for the current filters</td></tr>'
+
+    const docRef = `RPT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(filteredItems.length).padStart(4, '0')}`
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Service Report — ${escapeHtml(dateRangeLabel)}</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #111827; margin: 0; font-size: 11px; }
+  .letterhead { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #005596; padding-bottom: 10px; gap: 16px; }
+  .company-name { font-size: 20px; font-weight: 800; color: #005596; margin: 0 0 2px; }
+  .company-addr { font-size: 10px; color: #374151; line-height: 1.5; }
+  .company-contact { font-size: 10px; color: #374151; text-align: right; line-height: 1.5; }
+  .doc-title { text-align: center; margin: 14px 0 2px; }
+  .doc-title h2 { margin: 0; font-size: 16px; letter-spacing: 3px; text-transform: uppercase; color: #111827; }
+  .doc-sub { text-align: center; font-size: 10px; color: #4b5563; margin-top: 2px; }
+  .meta { display: flex; justify-content: space-between; gap: 16px; font-size: 10px; margin: 10px 0 2px; padding: 6px 8px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; }
+  h3.section { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #005596; border-bottom: 1.5px solid #005596; padding-bottom: 3px; margin: 16px 0 8px; page-break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #94a3b8; padding: 4px 6px; text-align: left; vertical-align: top; font-size: 10px; }
+  th { background: #005596; color: #ffffff; text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  tr { page-break-inside: avoid; }
+  .num { text-align: right; width: 26px; }
+  .nowrap { white-space: nowrap; }
+  .sub { color: #4b5563; font-size: 9px; }
+  .remarks { min-width: 220px; }
+  .status { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 700; border: 1px solid; }
+  .status.completed { background: #dcfce7; color: #166534; border-color: #86efac; }
+  .status.in-progress { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+  .status.scheduled { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+  .status.delayed, .status.issue, .status.rescheduled { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+  .status.failed, .status.cancelled { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+  .summary-grid { display: flex; gap: 8px; }
+  .summary-box { flex: 1; border: 1px solid #94a3b8; border-radius: 3px; padding: 6px 8px; text-align: center; }
+  .summary-box .v { font-size: 16px; font-weight: 800; color: #005596; }
+  .summary-box .l { font-size: 9px; text-transform: uppercase; color: #4b5563; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
+  .sig { width: 42%; text-align: center; font-size: 10px; }
+  .sig .line { border-top: 1px solid #111827; margin-top: 34px; padding-top: 4px; font-weight: 700; }
+  .sig .sub2 { color: #4b5563; font-size: 9px; }
+  .footer { margin-top: 24px; border-top: 1px solid #cbd5e1; padding-top: 6px; font-size: 8.5px; color: #4b5563; display: flex; justify-content: space-between; }
+  .toolbar { position: fixed; top: 10px; right: 10px; display: flex; gap: 6px; }
+  .toolbar button { font-size: 12px; padding: 6px 14px; border: 1px solid #94a3b8; border-radius: 4px; background: #005596; color: #fff; cursor: pointer; }
+  .toolbar button.close { background: #64748b; }
+  @media print {
+    .no-print { display: none !important; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar no-print">
+    <button onclick="window.print()">Print</button>
+    <button class="close" onclick="window.close()">Close</button>
+  </div>
+
+  <div class="letterhead">
+    <div>
+      <p class="company-name">${escapeHtml(companyName)}</p>
+      ${companyAddress ? `<div class="company-addr">${escapeHtml(companyAddress).replace(/\n/g, '<br/>')}</div>` : ''}
+    </div>
+    <div class="company-contact">
+      ${companyPhone ? `Phone: ${escapeHtml(companyPhone)}<br/>` : ''}
+      ${companyEmail ? `Email: ${escapeHtml(companyEmail)}` : ''}
+    </div>
+  </div>
+
+  <div class="doc-title">
+    <h2>Service Report</h2>
+    <div class="doc-sub">Official documentation of service operations</div>
+  </div>
+
+  <div class="meta">
+    <div><strong>Filters Applied:</strong> ${escapeHtml(filtersLabel)}</div>
+    <div style="text-align:right"><strong>Generated:</strong> ${new Date().toLocaleString()}<br/><strong>Total Records:</strong> ${filteredItems.length}</div>
+  </div>
+
+  <h3 class="section">1. Summary</h3>
+  <div class="summary-grid">
+    <div class="summary-box"><div class="v">${filteredItems.length}</div><div class="l">Total Jobs</div></div>
+    <div class="summary-box"><div class="v">${completedItems.length}</div><div class="l">Completed</div></div>
+    <div class="summary-box"><div class="v">${completionRate}%</div><div class="l">Completion Rate</div></div>
+    <div class="summary-box"><div class="v">${serviceTypeCounts.Installation}</div><div class="l">Installation</div></div>
+    <div class="summary-box"><div class="v">${serviceTypeCounts.Repair}</div><div class="l">Repair</div></div>
+    <div class="summary-box"><div class="v">${serviceTypeCounts.Maintenance}</div><div class="l">Maintenance</div></div>
+  </div>
+
+  <h3 class="section">2. Job Details &amp; Remarks</h3>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Service</th><th>Description</th><th>Client</th><th>Date / Time</th><th>Technician</th><th>Status</th><th>Location</th><th>Remarks / Work Done</th></tr>
+    </thead>
+    <tbody>${jobRows}</tbody>
+  </table>
+
+  <h3 class="section">3. Technician Performance</h3>
+  <table>
+    <thead>
+      <tr><th>Technician</th><th style="text-align:right">Total Jobs</th><th style="text-align:right">Completed</th><th style="text-align:right">Completion Rate</th></tr>
+    </thead>
+    <tbody>${techRows}</tbody>
+  </table>
+
+  <div class="signatures">
+    <div class="sig">
+      <div class="line">Prepared by</div>
+      <div class="sub2">Name &amp; Signature &nbsp;&bull;&nbsp; Date: ______________</div>
+    </div>
+    <div class="sig">
+      <div class="line">Approved by</div>
+      <div class="sub2">Name &amp; Signature &nbsp;&bull;&nbsp; Date: ______________</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Generated by ${escapeHtml(companyName)} Service Management System</span>
+    <span>Document Reference: ${docRef}</span>
+  </div>
+
+  <script>
+    window.onload = function () { setTimeout(function () { window.print(); }, 250); };
+  </script>
+</body>
+</html>`
+
+    const printWindow = window.open('', '_blank', 'width=1080,height=760')
+    if (!printWindow) {
+      toast.error('Pop-up blocked. Please allow pop-ups for this site to print the report.')
+      return
+    }
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -4690,7 +5159,7 @@ function ReportsView({ installations, repairs, maintenance, clients, technicians
           </div>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-8">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-8">
 
         {/* Filter Control Panel */}
         <Card className="border-none shadow-sm">
@@ -4963,6 +5432,9 @@ function ReportsView({ installations, repairs, maintenance, clients, technicians
               <Button variant="outline" onClick={handleExportPDF} className="gap-2">
                 <FileText className="h-4 w-4" />Export as PDF ({filteredItems.length} records)
               </Button>
+              <Button onClick={handlePrintReport} className="gap-2 bg-[#005596] text-white hover:bg-[#004a80]">
+                <Printer className="h-4 w-4" />Print Report ({filteredItems.length} records)
+              </Button>
               
             </div>
           </CardContent>
@@ -5100,7 +5572,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -5109,7 +5581,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
           </div>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         <Tabs defaultValue="company" className="w-full">
           <TabsList className="w-full justify-start h-12 bg-white border border-gray-200 p-1 mb-8 overflow-x-auto flex-nowrap">
             <TabsTrigger value="company" className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Company</TabsTrigger>
@@ -5582,12 +6054,12 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
 function MiniStatCard({ title, value, icon }: { title: string, value: string, icon: React.ReactNode }) {
   return (
     <Card className="border-none shadow-sm">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-gray-500 font-medium">{title}</p>
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-2 sm:mb-4 gap-2">
+          <p className="text-xs sm:text-sm text-gray-500 font-medium truncate">{title}</p>
           {icon}
         </div>
-        <p className="text-3xl font-bold text-[#005596]">{value}</p>
+        <p className="text-2xl sm:text-3xl font-bold text-[#005596]">{value}</p>
       </CardContent>
     </Card>
   )
@@ -5605,6 +6077,16 @@ function detectServiceCategory(serviceType: string): string {
   return 'Maintenance'
 }
 
+// Read the requested_services JSONB column of a client request. Returns the
+// per-service list for combined multi-service requests, or [] when the request
+// is single-service (legacy rows and rows without the column included).
+function parseCombinedServices(request: any): { service: string; notes: string | null }[] {
+  if (!request?.requested_services || !Array.isArray(request.requested_services)) return []
+  return request.requested_services
+    .map((s: any) => ({ service: String(s?.service || '').trim(), notes: s?.notes ? String(s.notes) : null }))
+    .filter((s: any) => s.service.length > 0)
+}
+
 function RequestsView({ requests, technicians = [], onBack, fetchRequests, router, setView, setInstallations, setRepairs, setMaintenance }: any) {
   const [isLoading, setIsLoading] = useState(false)
   const [showApproveDialog, setShowApproveDialog] = useState(false)
@@ -5617,6 +6099,10 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectingId, setRejectingId] = useState<string | null>(null)
+  // For combined multi-service requests: one job row per service
+  const combinedServices = parseCombinedServices(selectedRequestForApprove)
+  const isCombinedRequest = combinedServices.length > 1
+  const [approveTechnicians, setApproveTechnicians] = useState<Record<string, string>>({})
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
@@ -5706,13 +6192,19 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
     try {
       const form = e.currentTarget
       const appointmentDate = (form.querySelector('input[name="appointmentDate"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_date || selectedRequestForApprove.displayDate
-      const appointmentTime = (form.querySelector('input[name="appointmentTime"]') as HTMLInputElement)?.value || selectedRequestForApprove.preferred_time || selectedRequestForApprove.displayTime
+      const appointmentTime = (form.querySelector('select[name="appointmentTimeSelect"]') as HTMLSelectElement)?.value || selectedRequestForApprove.preferred_time || selectedRequestForApprove.displayTime
       const serviceFee = (form.querySelector('input[name="serviceFee"]') as HTMLInputElement)?.value || '0'
       const partsCost = (form.querySelector('input[name="partsCost"]') as HTMLInputElement)?.value || '0'
       const totalCost = (form.querySelector('input[name="totalCost"]') as HTMLInputElement)?.value || '0'
       const notes = (form.querySelector('input[name="notes"]') as HTMLInputElement)?.value || ''
 
       const serviceAddress = selectedRequestForApprove.service_address || selectedRequestForApprove.address || ''
+
+      if (!appointmentDate || !appointmentTime) {
+        toast.error('Please set an appointment date and time before approving')
+        setIsLoading(false)
+        return
+      }
 
       const jobData = {
         technician: approveTechnician,
@@ -5725,6 +6217,47 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
       }
 
       const serviceCategory = approveServiceCategory || detectServiceCategory(selectedRequestForApprove.service_type || selectedRequestForApprove.request_type || '')
+      const combined = parseCombinedServices(selectedRequestForApprove)
+
+      // Combined multi-service request → create one job per service, each
+      // with its own category (auto-mapped) and technician, sharing the
+      // schedule, location, and cost. The request is approved once all jobs
+      // are created.
+      if (combined.length > 1) {
+        let lastError: string | null = null
+        for (const svc of combined) {
+          const cat = detectServiceCategory(svc.service)
+          const tech = approveTechnicians[svc.service] || approveTechnician
+          if (!tech) {
+            toast.error(`Please select a technician for ${svc.service}`)
+            setIsLoading(false)
+            return
+          }
+          const perServiceData = {
+            ...jobData,
+            serviceTitle: svc.service,
+            notes: svc.notes || notes
+          }
+          let res: any
+          if (cat === 'Installation') res = await acceptRequestAsInstallation(selectedRequestForApprove.id, perServiceData)
+          else if (cat === 'Repair') res = await acceptRequestAsRepair(selectedRequestForApprove.id, perServiceData)
+          else res = await acceptRequestAsMaintenance(selectedRequestForApprove.id, perServiceData)
+          if (res?.error) lastError = res.error
+        }
+        if (lastError) {
+          toast.error(lastError)
+          setIsLoading(false)
+          return
+        }
+
+        toast.success(`Request approved! ${combined.length} jobs created (${combined.map(s => s.service).join(', ')}).`)
+        setShowApproveDialog(false)
+        setSelectedRequestForApprove(null)
+        setApproveTechnicians({})
+        fetchRequests()
+        setIsLoading(false)
+        return
+      }
 
       let result
       if (selectedRequestForApprove.source === 'lead') {
@@ -5823,6 +6356,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
     setApprovePriority('Normal')
     setApproveServiceStatus('Scheduled')
     setApproveBookingSource('Website')
+    setApproveTechnicians({})
     setShowApproveDialog(true)
   }
 
@@ -5833,6 +6367,9 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
   const getServiceType = (request: any) => {
     return request.service_type || request.request_type || 'Service'
   }
+
+  // Number of services in a combined multi-service request (0 = single)
+  const getCombinedCount = (request: any) => parseCombinedServices(request).length
 
   const getContactInfo = (request: any) => {
     return {
@@ -5849,9 +6386,15 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
     }
   }
 
+  const getScheduleDisplay = (request: any) => {
+    const { date, time } = getDateTime(request)
+    if (!date && !time) return 'To be scheduled'
+    return [date, time].filter(Boolean).join(' at ')
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -5860,9 +6403,9 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           </div>
         </div>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MiniStatCard title="Total Requests" value={filteredRequests.length.toString()} icon={<FileText className="text-blue-600" />} />
           <MiniStatCard title="Pending" value={filteredRequests.filter((r: any) => r.status === 'Pending').length.toString()} icon={<Clock className="text-yellow-600" />} />
           <MiniStatCard title="Accepted" value={filteredRequests.filter((r: any) => r.status === 'Accepted' || r.status === 'Approved').length.toString()} icon={<CheckCircle className="text-green-600" />} />
@@ -5971,6 +6514,9 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                           {request.source === 'lead' ? 'Website Lead' : 'Client Request'}
                         </Badge>
                         <h3 className="font-bold text-lg text-[#005596]">{getServiceType(request)}</h3>
+                        {getCombinedCount(request) > 1 && (
+                          <Badge className="bg-purple-100 text-purple-700">{getCombinedCount(request)} Services</Badge>
+                        )}
                         <span className="text-sm text-gray-400">• {format(parseISO(request.created_at), 'MMM d, yyyy')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm">
@@ -5984,7 +6530,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                         <div className="space-y-1">
                           <p className="text-gray-500 font-medium">Preferred Schedule</p>
                           <p className="text-[#005596] flex items-center gap-2">
-                            <Calendar className="h-4 w-4" /> {getDateTime(request).date} at {getDateTime(request).time}
+                            <Calendar className="h-4 w-4" /> {getScheduleDisplay(request)}
                           </p>
                         </div>
                       </div>
@@ -6051,18 +6597,53 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                     </span>
                   )}
                 </div>
-                <div className="space-y-1">
-                  <Label>Job Category</Label>
-                  <Select value={approveServiceCategory} onValueChange={setApproveServiceCategory} required>
-                    <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select job category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Installation">Installation</SelectItem>
-                      <SelectItem value="Maintenance">Maintenance</SelectItem>
-                      <SelectItem value="Repair">Repair</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500">Auto-detected from the requested service; change only if the job type differs.</p>
-                </div>
+                {isCombinedRequest ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">Combined request — one job will be created per service, each with its own technician.</p>
+                    {combinedServices.map((svc) => {
+                      const autoCat = detectServiceCategory(svc.service)
+                      return (
+                        <div key={svc.service} className="p-3 border border-blue-200 rounded-lg bg-white space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sm text-[#005596]">{svc.service}</span>
+                            <span className="text-xs text-gray-500">Job type: <span className="font-semibold text-gray-700">{autoCat}</span></span>
+                          </div>
+                          {svc.notes && (
+                            <p className="text-xs text-gray-600 italic bg-gray-50 p-2 rounded">"{svc.notes}"</p>
+                          )}
+                          <div className="space-y-1">
+                            <Label>Assigned Technician *</Label>
+                            <Select
+                              value={approveTechnicians[svc.service] || ''}
+                              onValueChange={(v) => setApproveTechnicians(prev => ({ ...prev, [svc.service]: v }))}
+                              required
+                            >
+                              <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select technician" /></SelectTrigger>
+                              <SelectContent>
+                                {technicians.map((t: any) => (
+                                  <SelectItem key={t.id} value={t.full_name}>{t.full_name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label>Job Category</Label>
+                    <Select value={approveServiceCategory} onValueChange={setApproveServiceCategory} required>
+                      <SelectTrigger className="border-blue-300 bg-white"><SelectValue placeholder="Select job category" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Installation">Installation</SelectItem>
+                        <SelectItem value="Maintenance">Maintenance</SelectItem>
+                        <SelectItem value="Repair">Repair</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Auto-detected from the requested service; change only if the job type differs.</p>
+                  </div>
+                )}
               </div>
 
               {/* Client Information */}
@@ -6095,12 +6676,25 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                 <p className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Scheduling</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label>Appointment Date</Label>
-                    <Input defaultValue={selectedRequestForApprove.preferred_date || ''} readOnly className="bg-gray-50" />
+                    <Label>Appointment Date *</Label>
+                    <Input
+                      type="date"
+                      name="appointmentDate"
+                      defaultValue={selectedRequestForApprove.preferred_date || ''}
+                      className="bg-white"
+                      required
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label>Appointment Time</Label>
-                    <Input defaultValue={selectedRequestForApprove.preferred_time || ''} readOnly className="bg-gray-50" />
+                    <Select name="appointmentTimeSelect" defaultValue={selectedRequestForApprove.preferred_time || ''}>
+                      <SelectTrigger className="bg-white"><SelectValue placeholder="Select time slot" /></SelectTrigger>
+                      <SelectContent>
+                        {['08:00 AM - 10:00 AM', '10:00 AM - 12:00 PM', '01:00 PM - 03:00 PM', '03:00 PM - 05:00 PM', '05:00 PM - 07:00 PM', '07:00 PM - 08:00 PM'].map(slot => (
+                          <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1 col-span-2">
                     <Label>Assigned Technician *</Label>
@@ -6123,7 +6717,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
                 <Button type="button" variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
                 <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={isLoading}>
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Confirm & Approve
+                  {isCombinedRequest ? `Confirm & Approve (${combinedServices.length} Jobs)` : 'Confirm & Approve'}
                 </Button>
               </div>
             </form>
@@ -6304,7 +6898,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}><ChevronLeft className="h-4 w-4 mr-2" />Back to Dashboard</Button>
           <div>
@@ -6314,7 +6908,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
         </div>
         <Button className="bg-[#005596]" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-2" />Add Maintenance</Button>
       </header>
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         {/* Filters Card */}
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-3">
@@ -6407,7 +7001,7 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <MiniStatCard title="Total Maintenance" value={filteredMaintenance.length.toString()} icon={<Wrench className="text-blue-600" />} />
           <MiniStatCard title="In Progress" value={filteredMaintenance.filter((m: any) => m.status === 'In Progress').length.toString()} icon={<Clock className="text-blue-600" />} />
           <MiniStatCard title="Scheduled" value={filteredMaintenance.filter((m: any) => m.status === 'Scheduled').length.toString()} icon={<Calendar className="text-yellow-600" />} />
@@ -6418,23 +7012,23 @@ function MaintenanceView({ maintenance, total, page, setPage, clients, technicia
           {filteredMaintenance.map((item: any) => (
             <Card key={item.id} className="border-none shadow-sm">
               <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 mb-4">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold text-[#005596]">{item.title}</h3>
                       <Badge className={item.status === 'Completed' ? 'bg-green-100 text-green-700' : item.status === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}>
                         {item.status}
                       </Badge>
                       {item.is_multi_unit && <Badge variant="outline" className="text-[10px]">Multi-Unit</Badge>}
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {item.client_name}</span>
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {item.location}</span>
-                      <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> {item.technician}</span>
-                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {item.date}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3 shrink-0" /> {item.client_name}</span>
+                      <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{item.location}</span></span>
+                      <span className="flex items-center gap-1"><Wrench className="h-3 w-3 shrink-0" /> {item.technician}</span>
+                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3 shrink-0" /> {item.date}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 shrink-0">
                     <Button variant="outline" size="sm" onClick={() => onViewDetails(item)}>View Details</Button>
                   </div>
                 </div>
@@ -6738,7 +7332,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ChevronLeft className="h-4 w-4 mr-2" />
@@ -6755,9 +7349,9 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
         </Button>
       </header>
 
-      <main className="container mx-auto py-8 px-6 space-y-6">
+      <main className="container mx-auto py-6 sm:py-8 px-4 sm:px-6 space-y-6">
         {/* Stats - now reflect filtered results */}
-        <div className="grid grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card className="border-l-4 border-l-blue-500">
             <CardContent className="p-6 flex items-center justify-between">
               <div>

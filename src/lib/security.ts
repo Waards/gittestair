@@ -154,7 +154,7 @@ export const validateAndSanitizeLead = (data: {
   email: string
   serviceAddress: string
   clientType: string
-  serviceType: string
+  serviceType?: string
   preferredDate: string
   preferredTime: string
   additionalInfo?: string
@@ -177,9 +177,9 @@ export const validateAndSanitizeLead = (data: {
       email: emailSchema,
       serviceAddress: stringSchema(500),
       clientType: z.enum(['Residential', 'Corporate']),
-      serviceType: stringSchema(100),
-      preferredDate: dateSchema,
-      preferredTime: timeSlotSchema,
+      serviceType: stringSchema(100).optional().default(''),
+      preferredDate: dateSchema.or(z.literal('')).optional().default(''),
+      preferredTime: timeSlotSchema.or(z.literal('')).optional().default(''),
       additionalInfo: stringSchema(2000).optional().default(''),
     })
 
