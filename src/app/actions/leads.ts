@@ -135,7 +135,7 @@ export async function submitLead(formData: FormData) {
       city: sanitizedCity,
       zip_code: sanitizedZipCode || null,
       province: sanitizedProvince || null,
-      service_type: sanitizedServiceType || null,
+      service_type: sanitizedServiceType || 'For Assessment',
       preferred_date: sanitizedPreferredDate || null,
       preferred_time: sanitizedPreferredTime || null,
       aircon_brand: sanitizedAirconBrand || null,
