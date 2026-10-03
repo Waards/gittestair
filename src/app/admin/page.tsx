@@ -21,12 +21,14 @@ import {
   getClientRequests,
   getNotifications,
   markNotificationAsRead,
+  markNotificationAsUnread,
   updateRequestStatus,
   archiveClient,
   unarchiveClient,
   updateNotificationSettings,
   updateReminderSettings,
   updateSecuritySettings,
+  setSecurityQuestion as saveSecurityQuestion,
   changeAdminPassword,
   sendClientReminder,
   getTechnicians,
@@ -108,6 +110,7 @@ import {
   Filter,
   Plus,
   Mail,
+  MailOpen,
   Phone,
   MapPin,
   FileText,
@@ -138,6 +141,7 @@ import { useRouter } from 'next/navigation'
 import { Progress } from '@/components/ui/progress'
 import { validatePHPhone, PHONE_VALIDATION_ERROR, cn } from '@/lib/utils'
 import { calculateDynamicProgress } from '@/lib/progress'
+import { SECURITY_QUESTIONS } from '@/lib/security-questions'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
@@ -192,6 +196,8 @@ export default function AdminDashboard() {
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   const [showReminders, setShowReminders] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [selectedNotification, setSelectedNotification] = useState<any>(null)
+  const [showNotificationPreview, setShowNotificationPreview] = useState(false)
   const [showReminderForm, setShowReminderForm] = useState(false)
   const [selectedClientForReminder, setSelectedClientForReminder] = useState<any>(null)
   const [reminderTitle, setReminderTitle] = useState('Aircon Cleaning Reminder')
@@ -303,19 +309,6 @@ export default function AdminDashboard() {
       getLeads().then(setLeads)
     } else if (view === 'technicians' && technicians.length === 0) {
       getTechnicians().then(setTechnicians)
-    } else if (view === 'repairs') {
-      getRepairs(repairsPage, 20).then((r: any) => {
-        setRepairs(r.data || [])
-        setRepairsTotal(r.total || 0)
-      })
-      getRepairJobs().then(setRepairJobs)
-      getClientUnits().then(setClientUnits)
-    } else if (view === 'installations') {
-      getInstallations(installationsPage, 20).then((r: any) => {
-        setInstallations(r.data || [])
-        setInstallationsTotal(r.total || 0)
-      })
-      getClientUnits().then(setClientUnits)
     } else if (view === 'maintenance') {
       getMaintenanceWithItems(maintenancePage, 20).then((result: any) => {
         setMaintenance(result.data || [])
@@ -1095,18 +1088,40 @@ export default function AdminDashboard() {
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  className={`p-4 rounded-xl border transition-colors ${n.is_read ? 'bg-white border-gray-100' : 'bg-blue-50/50 border-blue-100'}`}
+                  className={`p-4 rounded-xl border transition-colors cursor-pointer group ${n.is_read ? 'bg-white border-gray-100' : 'bg-blue-50/50 border-blue-100'}`}
                   onClick={async () => {
+                    setSelectedNotification(n)
+                    setShowNotificationPreview(true)
                     if (!n.is_read) {
                       await markNotificationAsRead(n.id)
                       // Update local state instead of refetching all data
                       setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, is_read: true } : notif))
+                      setSelectedNotification({ ...n, is_read: true })
                     }
                   }}
                 >
                   <div className="flex justify-between items-start mb-1">
                     <h4 className={`font-bold text-sm ${n.is_read ? 'text-gray-700' : 'text-[#005596]'}`}>{n.title}</h4>
-                    {!n.is_read && <div className="h-2 w-2 bg-blue-600 rounded-full" />}
+                    <div className="flex items-center gap-2">
+                      {!n.is_read && <div className="h-2 w-2 bg-blue-600 rounded-full" />}
+                      <button
+                        type="button"
+                        title={n.is_read ? 'Mark as unread' : 'Mark as read'}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-[#005596]"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          const newValue = !n.is_read
+                          if (newValue) await markNotificationAsRead(n.id)
+                          else await markNotificationAsUnread(n.id)
+                          setNotifications(notifications.map(notif => notif.id === n.id ? { ...notif, is_read: newValue } : notif))
+                          if (selectedNotification?.id === n.id) {
+                            setSelectedNotification({ ...selectedNotification, is_read: newValue })
+                          }
+                        }}
+                      >
+                        {n.is_read ? <Mail className="h-4 w-4" /> : <MailOpen className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">{n.message}</p>
                   <span className="text-[10px] text-gray-400">{format(parseISO(n.created_at), 'MMM d, h:mm a')}</span>
@@ -1117,6 +1132,59 @@ export default function AdminDashboard() {
           <div className="p-4 border-t bg-gray-50">
             <Button variant="outline" className="w-full" onClick={() => setShowNotifications(false)}>Close</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notification Preview Popup */}
+      <Dialog open={showNotificationPreview} onOpenChange={setShowNotificationPreview}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-[#005596]" />
+              Notification Preview
+            </DialogTitle>
+            <DialogDescription>Full details of this notification</DialogDescription>
+          </DialogHeader>
+          {selectedNotification && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-lg font-bold text-[#005596]">{selectedNotification.title}</h3>
+                <Badge variant="secondary" className={selectedNotification.is_read ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-700'}>
+                  {selectedNotification.is_read ? 'Read' : 'Unread'}
+                </Badge>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-lg border text-sm whitespace-pre-wrap">
+                {selectedNotification.message}
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Received</p>
+                  <p>{format(parseISO(selectedNotification.created_at), 'MMM d, yyyy h:mm a')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium">Type</p>
+                  <p className="capitalize">{selectedNotification.type || 'General'}</p>
+                </div>
+              </div>
+              <div className="flex justify-between gap-2 pt-3 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const newValue = !selectedNotification.is_read
+                    if (newValue) await markNotificationAsRead(selectedNotification.id)
+                    else await markNotificationAsUnread(selectedNotification.id)
+                    setNotifications(notifications.map(notif => notif.id === selectedNotification.id ? { ...notif, is_read: newValue } : notif))
+                    setSelectedNotification({ ...selectedNotification, is_read: newValue })
+                  }}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  {selectedNotification.is_read ? 'Mark as unread' : 'Mark as read'}
+                </Button>
+                <Button size="sm" onClick={() => setShowNotificationPreview(false)}>Close</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -5491,6 +5559,9 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
     session_timeout_minutes: settings?.session_timeout_minutes ?? 60,
     require_password_change_days: settings?.require_password_change_days ?? 90,
   })
+  const [securityQuestion, setSecurityQuestion] = useState(settings?.security_question || '')
+  const [securityAnswer, setSecurityAnswer] = useState('')
+  const [isSavingSecurityQuestion, setIsSavingSecurityQuestion] = useState(false)
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -5549,6 +5620,26 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
       fetchSettings()
     }
     setIsLoading(false)
+  }
+
+  const handleSecurityQuestionSave = async () => {
+    if (!securityQuestion) {
+      toast.error('Please choose a security question')
+      return
+    }
+    if (!securityAnswer.trim()) {
+      toast.error('Please enter the answer')
+      return
+    }
+    setIsSavingSecurityQuestion(true)
+    const result = await saveSecurityQuestion(securityQuestion, securityAnswer)
+    if (result.error) toast.error(result.error)
+    else {
+      toast.success('Security question saved')
+      setSecurityAnswer('')
+      fetchSettings()
+    }
+    setIsSavingSecurityQuestion(false)
   }
 
   const handlePasswordChange = async () => {
@@ -6038,6 +6129,49 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
                 </CardContent>
               </Card>
 
+              <Card className="border-none shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Security Question</CardTitle>
+                  <CardDescription>Used to verify identity on the Forgot Password page</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Security Question</Label>
+                    <Select value={securityQuestion} onValueChange={setSecurityQuestion}>
+                      <SelectTrigger><SelectValue placeholder="Select a security question" /></SelectTrigger>
+                      <SelectContent>
+                        {SECURITY_QUESTIONS.map((q) => (
+                          <SelectItem key={q} value={q}>{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Answer</Label>
+                    <Input
+                      type="text"
+                      placeholder={settings?.security_answer_hash ? 'Answer is set — type a new answer to change it' : 'Enter the answer to your security question'}
+                      value={securityAnswer}
+                      onChange={(e) => setSecurityAnswer(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      {settings?.security_answer_hash
+                        ? 'A security answer is already configured. Leave blank to keep it, or type a new answer to replace it.'
+                        : 'No security answer configured yet. The answer is stored as a secure hash, never in plain text.'}
+                    </p>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      className="bg-[#005596]"
+                      onClick={handleSecurityQuestionSave}
+                      disabled={isLoading || isSavingSecurityQuestion || !securityQuestion || (!securityAnswer && !settings?.security_answer_hash)}
+                    >
+                      {(isLoading || isSavingSecurityQuestion) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Security Question
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               <div className="flex justify-end">
                 <Button className="bg-[#005596]" onClick={handleSecuritySave} disabled={isLoading}>
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Security Settings
@@ -6302,7 +6436,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           progress: 0,
           created_at: new Date().toISOString()
         }
-        setRepairs(prev => [newItem, ...prev])
+        setRepairs((prev: any[]) => [newItem, ...prev])
         setView('repairs')
       } else if (serviceCategory === 'Installation') {
         const newItem = {
@@ -6318,7 +6452,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           progress: 0,
           created_at: new Date().toISOString()
         }
-        setInstallations(prev => [newItem, ...prev])
+        setInstallations((prev: any[]) => [newItem, ...prev])
         setView('installations')
       } else {
         const newItem = {
@@ -6334,7 +6468,7 @@ function RequestsView({ requests, technicians = [], onBack, fetchRequests, route
           progress: 0,
           created_at: new Date().toISOString()
         }
-        setMaintenance(prev => [newItem, ...prev])
+        setMaintenance((prev: any[]) => [newItem, ...prev])
         setView('maintenance')
       }
 
@@ -7256,6 +7390,52 @@ function ReportStatCard({ title, value, icon }: { title: string, value: string, 
   )
 }
 
+function ProfilePicturePicker({ value, onChange, onPreview }: { value: string | null, onChange: (url: string | null) => void, onPreview: (url: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <Label>Profile Picture</Label>
+      {value ? (
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value}
+            alt="Profile preview"
+            className="h-16 w-16 rounded-full object-cover border cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => onPreview(value)}
+          />
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-gray-500">Click the photo to enlarge</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-red-600 border-red-200 hover:bg-red-50 w-fit"
+              onClick={() => onChange(null)}
+            >
+              <Trash2 className="h-3 w-3 mr-1" /> Remove
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <label className="flex flex-col items-center justify-center gap-1 border border-dashed border-gray-300 rounded-md py-4 cursor-pointer hover:border-[#005596] hover:bg-blue-50/40 transition-colors text-sm text-gray-500">
+          <Camera className="h-5 w-5" />
+          Click to upload a photo
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) onChange(URL.createObjectURL(file))
+              e.target.value = ''
+            }}
+          />
+        </label>
+      )}
+    </div>
+  )
+}
+
 function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
   const [isLoading, setIsLoading] = useState(false)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -7264,6 +7444,22 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
   const [selectedTechnician, setSelectedTechnician] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [addPicUrl, setAddPicUrl] = useState<string | null>(null)
+  const [editPicUrl, setEditPicUrl] = useState<string | null>(null)
+  const [bigPreviewUrl, setBigPreviewUrl] = useState<string | null>(null)
+
+  const updateAddPic = (url: string | null) => {
+    setAddPicUrl(prev => {
+      if (prev && prev !== url) URL.revokeObjectURL(prev)
+      return url
+    })
+  }
+  const updateEditPic = (url: string | null) => {
+    setEditPicUrl(prev => {
+      if (prev && prev !== url) URL.revokeObjectURL(prev)
+      return url
+    })
+  }
 
   const handleCreateTechnician = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -7558,10 +7754,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                   <Input name="email" type="email" placeholder="juan@example.com" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Profile Picture</Label>
-                <Input name="profilePicture" type="file" accept="image/*" className="cursor-pointer" />
-              </div>
+              <ProfilePicturePicker value={addPicUrl} onChange={updateAddPic} onPreview={setBigPreviewUrl} />
             </div>
 
             {/* Skills & Capacity */}
@@ -7662,7 +7855,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+      <Dialog open={showEditDialog} onOpenChange={(open) => { setShowEditDialog(open); if (!open) updateEditPic(null) }}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Technician</DialogTitle>
@@ -7687,10 +7880,7 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                     <Input name="email" type="email" defaultValue={selectedTechnician.email} />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Profile Picture</Label>
-                  <Input name="profilePicture" type="file" accept="image/*" className="cursor-pointer" />
-                </div>
+                <ProfilePicturePicker value={editPicUrl} onChange={updateEditPic} onPreview={setBigPreviewUrl} />
               </div>
 
               {/* Skills & Capacity */}
@@ -7933,6 +8123,25 @@ function TechniciansView({ technicians, onBack, fetchTechnicians }: any) {
                   <Edit2 className="h-4 w-4 mr-2" /> Edit
                 </Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Big Profile Picture Preview */}
+      <Dialog open={!!bigPreviewUrl} onOpenChange={(open) => { if (!open) setBigPreviewUrl(null) }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Profile Picture Preview</DialogTitle>
+          </DialogHeader>
+          {bigPreviewUrl && (
+            <div className="flex items-center justify-center py-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={bigPreviewUrl}
+                alt="Profile picture preview"
+                className="max-h-[70vh] w-auto rounded-lg object-contain border"
+              />
             </div>
           )}
         </DialogContent>

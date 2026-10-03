@@ -1,5 +1,6 @@
 'use server'
 
+import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
 import { sanitizedString } from '@/lib/security'
@@ -577,6 +578,111 @@ export async function changeAdminPassword(currentPassword: string, newPassword: 
   })
 
   if (error) return { error: error.message }
+  return { success: true }
+}
+
+// --- Security question (Forgot Password) ---
+
+const hashSecurityAnswer = (answer: string) =>
+  createHash('sha256').update(answer.trim().toLowerCase()).digest('hex')
+
+export async function setSecurityQuestion(question: string, answer: string) {
+  if (!question) return { error: 'Please choose a security question.' }
+  if (!answer || answer.trim().length < 2) {
+    return { error: 'Please provide an answer (at least 2 characters).' }
+  }
+
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('settings')
+    .upsert({
+      id: 'main',
+      security_question: question,
+      security_answer_hash: hashSecurityAnswer(answer)
+    })
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+async function findUserByEmail(supabase: any, email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 })
+  if (error) return { error: error.message }
+  const user = data?.users?.find((u: any) => (u.email || '').toLowerCase() === normalizedEmail)
+  if (!user) return { error: 'No account found with that email address.' }
+  return { user }
+}
+
+async function getStoredSecuritySettings(supabase: any) {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('security_question, security_answer_hash')
+    .eq('id', 'main')
+    .single()
+
+  if (error || !data?.security_question || !data?.security_answer_hash) {
+    return null
+  }
+  return data
+}
+
+export async function getSecurityQuestionForEmail(email: string) {
+  const supabase = await createAdminClient()
+
+  if (!email || !email.trim()) {
+    return { error: 'Please enter your email address.' }
+  }
+
+  const userResult = await findUserByEmail(supabase, email)
+  if (userResult.error) return { error: userResult.error }
+
+  const security = await getStoredSecuritySettings(supabase)
+  if (!security) {
+    return { error: 'No security question has been configured yet. Please contact the administrator.' }
+  }
+
+  return { success: true, question: security.security_question as string }
+}
+
+export async function verifySecurityAnswer(email: string, answer: string) {
+  const supabase = await createAdminClient()
+
+  if (!answer || !answer.trim()) {
+    return { error: 'Please enter your answer.' }
+  }
+
+  const security = await getStoredSecuritySettings(supabase)
+  if (!security) {
+    return { error: 'No security question has been configured yet. Please contact the administrator.' }
+  }
+
+  if (hashSecurityAnswer(answer) !== security.security_answer_hash) {
+    return { error: 'Incorrect answer. Please try again.' }
+  }
+
+  return { success: true }
+}
+
+export async function resetPasswordWithSecurityAnswer(email: string, answer: string, newPassword: string) {
+  const supabase = await createAdminClient()
+
+  if (!newPassword || newPassword.length < 8) {
+    return { error: 'Password must be at least 8 characters.' }
+  }
+
+  const verify = await verifySecurityAnswer(email, answer)
+  if (verify.error) return { error: verify.error }
+
+  const userResult = await findUserByEmail(supabase, email)
+  if (userResult.error) return { error: userResult.error }
+
+  const { error: updateError } = await supabase.auth.admin.updateUserById(userResult.user.id, {
+    password: newPassword
+  })
+  if (updateError) return { error: updateError.message }
+
   return { success: true }
 }
 
@@ -1240,6 +1346,17 @@ export async function markNotificationAsRead(id: string) {
   const { error } = await supabase
     .from('notifications')
     .update({ is_read: true })
+    .eq('id', id)
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+export async function markNotificationAsUnread(id: string) {
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: false })
     .eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/admin')
