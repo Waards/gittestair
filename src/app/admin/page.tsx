@@ -5676,7 +5676,7 @@ function SettingsView({ settings, onBack, fetchSettings }: any) {
         <Tabs defaultValue="company" className="w-full">
           <TabsList className="w-full justify-start h-12 bg-white border border-gray-200 p-1 mb-8 overflow-x-auto flex-nowrap">
             <TabsTrigger value="company" className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Company</TabsTrigger>
-            <TabsTrigger value="service-config" className="flex items-center gap-2"><SettingsIcon className="h-4 w-4" /> Service Config</TabsTrigger>
+            <TabsTrigger value="service-config" className="flex items-center gap-2"><SettingsIcon className="h-4 w-4" /> System</TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center gap-2"><BellDot className="h-4 w-4" /> Notifications</TabsTrigger>
             <TabsTrigger value="reminders" className="flex items-center gap-2"><BellRing className="h-4 w-4" /> Reminders</TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Security</TabsTrigger>
